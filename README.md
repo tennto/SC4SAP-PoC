@@ -3,7 +3,8 @@
 Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude Agent SDK**, as the backend for a browser UI. Execution plan lives in the plugin repo's `README.md`.
 
 Current state: **Phase 2 (backend)** — Phase 1 gate passed; plan items 2-1 (Fastify HTTP
-surface) and 2-2 (session registry) are done and verified end to end.
+surface), 2-2 (session registry) and 2-3 (token-level streaming relay) are done and
+verified end to end.
 
 ## Setup
 
@@ -41,6 +42,27 @@ approximately nothing — but the CLI may still require a key to start.
 | `DELETE` | `/sessions/:id` | Close and evict |
 | `POST` | `/sessions/:id/messages` | `{"text": "…"}` → `202`; the answer arrives on the stream |
 | `GET` | `/sessions/:id/stream` | SSE. Honours `Last-Event-ID` for replay |
+
+### SSE event vocabulary (2-3)
+
+`includePartialMessages: true` produces raw Anthropic `stream_event`s; the manager
+translates them into a small vocabulary rather than forwarding them verbatim. Each SSE
+frame carries `id: <seq>`, `event: <type>` and the event as JSON.
+
+| Event | In replay buffer | Purpose |
+|---|---|---|
+| `message` | yes | A complete SDK message. **Authoritative** — a client can render from these alone |
+| `status` | yes | `starting` / `idle` / `busy` / `closed` / `error` |
+| `tool_start` / `tool_end` | yes | Carries `toolUseId` + `name`; drives the "Running GetProgram…" chip |
+| `text_delta` / `thinking_delta` | **no** | Token-level typing effect |
+| `turn_start` / `turn_end` | **no** | Turn boundaries |
+
+**Deltas are ephemeral on purpose.** Live subscribers get them, but they never enter the
+replay buffer: a reconnecting client rebuilds finished turns from the complete `message`
+events, and buffering every token would evict those within seconds. Ephemeral events still
+consume a sequence number, so `Last-Event-ID` stays monotonic — replay simply skips them.
+`input_json_delta` is dropped outright; partial tool arguments are not renderable and the
+complete input arrives on the assistant message.
 
 **One live `query()` per session, in streaming input mode** — the prompt is an
 AsyncIterable the manager pushes into, not a fresh `query()` per message. Control requests
@@ -95,8 +117,8 @@ not assumed:
 
 ## Not yet done
 
-Rest of Phase 2 — 2-3 (token-level `includePartialMessages` relay), 2-4 (approval queue +
-`AskUserQuestion` over SSE), 2-5 (`allowedTools` read-only guard), 2-6 (scripted E2E).
+Rest of Phase 2 — 2-4 (approval queue + `AskUserQuestion` over SSE),
+2-5 (`allowedTools` read-only guard), 2-6 (scripted E2E).
 Then Phase 3 (React frontend) and Phase 4 (scenario E2E).
 Known PoC limitations — no auth, no multi-user isolation, single shared SAP profile,
 no `team` skill (the SDK has no agent teams) — are tracked in the plan's Phase 5.

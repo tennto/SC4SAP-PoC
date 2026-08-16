@@ -32,9 +32,19 @@ const HISTORY_LIMIT = 500;
 
 export type SessionStatus = "starting" | "idle" | "busy" | "closed" | "error";
 
+/** The raw Anthropic stream event, reached through SDKMessage so no transitive import is needed. */
+type StreamEvent = Extract<SDKMessage, { type: "stream_event" }>["event"];
+
 export type SessionEvent =
+  /** A complete SDK message. Authoritative — a client may render from these alone. */
   | { type: "message"; message: SDKMessage }
   | { type: "status"; status: SessionStatus }
+  | { type: "turn_start" }
+  | { type: "turn_end" }
+  | { type: "text_delta"; index: number; text: string }
+  | { type: "thinking_delta"; index: number; text: string }
+  | { type: "tool_start"; index: number; toolUseId: string; name: string }
+  | { type: "tool_end"; index: number }
   | { type: "error"; error: string };
 
 /** An event as delivered to subscribers — `seq` drives SSE replay. */
@@ -125,6 +135,8 @@ type LiveSession = {
   subscribers: Set<Subscriber>;
   history: SequencedEvent[];
   seq: number;
+  /** Content-block indices currently holding a tool_use, so stop can be paired. */
+  openToolBlocks: Set<number>;
 };
 
 export class SessionManager {
@@ -155,6 +167,9 @@ export class SessionManager {
         // ungates row extraction — see provision-workspace.ts.
         settingSources: ["project"],
         includeHookEvents: true,
+        // Plan 2-3 — token-level relay. Produces `stream_event` messages that
+        // #relayStreamEvent translates into text_delta / tool_start / tool_end.
+        includePartialMessages: true,
         resume: options.resume,
         // Plan 2-4 replaces this with an approval queue pushed over SSE, and
         // 2-5 adds the read-only allowedTools guard. Until then the safe
@@ -183,6 +198,7 @@ export class SessionManager {
       subscribers: new Set(),
       history: [],
       seq: 0,
+      openToolBlocks: new Set(),
     };
     this.#sessions.set(id, live);
     this.#consume(live);
@@ -271,6 +287,10 @@ export class SessionManager {
             }
             this.#setStatus(live, "idle");
           }
+          if (message.type === "stream_event") {
+            this.#relayStreamEvent(live, message.event);
+            continue;
+          }
           if (isHookNoise(message)) continue;
           this.#emit(live, { type: "message", message });
         }
@@ -282,16 +302,93 @@ export class SessionManager {
     })();
   }
 
+  /**
+   * Translates a raw Anthropic stream event into the small vocabulary the
+   * frontend consumes. Deltas are emitted **ephemerally** — live subscribers
+   * get them for typing-effect rendering, but they are kept out of the replay
+   * buffer: a reconnecting client rebuilds finished turns from the complete
+   * `message` events, and storing every token would evict those in seconds.
+   * Tool start/end stay in history, because a client that reconnects mid-call
+   * still needs to know a tool is running.
+   */
+  #relayStreamEvent(live: LiveSession, event: StreamEvent): void {
+    switch (event.type) {
+      case "message_start":
+        this.#emit(live, { type: "turn_start" }, { ephemeral: true });
+        return;
+
+      case "content_block_start": {
+        const block = event.content_block;
+        if (block.type === "tool_use" || block.type === "server_tool_use") {
+          live.openToolBlocks.add(event.index);
+          this.#emit(live, {
+            type: "tool_start",
+            index: event.index,
+            toolUseId: block.id,
+            name: block.name,
+          });
+        }
+        return;
+      }
+
+      case "content_block_delta": {
+        const { delta } = event;
+        if (delta.type === "text_delta") {
+          this.#emit(
+            live,
+            { type: "text_delta", index: event.index, text: delta.text },
+            { ephemeral: true },
+          );
+        } else if (delta.type === "thinking_delta") {
+          this.#emit(
+            live,
+            {
+              type: "thinking_delta",
+              index: event.index,
+              text: delta.thinking,
+            },
+            { ephemeral: true },
+          );
+        }
+        // input_json_delta is deliberately dropped — partial tool arguments are
+        // not renderable, and the complete input arrives on the assistant message.
+        return;
+      }
+
+      case "content_block_stop":
+        if (live.openToolBlocks.delete(event.index)) {
+          this.#emit(live, { type: "tool_end", index: event.index });
+        }
+        return;
+
+      case "message_stop":
+        this.#emit(live, { type: "turn_end" }, { ephemeral: true });
+        return;
+
+      default:
+        // message_delta and anything the SDK adds later: nothing to render.
+        return;
+    }
+  }
+
   #setStatus(live: LiveSession, status: SessionStatus): void {
     if (live.record.status === status) return;
     live.record.status = status;
     this.#emit(live, { type: "status", status });
   }
 
-  #emit(live: LiveSession, event: SessionEvent): void {
+  #emit(
+    live: LiveSession,
+    event: SessionEvent,
+    options: { ephemeral?: boolean } = {},
+  ): void {
+    // Ephemeral events still consume a seq, so Last-Event-ID stays monotonic —
+    // they are simply absent from the replay buffer.
     const entry: SequencedEvent = { seq: ++live.seq, event };
-    live.history.push(entry);
-    if (live.history.length > HISTORY_LIMIT) live.history.shift();
+    if (!options.ephemeral) {
+      live.history.push(entry);
+      if (live.history.length > HISTORY_LIMIT) live.history.shift();
+    }
     for (const subscriber of live.subscribers) {
       try {
         subscriber(entry);
