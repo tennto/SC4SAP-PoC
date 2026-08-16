@@ -126,11 +126,18 @@ Verified: `CreateClass` → `NOT_AVAILABLE` with no approval request; `GetProgra
 returned source with **no prompt at all** even under a deny-everything client;
 `GetTableContents(T100)` → still raised an approval request, and denying it pulled nothing.
 
-> **Found while writing this:** the plugin's own `tier-readonly-guard.mjs` matches
+> **Found while writing this — open issue in the plugin repo, not here.** The plugin's
+> `tier-readonly-guard.mjs` matches
 > `(Create|Update|Delete|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling)`,
-> which misses `PatchGuiStatus`, `WriteTextElementsBulk`, `ActivateObjects` and
-> `RuntimeCreateProfilerTraceParameters` — all SAP mutations. This policy covers them; the
-> hook in the plugin repo still does not.
+> missing `ActivateObjects`, `PatchGuiStatus`, `WriteTextElementsBulk` and
+> `RuntimeCreateProfilerTraceParameters` — all SAP mutations, enumerated against the live
+> server's 174 tools. Closing it needs **two** changes there: the hook's own classification
+> *and* the matcher in `install-hooks.mjs`, since a tool outside the matcher never invokes
+> the hook at all.
+>
+> This PoC does not patch the plugin. The four are covered by `WRITE_CLASS_PATTERNS` above,
+> which is strictly stronger here: removed from context on **every** tier, where the hook
+> would only have blocked them on QA/PRD.
 
 Verified end to end with curl: create → message → SSE, multi-turn continuity (turn 2 recalls
 turn 1), `Last-Event-ID` replay, `resume` into a new session, tool refusal, turn/cost

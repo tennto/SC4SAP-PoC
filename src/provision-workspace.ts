@@ -27,12 +27,19 @@ const HOOK_SPECS = [
   {
     script: "tier-readonly-guard.mjs",
     // Mirrors HOOKS in the plugin's scripts/install-hooks.mjs — that file is
-    // the source of truth. ActivateObjects / PatchGuiStatus /
-    // WriteTextElementsBulk / RuntimeCreateProfilerTraceParameters mutate the
-    // system without a Create|Update|Delete prefix, so a narrower matcher
-    // never invokes the hook for them at all.
+    // the source of truth, so this stays byte-identical to it on purpose.
+    //
+    // It has a known gap: ActivateObjects, PatchGuiStatus,
+    // WriteTextElementsBulk and RuntimeCreateProfilerTraceParameters mutate
+    // SAP without a Create|Update|Delete prefix, so neither this matcher nor
+    // the hook's own classification covers them. Widening it here alone would
+    // achieve nothing — the hook would be invoked and then ignore them.
+    // In this PoC those four are handled instead by WRITE_CLASS_PATTERNS in
+    // server/tool-policy.ts, which removes them from the model's context
+    // entirely, on every tier rather than only QA/PRD. Closing the gap in the
+    // hook itself belongs in the plugin repo.
     matcher:
-      "mcp__.*__(Create|Update|Delete|ActivateObjects|PatchGuiStatus|WriteTextElementsBulk|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling|RuntimeCreateProfilerTraceParameters)",
+      "mcp__.*__(Create|Update|Delete|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling)",
   },
 ] as const;
 
