@@ -3,8 +3,8 @@
 Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude Agent SDK**, as the backend for a browser UI. Execution plan lives in the plugin repo's `README.md`.
 
 Current state: **Phase 2 (backend)** — Phase 1 gate passed; plan items 2-1 (Fastify HTTP
-surface), 2-2 (session registry), 2-3 (token-level streaming relay) and 2-4 (approval
-queue) are done and verified end to end.
+surface), 2-2 (session registry), 2-3 (token-level streaming relay), 2-4 (approval queue)
+and 2-5 (read-only tool policy) are done and verified end to end.
 
 ## Setup
 
@@ -95,7 +95,40 @@ Verified: a `GetTableContents(BNKA)` attempt under an allow-everything client pr
 never asked. Guardrail first, approval second.
 
 Note `ToolSearch` runs without consulting `canUseTool`, so it is not a complete chokepoint
-— 2-5's read-only guard must use `allowedTools` rather than relying on this callback.
+— which is why the read-only guard below is enforced by a different mechanism.
+
+### Read-only tool policy (2-5)
+
+**The plan's wording for this item is based on a wrong premise.** It says `allowedTools`
+should "permit only Get/Search tools", but the SDK documents that field as *"tool names
+that are auto-allowed without prompting"* — a convenience list, not a restriction. Using
+it that way would auto-approve reads and block nothing. The field that restricts is
+`disallowedTools`: *"removed from the model's context and cannot be used"*. Verified —
+with a write tool disallowed the model answers `NOT_AVAILABLE` and `canUseTool` is never
+reached. Wildcards work.
+
+So the intent is implemented as two halves that fail in opposite directions:
+
+| Half | Source | On failure |
+|---|---|---|
+| `disallowedTools` — write-class SAP tools | **static** patterns | unchanged; a lookup failure cannot widen it |
+| `allowedTools` — read-class, auto-approved | **discovered** at startup | empty → everything prompts |
+
+Discovery runs one throwaway session at boot and reads the live tool list from
+`mcpServerStatus()` (174 tools on the current system → 81 write, 81 read, 2 row-extraction,
+10 other). Read tools are auto-allowed **by exact name, not by a `Get*` wildcard**, because
+`GetTableContents` and `GetSqlQuery` share that prefix and must never be auto-approved.
+`/health` reports the resulting policy.
+
+Verified: `CreateClass` → `NOT_AVAILABLE` with no approval request; `GetProgram` → ran and
+returned source with **no prompt at all** even under a deny-everything client;
+`GetTableContents(T100)` → still raised an approval request, and denying it pulled nothing.
+
+> **Found while writing this:** the plugin's own `tier-readonly-guard.mjs` matches
+> `(Create|Update|Delete|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling)`,
+> which misses `PatchGuiStatus`, `WriteTextElementsBulk`, `ActivateObjects` and
+> `RuntimeCreateProfilerTraceParameters` — all SAP mutations. This policy covers them; the
+> hook in the plugin repo still does not.
 
 Verified end to end with curl: create → message → SSE, multi-turn continuity (turn 2 recalls
 turn 1), `Last-Event-ID` replay, `resume` into a new session, tool refusal, turn/cost
@@ -137,7 +170,12 @@ not assumed:
 
 ## Not yet done
 
-Rest of Phase 2 — 2-5 (`allowedTools` read-only guard), 2-6 (scripted E2E).
+Rest of Phase 2 — 2-6 (scripted E2E).
+
+Known gap in the read-only story: local write tools (`Write`, `Edit`, `Bash`) are **not**
+restricted, because skills legitimately write artifacts under `.sc4sap/` and the plan
+permits skill runs. `Bash` in particular could reach SAP outside the MCP layer. Worth
+closing before this is exposed beyond localhost.
 Then Phase 3 (React frontend) and Phase 4 (scenario E2E).
 Known PoC limitations — no auth, no multi-user isolation, single shared SAP profile,
 no `team` skill (the SDK has no agent teams) — are tracked in the plan's Phase 5.

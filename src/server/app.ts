@@ -34,6 +34,11 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     workspace: manager.config.workspace,
     model: manager.config.model,
     sessions: manager.list().length,
+    toolPolicy: {
+      autoAllowed: manager.policy.allowedTools.length,
+      denyPatterns: manager.policy.disallowedTools,
+      classes: manager.policy.summary,
+    },
   }));
 
   app.post<{ Body: { resume?: string } | undefined }>(

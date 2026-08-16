@@ -27,6 +27,14 @@ import {
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
+import {
+  buildToolPolicy,
+  SAP_TOOL_PREFIX,
+  type ToolPolicy,
+} from "./tool-policy.ts";
+
+/** How long discovery waits for the MCP server to leave `pending`. */
+const MCP_DISCOVERY_TIMEOUT_MS = 60_000;
 
 /** Per-session replay buffer cap. Oldest events drop first. */
 const HISTORY_LIMIT = 500;
@@ -198,6 +206,8 @@ type PendingEntry = {
 export class SessionManager {
   readonly #sessions = new Map<string, LiveSession>();
   readonly #config: PocConfig;
+  /** Deny half applies from the start; the auto-allow half fills in at discover(). */
+  #policy: ToolPolicy = buildToolPolicy([]);
 
   constructor(config?: PocConfig) {
     this.#config = config ?? loadConfig();
@@ -206,6 +216,64 @@ export class SessionManager {
 
   get config(): PocConfig {
     return this.#config;
+  }
+
+  get policy(): ToolPolicy {
+    return this.#policy;
+  }
+
+  /**
+   * Learns the SAP tool list from a throwaway session so read-class tools can
+   * be auto-approved by exact name. Enumeration rather than a `Get*` wildcard
+   * is deliberate: `GetTableContents` and `GetSqlQuery` share that prefix and
+   * must never be auto-allowed.
+   *
+   * Best-effort. On failure the policy keeps its static deny half and an empty
+   * auto-allow list, so every read simply prompts instead.
+   */
+  async discoverToolPolicy(): Promise<ToolPolicy> {
+    const probe = query({
+      prompt: "noop",
+      options: {
+        plugins: [{ type: "local", path: this.#config.pluginPath }],
+        cwd: this.#config.workspace,
+        model: this.#config.model,
+        settingSources: ["project"],
+        permissionMode: "dontAsk",
+        maxTurns: 1,
+      },
+    });
+
+    try {
+      for await (const message of probe) {
+        if (message.type !== "system" || message.subtype !== "init") continue;
+
+        const until = Date.now() + MCP_DISCOVERY_TIMEOUT_MS;
+        let statuses = await probe.mcpServerStatus();
+        while (
+          Date.now() < until &&
+          (statuses.length === 0 ||
+            statuses.some((s) => s.status === "pending"))
+        ) {
+          await new Promise((r) => setTimeout(r, 500));
+          statuses = await probe.mcpServerStatus();
+        }
+
+        const names = statuses
+          .filter((s) => s.status === "connected")
+          .flatMap((s) => s.tools ?? [])
+          .map((t) => (typeof t === "string" ? t : t.name));
+
+        this.#policy = buildToolPolicy(names);
+        break;
+      }
+    } catch {
+      // Leave the fail-safe policy in place.
+    } finally {
+      await probe.interrupt().catch(() => {});
+    }
+
+    return this.#policy;
   }
 
   create(options: { resume?: string } = {}): SessionRecord {
@@ -227,6 +295,11 @@ export class SessionManager {
         // #relayStreamEvent translates into text_delta / tool_start / tool_end.
         includePartialMessages: true,
         resume: options.resume,
+        // Plan 2-5 — write-class SAP tools are removed from context outright;
+        // read-class ones are auto-approved so a single consultant answer does
+        // not fire twenty prompts. Everything else falls through to 2-4.
+        disallowedTools: this.#policy.disallowedTools,
+        allowedTools: this.#policy.allowedTools,
         // Plan 2-4 — every tool call parks here until a human answers over
         // the SSE channel. Plan 2-5 adds allowedTools on top; note this
         // callback is NOT a complete chokepoint (ToolSearch was observed
