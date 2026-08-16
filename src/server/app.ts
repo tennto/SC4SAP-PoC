@@ -14,7 +14,11 @@
  * event name stays `message`.
  */
 import Fastify, { type FastifyInstance } from "fastify";
-import { SessionManager, type SequencedEvent } from "./session-manager.ts";
+import {
+  SessionManager,
+  type PermissionResponse,
+  type SequencedEvent,
+} from "./session-manager.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
 const HEARTBEAT_MS = 15_000;
@@ -71,6 +75,43 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       return reply.code(202).send({ accepted: true });
     },
   );
+
+  app.get<{ Params: IdParams }>(
+    "/sessions/:id/permissions",
+    async (request, reply) => {
+      const pending = manager.pendingApprovals(request.params.id);
+      if (!pending) return reply.code(404).send({ error: "unknown session" });
+      return { pending };
+    },
+  );
+
+  app.post<{
+    Params: IdParams & { reqId: string };
+    Body: PermissionResponse | undefined;
+  }>("/sessions/:id/permissions/:reqId", async (request, reply) => {
+    const body = request.body;
+    if (body?.behavior !== "allow" && body?.behavior !== "deny") {
+      return reply
+        .code(400)
+        .send({ error: 'body.behavior must be "allow" or "deny"' });
+    }
+
+    const outcome = manager.respondToPermission(
+      request.params.id,
+      request.params.reqId,
+      body,
+    );
+    if (outcome === "unknown-session") {
+      return reply.code(404).send({ error: "unknown session" });
+    }
+    if (outcome === "unknown-request") {
+      // Already settled by another client, by the timeout, or never existed.
+      return reply
+        .code(409)
+        .send({ error: "no such pending request (already settled?)" });
+    }
+    return { ok: true };
+  });
 
   app.get<{ Params: IdParams }>(
     "/sessions/:id/stream",

@@ -21,6 +21,7 @@
 import { randomUUID } from "node:crypto";
 import {
   query,
+  type PermissionResult,
   type Query,
   type SDKMessage,
   type SDKUserMessage,
@@ -30,14 +31,61 @@ import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
 /** Per-session replay buffer cap. Oldest events drop first. */
 const HISTORY_LIMIT = 500;
 
+/**
+ * How long an unanswered approval blocks the turn before it is denied.
+ * Without a ceiling a closed browser tab wedges the session forever.
+ * Overridable so the timeout path is testable without a five-minute wait.
+ */
+const PERMISSION_TIMEOUT_MS = Number(
+  process.env.SC4SAP_PERMISSION_TIMEOUT_MS ?? 5 * 60_000,
+);
+
+/** The tool through which the model asks the user a multiple-choice question. */
+const QUESTION_TOOL = "AskUserQuestion";
+
 export type SessionStatus = "starting" | "idle" | "busy" | "closed" | "error";
 
 /** The raw Anthropic stream event, reached through SDKMessage so no transitive import is needed. */
 type StreamEvent = Extract<SDKMessage, { type: "stream_event" }>["event"];
 
+/**
+ * An approval waiting on a human. `kind: "question"` is the model asking the
+ * user to choose (the AskUserQuestion tool) rather than asking to act; the
+ * frontend renders it as an option form instead of an allow/deny prompt.
+ */
+export type PendingApproval = {
+  reqId: string;
+  kind: "tool" | "question";
+  toolName: string;
+  toolUseId: string;
+  input: Record<string, unknown>;
+  /** Prompt text rendered by the SDK bridge; prefer it over reconstructing one. */
+  title?: string;
+  displayName?: string;
+  description?: string;
+  /** For `kind: "question"` — the `questions[]` array, forwarded as-is. */
+  questions?: unknown;
+  createdAt: string;
+};
+
+export type PermissionDecision = "allow" | "deny" | "expired";
+
+/** What a client sends back to settle a pending approval. */
+export type PermissionResponse =
+  | {
+      behavior: "allow";
+      updatedInput?: Record<string, unknown>;
+      /** For questions: `{ [question text]: chosen label }`. */
+      answers?: Record<string, string>;
+      annotations?: Record<string, unknown>;
+    }
+  | { behavior: "deny"; message?: string };
+
 export type SessionEvent =
   /** A complete SDK message. Authoritative — a client may render from these alone. */
   | { type: "message"; message: SDKMessage }
+  | { type: "permission_request"; request: PendingApproval }
+  | { type: "permission_resolved"; reqId: string; decision: PermissionDecision }
   | { type: "status"; status: SessionStatus }
   | { type: "turn_start" }
   | { type: "turn_end" }
@@ -137,6 +185,14 @@ type LiveSession = {
   seq: number;
   /** Content-block indices currently holding a tool_use, so stop can be paired. */
   openToolBlocks: Set<number>;
+  /** Approvals blocking a turn, keyed by reqId. */
+  pending: Map<string, PendingEntry>;
+};
+
+type PendingEntry = {
+  request: PendingApproval;
+  /** Idempotent: the first caller to settle wins, later ones are no-ops. */
+  settle: (result: PermissionResult, decision: PermissionDecision) => void;
 };
 
 export class SessionManager {
@@ -171,16 +227,13 @@ export class SessionManager {
         // #relayStreamEvent translates into text_delta / tool_start / tool_end.
         includePartialMessages: true,
         resume: options.resume,
-        // Plan 2-4 replaces this with an approval queue pushed over SSE, and
-        // 2-5 adds the read-only allowedTools guard. Until then the safe
-        // default is to refuse rather than to auto-allow: a PoC backend that
-        // silently approves SAP tool calls is the failure mode worth avoiding.
-        canUseTool: async (toolName) => ({
-          behavior: "deny",
-          message:
-            `Tool "${toolName}" was refused: the approval queue is not ` +
-            "implemented yet (execution plan 2-4).",
-        }),
+        // Plan 2-4 — every tool call parks here until a human answers over
+        // the SSE channel. Plan 2-5 adds allowedTools on top; note this
+        // callback is NOT a complete chokepoint (ToolSearch was observed
+        // running without consulting it), so the read-only guard cannot
+        // rely on it alone.
+        canUseTool: (toolName, input, context) =>
+          this.#requestApproval(id, toolName, input, context),
       },
     });
 
@@ -199,6 +252,7 @@ export class SessionManager {
       history: [],
       seq: 0,
       openToolBlocks: new Set(),
+      pending: new Map(),
     };
     this.#sessions.set(id, live);
     this.#consume(live);
@@ -250,9 +304,131 @@ export class SessionManager {
     return () => live.subscribers.delete(subscriber);
   }
 
+  /** Approvals currently blocking this session, oldest first. */
+  pendingApprovals(id: string): PendingApproval[] | undefined {
+    const live = this.#sessions.get(id);
+    if (!live) return undefined;
+    return [...live.pending.values()].map((entry) => entry.request);
+  }
+
+  /** Settles one pending approval. The turn resumes as soon as this returns. */
+  respondToPermission(
+    id: string,
+    reqId: string,
+    response: PermissionResponse,
+  ): "ok" | "unknown-session" | "unknown-request" {
+    const live = this.#sessions.get(id);
+    if (!live) return "unknown-session";
+    const entry = live.pending.get(reqId);
+    if (!entry) return "unknown-request";
+
+    if (response.behavior === "deny") {
+      entry.settle(
+        {
+          behavior: "deny",
+          message: response.message ?? "Denied by the user.",
+        },
+        "deny",
+      );
+      return "ok";
+    }
+
+    // For a question, the answers ARE the tool input: AskUserQuestion declares
+    // `answers` as "collected by the permission component", so the tool echoes
+    // back whatever we merge in here.
+    const updatedInput =
+      entry.request.kind === "question"
+        ? {
+            ...entry.request.input,
+            ...(response.answers ? { answers: response.answers } : {}),
+            ...(response.annotations
+              ? { annotations: response.annotations }
+              : {}),
+          }
+        : (response.updatedInput ?? entry.request.input);
+
+    entry.settle({ behavior: "allow", updatedInput }, "allow");
+    return "ok";
+  }
+
+  /**
+   * Parks a tool call until a human answers, or until the timeout denies it.
+   * Resolves exactly once — timeout, abort, and an explicit response all race
+   * through the same idempotent `settle`.
+   */
+  #requestApproval(
+    sessionId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    context: { signal: AbortSignal; toolUseID: string; title?: string; displayName?: string; description?: string },
+  ): Promise<PermissionResult> {
+    const live = this.#sessions.get(sessionId);
+    if (!live) {
+      return Promise.resolve({
+        behavior: "deny",
+        message: "Session is gone.",
+      });
+    }
+
+    const reqId = randomUUID();
+    const isQuestion = toolName === QUESTION_TOOL;
+    const request: PendingApproval = {
+      reqId,
+      kind: isQuestion ? "question" : "tool",
+      toolName,
+      toolUseId: context.toolUseID,
+      input,
+      title: context.title,
+      displayName: context.displayName,
+      description: context.description,
+      questions: isQuestion ? input.questions : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    return new Promise<PermissionResult>((resolve) => {
+      const settle = (
+        result: PermissionResult,
+        decision: PermissionDecision,
+      ): void => {
+        // delete() returning false means someone already settled this one.
+        if (!live.pending.delete(reqId)) return;
+        clearTimeout(timer);
+        context.signal.removeEventListener("abort", onAbort);
+        this.#emit(live, { type: "permission_resolved", reqId, decision });
+        resolve(result);
+      };
+
+      const timer = setTimeout(() => {
+        settle(
+          {
+            behavior: "deny",
+            message: `No response within ${PERMISSION_TIMEOUT_MS / 1000}s — denied.`,
+          },
+          "expired",
+        );
+      }, PERMISSION_TIMEOUT_MS);
+
+      const onAbort = (): void => {
+        settle({ behavior: "deny", message: "Request aborted." }, "deny");
+      };
+      context.signal.addEventListener("abort", onAbort, { once: true });
+
+      live.pending.set(reqId, { request, settle });
+      this.#emit(live, { type: "permission_request", request });
+    });
+  }
+
   async close(id: string): Promise<boolean> {
     const live = this.#sessions.get(id);
     if (!live) return false;
+    // Release anything blocking a turn, or interrupt() waits on a human who
+    // is never coming.
+    for (const entry of [...live.pending.values()]) {
+      entry.settle(
+        { behavior: "deny", message: "Session closed." },
+        "deny",
+      );
+    }
     live.pump.close();
     await live.session.interrupt().catch(() => {});
     // Tell subscribers before dropping the entry — after this the id 404s.

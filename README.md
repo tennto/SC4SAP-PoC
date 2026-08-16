@@ -3,8 +3,8 @@
 Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude Agent SDK**, as the backend for a browser UI. Execution plan lives in the plugin repo's `README.md`.
 
 Current state: **Phase 2 (backend)** — Phase 1 gate passed; plan items 2-1 (Fastify HTTP
-surface), 2-2 (session registry) and 2-3 (token-level streaming relay) are done and
-verified end to end.
+surface), 2-2 (session registry), 2-3 (token-level streaming relay) and 2-4 (approval
+queue) are done and verified end to end.
 
 ## Setup
 
@@ -42,6 +42,8 @@ approximately nothing — but the CLI may still require a key to start.
 | `DELETE` | `/sessions/:id` | Close and evict |
 | `POST` | `/sessions/:id/messages` | `{"text": "…"}` → `202`; the answer arrives on the stream |
 | `GET` | `/sessions/:id/stream` | SSE. Honours `Last-Event-ID` for replay |
+| `GET` | `/sessions/:id/permissions` | Approvals currently blocking the turn |
+| `POST` | `/sessions/:id/permissions/:reqId` | Settle one (`409` if already settled) |
 
 ### SSE event vocabulary (2-3)
 
@@ -70,12 +72,30 @@ AsyncIterable the manager pushes into, not a fresh `query()` per message. Contro
 plugin plus its MCP servers stay warm between turns. `resume` is wired for reattachment
 (server restart, reconnect) rather than as the per-turn mechanism.
 
-**Tool calls are currently refused.** `canUseTool` denies everything with an explicit
-"approval queue not implemented (2-4)" message. A PoC backend that silently auto-approves
-SAP tool calls is the failure mode worth avoiding, so the placeholder fails closed. Plan
-2-4 replaces it with an approval queue over SSE; 2-5 adds the `allowedTools` read-only
-guard. Note `ToolSearch` was observed running without a `canUseTool` consult, so 2-5 must
-not rely on `canUseTool` alone.
+### Approval queue (2-4)
+
+Every tool call parks in `canUseTool` until a human answers. The request goes out as a
+`permission_request` SSE event carrying `reqId`, `toolName`, `toolUseId`, the input, and
+the bridge-rendered `title` / `displayName` / `description`; the client settles it with
+`POST /sessions/:id/permissions/:reqId`. A `permission_resolved` event then tells every
+other subscriber what happened. Unanswered requests are **denied after 5 minutes**
+(`SC4SAP_PERMISSION_TIMEOUT_MS` overrides, mainly so the timeout path is testable) — a
+closed browser tab must not wedge the session forever. Timeout, abort and an explicit
+response all race through one idempotent settle, so a request resolves exactly once, and
+closing a session releases anything still pending.
+
+**`AskUserQuestion` rides the same channel** as `kind: "question"`, forwarding
+`questions[]` as-is. Answering is not merely "allow": `AskUserQuestionInput.answers` is
+declared as *"User answers collected by the permission component"*, so the manager merges
+`{answers, annotations}` into `updatedInput` and the tool echoes them back to the model.
+
+**The blocklist hook fires before `canUseTool`, and the approval UI cannot override it.**
+Verified: a `GetTableContents(BNKA)` attempt under an allow-everything client produced
+**no `permission_request` at all** — the L1 hook denied it at PreToolUse and the human was
+never asked. Guardrail first, approval second.
+
+Note `ToolSearch` runs without consulting `canUseTool`, so it is not a complete chokepoint
+— 2-5's read-only guard must use `allowedTools` rather than relying on this callback.
 
 Verified end to end with curl: create → message → SSE, multi-turn continuity (turn 2 recalls
 turn 1), `Last-Event-ID` replay, `resume` into a new session, tool refusal, turn/cost
@@ -117,8 +137,7 @@ not assumed:
 
 ## Not yet done
 
-Rest of Phase 2 — 2-4 (approval queue + `AskUserQuestion` over SSE),
-2-5 (`allowedTools` read-only guard), 2-6 (scripted E2E).
+Rest of Phase 2 — 2-5 (`allowedTools` read-only guard), 2-6 (scripted E2E).
 Then Phase 3 (React frontend) and Phase 4 (scenario E2E).
 Known PoC limitations — no auth, no multi-user isolation, single shared SAP profile,
 no `team` skill (the SDK has no agent teams) — are tracked in the plan's Phase 5.
