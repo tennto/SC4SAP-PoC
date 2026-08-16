@@ -8,10 +8,12 @@
     "workspace": "tsx src/provision-workspace.ts",
     "smoke:plugin": "tsx src/smoke-plugin-load.ts",
     "smoke:hook": "tsx src/smoke-hook-block.ts",
+    "server": "tsx src/server/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.223"
+    "@anthropic-ai/claude-agent-sdk": "^0.3.223",
+    "fastify": "^5.12.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
