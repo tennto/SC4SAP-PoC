@@ -9,6 +9,7 @@
     "smoke:plugin": "tsx src/smoke-plugin-load.ts",
     "smoke:hook": "tsx src/smoke-hook-block.ts",
     "server": "tsx src/server/index.ts",
+    "e2e": "tsx src/e2e.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

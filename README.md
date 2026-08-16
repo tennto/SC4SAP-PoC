@@ -2,9 +2,10 @@
 
 Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude Agent SDK**, as the backend for a browser UI. Execution plan lives in the plugin repo's `README.md`.
 
-Current state: **Phase 2 (backend)** — Phase 1 gate passed; plan items 2-1 (Fastify HTTP
-surface), 2-2 (session registry), 2-3 (token-level streaming relay), 2-4 (approval queue)
-and 2-5 (read-only tool policy) are done and verified end to end.
+Current state: **Phase 2 complete.** All six plan items (2-1 Fastify surface, 2-2 session
+registry, 2-3 token-level streaming relay, 2-4 approval queue, 2-5 read-only tool policy,
+2-6 scripted E2E) are done, with `npm run e2e` asserting the lot against a live server and
+a real SAP system.
 
 ## Setup
 
@@ -26,6 +27,7 @@ an API key issued from the Console. Set a spend cap on it.
 | `npm run smoke:plugin` | 1-2 / 1-3 | no* | Reports what actually loaded (skills, agents, MCP servers) from the `init` message |
 | `npm run smoke:hook` | 1-5 | **yes** | Induces a blocklisted row extraction and checks the guardrail fires |
 | `npm run server` | 2-1 / 2-2 | **yes** | Backend API on `127.0.0.1:3001` (`PORT` / `HOST` override) |
+| `npm run e2e` | 2-6 | **yes** | Drives a running server over HTTP+SSE and asserts 8 scenarios |
 | `npm run typecheck` | — | no | `tsc --noEmit` against the real SDK types |
 
 \* `smoke:plugin` exits at the `init` message, before any model call, so it costs
@@ -168,14 +170,31 @@ not assumed:
 - `mcpServerStatus()` on the `Query` handle — MCP is often still `pending` in the `init` snapshot, so poll this instead of trusting init
 - `num_turns` on `result` is **per-turn** in streaming-input mode, not cumulative
 
+## Backend E2E (2-6)
+
+`npm run e2e` (server must already be running) drives the HTTP + SSE contract with no SDK
+import, so a pass means the *interface* works rather than some in-process shortcut. Every
+scenario is read-only or denied — write tools are absent from context under the 2-5 policy,
+and the one row-extraction case is answered "deny" deliberately.
+
+1. plain turn streams an answer · 2. multi-turn keeps context · 3. read tool auto-allowed
+with no prompt · 4. write tool absent from context · 5. row extraction prompts and deny
+blocks it · 6. blocklist hook outranks a human allow · 7. `AskUserQuestion` round-trips an
+answer · 8. delete evicts the session
+
+The driver keeps a per-session replay cursor and sends it as `Last-Event-ID`. Without it a
+second turn re-reads the first turn's history and stops at *its* `result` — the turn looks
+finished before it starts, and the previous answer gets mistaken for the new one. That bug
+bit during development and is the reason the cursor exists.
+
 ## Not yet done
 
-Rest of Phase 2 — 2-6 (scripted E2E).
+Phase 3 (React frontend), Phase 4 (scenario E2E).
 
 Known gap in the read-only story: local write tools (`Write`, `Edit`, `Bash`) are **not**
 restricted, because skills legitimately write artifacts under `.sc4sap/` and the plan
 permits skill runs. `Bash` in particular could reach SAP outside the MCP layer. Worth
 closing before this is exposed beyond localhost.
-Then Phase 3 (React frontend) and Phase 4 (scenario E2E).
+
 Known PoC limitations — no auth, no multi-user isolation, single shared SAP profile,
 no `team` skill (the SDK has no agent teams) — are tracked in the plan's Phase 5.

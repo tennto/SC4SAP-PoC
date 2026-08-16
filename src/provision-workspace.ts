@@ -26,8 +26,13 @@ const HOOK_SPECS = [
   },
   {
     script: "tier-readonly-guard.mjs",
+    // Mirrors HOOKS in the plugin's scripts/install-hooks.mjs — that file is
+    // the source of truth. ActivateObjects / PatchGuiStatus /
+    // WriteTextElementsBulk / RuntimeCreateProfilerTraceParameters mutate the
+    // system without a Create|Update|Delete prefix, so a narrower matcher
+    // never invokes the hook for them at all.
     matcher:
-      "mcp__.*__(Create|Update|Delete|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling)",
+      "mcp__.*__(Create|Update|Delete|ActivateObjects|PatchGuiStatus|WriteTextElementsBulk|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling|RuntimeCreateProfilerTraceParameters)",
   },
 ] as const;
 
