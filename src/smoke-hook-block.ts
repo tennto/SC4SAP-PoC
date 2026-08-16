@@ -28,7 +28,10 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { loadConfig, requireApiKey } from "./config.ts";
 
 const FORBIDDEN_TABLE = "BNKA";
+const PROBE_TOOL = "GetTableContents";
 const BLOCKLIST_HOOK = "block-forbidden-tables";
+/** Emitted only by block-forbidden-tables.mjs — the sole way to attribute the denial to it. */
+const BLOCKLIST_SIGNATURE = "sc4sap blocklist";
 
 const PROMPT = [
   `Call the SAP MCP tool GetTableContents for table ${FORBIDDEN_TABLE} with a row limit of 1.`,
@@ -111,6 +114,10 @@ async function main(): Promise<void> {
       model,
       settingSources: ["project"],
       maxTurns: 4,
+      // Without this, hook_started/hook_progress/hook_response are never
+      // emitted (SDK default false) and the hook looks absent even when it
+      // ran and denied. This flag is the entire observation channel.
+      includeHookEvents: true,
       // Allow everything, so any block is provably hook-sourced.
       canUseTool: async (_toolName, input) => ({
         behavior: "allow",
@@ -136,10 +143,23 @@ async function main(): Promise<void> {
       if (message.hook_event !== "PreToolUse") continue;
       f.preToolUseHooks.add(message.hook_name);
 
-      if (!message.hook_name.includes(BLOCKLIST_HOOK)) continue;
+      // `hook_name` is "<event>:<matcher>", NOT the script filename — so it can
+      // never identify which .mjs ran. The script's own stdout is the only
+      // attribution we get, and BLOCKLIST_SIGNATURE appears nowhere else.
+      if (!message.hook_name.includes(PROBE_TOOL)) continue;
+
+      // stdout and output carry the same payload; concatenating them printed
+      // the deny JSON twice and read like two hook runs.
+      const emitted = message.stdout || message.output || "";
+      console.log(
+        `[hook] ${message.hook_name} outcome=${message.outcome} exit=${
+          message.exit_code ?? "?"
+        }\n${emitted.trim() || "(no output)"}`,
+      );
+
+      if (!emitted.includes(BLOCKLIST_SIGNATURE)) continue;
       f.blocklistRan = true;
 
-      const emitted = `${message.stdout ?? ""}${message.output ?? ""}`;
       if (emitted.includes('"permissionDecision"') && emitted.includes("deny")) {
         f.blocklistDenied = true;
         f.denialStdout = emitted;

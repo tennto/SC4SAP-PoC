@@ -9,8 +9,29 @@
  * Gate (per the execution plan): MCP server `abap-mcp-adt` must appear in
  * mcp_servers, and the /sc4sap: skills must appear in skills.
  */
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query, type McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import { loadConfig } from "./config.ts";
+
+const MCP_CONNECT_TIMEOUT_MS = 60_000;
+const MCP_POLL_INTERVAL_MS = 500;
+
+/**
+ * MCP servers connect asynchronously and `system`/`init` is emitted before that
+ * finishes, so servers read as `pending` in the init snapshot even when they go
+ * on to connect fine. Poll live status instead of trusting the snapshot.
+ */
+async function waitForMcp(
+  session: { mcpServerStatus(): Promise<McpServerStatus[]> },
+): Promise<McpServerStatus[]> {
+  const until = Date.now() + MCP_CONNECT_TIMEOUT_MS;
+  let last: McpServerStatus[] = [];
+  while (Date.now() < until) {
+    last = await session.mcpServerStatus();
+    if (last.length > 0 && last.every((s) => s.status !== "pending")) return last;
+    await new Promise((r) => setTimeout(r, MCP_POLL_INTERVAL_MS));
+  }
+  return last;
+}
 
 function main(): void {
   const { pluginPath, workspace, model } = loadConfig();
@@ -58,7 +79,7 @@ function main(): void {
           }`,
         );
         console.log(
-          `mcp_servers   ${
+          `mcp @init     ${
             message.mcp_servers.length === 0
               ? "(none)"
               : message.mcp_servers
@@ -72,8 +93,22 @@ function main(): void {
         );
         for (const s of sc4sapSkills) console.log(`  - ${s}`);
 
+        const settled = await waitForMcp(session);
+        console.log(
+          `\nmcp settled   ${
+            settled.length === 0
+              ? "(none)"
+              : settled
+                  .map(
+                    (s) =>
+                      `${s.name}=${s.status}${s.error ? ` (${s.error})` : ""}`,
+                  )
+                  .join(", ")
+          }`,
+        );
+
         // Gate evaluation.
-        const mcpOk = message.mcp_servers.some((s) => s.status === "connected");
+        const mcpOk = settled.some((s) => s.status === "connected");
         const skillsOk = sc4sapSkills.length > 0;
         console.log(
           `\nGATE  mcp=${mcpOk ? "PASS" : "FAIL"}  skills=${skillsOk ? "PASS" : "FAIL"}`,
