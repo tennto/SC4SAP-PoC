@@ -1,23 +1,24 @@
+"use client";
+
 /**
- * Plan item 3-1 — chat layout over the Phase 2 backend.
+ * Plan item 3-1 — the interactive shell, hydrated from server-rendered state.
  *
- * Scope boundary worth stating plainly: this shell owns session lifecycle
- * (create / list / select / close) and the outbound half of a turn. The
- * *inbound* half — assistant text, tool chips, approvals — is 3-2 and 3-3, and
- * lands on the SSE stream. Until then a sent turn shows as accepted and the
- * answer is only visible in the server log.
+ * Scope boundary worth stating plainly: this owns session lifecycle (create /
+ * list / select / close) and the *outbound* half of a turn. The inbound half —
+ * assistant text, tool chips, approvals — is 3-2 and 3-3, and arrives on the
+ * SSE stream at `api.streamUrl(id)`.
  *
- * The seams that 3-2 fills, kept explicit so it is a small diff:
- *   - `pushItem` / `TranscriptItem` already model an assistant bubble.
- *   - `refresh()` polling exists only because there is no `status` event
- *     subscriber yet; SSE replaces it rather than adding to it.
+ * The seams 3-2 fills, kept explicit so it stays a small diff:
+ *   - `TranscriptItem` already models an assistant bubble.
+ *   - `refresh()` polling exists only because nothing subscribes to the
+ *     `status` event yet; SSE replaces that poll rather than adding to it.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "./api/client.ts";
-import type { Health, Session, TranscriptItem } from "./api/types.ts";
-import { SessionList } from "./components/SessionList.tsx";
-import { Transcript } from "./components/Transcript.tsx";
-import { Composer } from "./components/Composer.tsx";
+import { api } from "@/lib/client";
+import type { Health, Session, TranscriptItem } from "@/lib/types";
+import { SessionList } from "@/components/SessionList";
+import { Transcript } from "@/components/Transcript";
+import { Composer } from "@/components/Composer";
 
 /** Status/turn/cost refresh interval. Deleted in 3-2 — the stream pushes these. */
 const POLL_MS = 2_000;
@@ -25,17 +26,23 @@ const POLL_MS = 2_000;
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
 
-export function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(() =>
-    localStorage.getItem(ACTIVE_KEY),
-  );
+type Props = {
+  initialSessions: Session[];
+  initialHealth: Health | null;
+  initialError: string | null;
+};
+
+export function Chat({ initialSessions, initialHealth, initialError }: Props) {
+  const [health, setHealth] = useState<Health | null>(initialHealth);
+  const [sessions, setSessions] = useState<Session[]>(initialSessions);
+  // Read from localStorage after mount, not during render: the server has no
+  // localStorage and a differing first render is a hydration mismatch.
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<
     Record<string, TranscriptItem[]>
   >({});
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
 
   const active = useMemo(
     () => sessions.find((session) => session.id === activeId) ?? null,
@@ -66,11 +73,17 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    api.health().then(setHealth).catch((err: Error) => setError(err.message));
-    void refresh();
+    const stored = localStorage.getItem(ACTIVE_KEY);
+    if (stored) setActiveId(stored);
+  }, []);
+
+  useEffect(() => {
+    // The server-rendered snapshot covers the first paint; from here the
+    // client keeps itself current.
+    if (!health) api.health().then(setHealth).catch(() => {});
     const timer = setInterval(() => void refresh(), POLL_MS);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, health]);
 
   useEffect(() => {
     if (activeId) localStorage.setItem(ACTIVE_KEY, activeId);
@@ -129,8 +142,9 @@ export function App() {
               kind: "notice",
               id: crypto.randomUUID(),
               text:
-                "Accepted. The reply streams over SSE, which the UI subscribes " +
-                "to in plan item 3-2 — until then it is visible in the server log.",
+                "Accepted. The reply is streaming over SSE, which this UI " +
+                "subscribes to in plan item 3-2 — until then it is only " +
+                `visible by reading the stream directly: curl -N ${api.streamUrl(sessionId)}`,
             },
           ],
         };
@@ -158,13 +172,18 @@ export function App() {
       <main className="main">
         <header className="topbar">
           <div>
-            <strong>{active ? `Session ${active.id.slice(0, 8)}` : "No session"}</strong>
-            {active && <span className={`badge ${active.status}`}>{active.status}</span>}
+            <strong>
+              {active ? `Session ${active.id.slice(0, 8)}` : "No session"}
+            </strong>
+            {active && (
+              <span className={`badge ${active.status}`}>{active.status}</span>
+            )}
           </div>
           {health && (
             <div className="health" title={`workspace ${health.workspace}`}>
               {health.model} · {health.toolPolicy.autoAllowed} read tools
-              auto-allowed · {health.toolPolicy.denyPatterns.length} deny patterns
+              auto-allowed · {health.toolPolicy.denyPatterns.length} deny
+              patterns
             </div>
           )}
         </header>

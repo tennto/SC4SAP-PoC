@@ -1,5 +1,7 @@
+"use client";
+
 import { useEffect, useRef } from "react";
-import type { TranscriptItem } from "../api/types.ts";
+import type { TranscriptItem } from "@/lib/types";
 
 type Props = {
   items: TranscriptItem[];

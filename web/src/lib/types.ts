@@ -2,9 +2,9 @@
  * Browser-side mirror of the backend's wire types.
  *
  * Deliberately re-declared rather than imported from `src/server/*.ts`: those
- * modules pull in `@anthropic-ai/claude-agent-sdk` and `@types/node`, neither
- * of which belongs in a browser tsconfig. Only the JSON that actually crosses
- * the wire is modelled here — keep it in step with `session-manager.ts`.
+ * modules pull in `@anthropic-ai/claude-agent-sdk` and are typed for a Node
+ * process, not a React tree. Only the JSON that actually crosses the wire is
+ * modelled here — keep it in step with `session-manager.ts`.
  */
 
 export type SessionStatus =
@@ -40,6 +40,15 @@ export type PendingApproval = {
 
 export type PermissionDecision = "allow" | "deny" | "expired";
 
+/** Structural minimum of an SDK message — enough to render, not to typecheck the SDK. */
+export type SdkMessage = {
+  type: string;
+  subtype?: string;
+  session_id?: string;
+  message?: { role?: string; content?: unknown };
+  [key: string]: unknown;
+};
+
 /**
  * The SSE vocabulary. `message` carries a whole SDK message and is the
  * authoritative record; the delta events are ephemeral typing effects that
@@ -58,15 +67,6 @@ export type SessionEvent =
   | { type: "tool_start"; index: number; toolUseId: string; name: string }
   | { type: "tool_end"; index: number }
   | { type: "error"; error: string };
-
-/** Structural minimum of an SDK message — enough to render, not to typecheck the SDK. */
-export type SdkMessage = {
-  type: string;
-  subtype?: string;
-  session_id?: string;
-  message?: { role?: string; content?: unknown };
-  [key: string]: unknown;
-};
 
 /** Config snapshot from GET /health, shown in the header. */
 export type Health = {

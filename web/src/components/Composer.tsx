@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react";
 
 type Props = {
@@ -38,7 +40,11 @@ export function Composer({ disabled, hint, onSend }: Props) {
           }
         }}
       />
-      <button className="primary" type="submit" disabled={disabled || !text.trim()}>
+      <button
+        className="primary"
+        type="submit"
+        disabled={disabled || !text.trim()}
+      >
         Send
       </button>
     </form>

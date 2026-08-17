@@ -5,7 +5,7 @@ Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude A
 Current state: **Phase 2 complete, Phase 3 started.** All six Phase 2 items (2-1 Fastify
 surface, 2-2 session registry, 2-3 token-level streaming relay, 2-4 approval queue, 2-5
 read-only tool policy, 2-6 scripted E2E) are done, with `npm run e2e` asserting the lot
-against a live server and a real SAP system. Item 3-1 adds the React + Vite frontend shell.
+against a live server and a real SAP system. Item 3-1 adds the Next.js frontend shell.
 
 ## Setup
 
@@ -29,9 +29,9 @@ an API key issued from the Console. Set a spend cap on it.
 | `npm run smoke:hook` | 1-5 | **yes** | Induces a blocklisted row extraction and checks the guardrail fires |
 | `npm run server` | 2-1 / 2-2 | **yes** | Backend API on `127.0.0.1:3001` (`PORT` / `HOST` override) |
 | `npm run e2e` | 2-6 | **yes** | Drives a running server over HTTP+SSE and asserts 8 scenarios |
-| `npm run web` | 3-1 | — | Vite dev server on `127.0.0.1:5173`, proxying to the backend |
+| `npm run web` | 3-1 | — | Next.js dev server on `127.0.0.1:3000`, proxying to the backend |
 | `npm run web:install` | 3-1 | no | Installs `web/`'s own dependency tree |
-| `npm run web:build` | 3-1 | no | Typechecks and builds the frontend bundle |
+| `npm run web:build` | 3-1 | no | Production build of the frontend (`next build`) |
 | `npm run typecheck` | — | no | `tsc --noEmit` over the server **and** `web/` |
 
 \* `smoke:plugin` exits at the `init` message, before any model call, so it costs
@@ -200,35 +200,61 @@ bit during development and is the reason the cursor exists.
 
 ## Frontend shell (3-1)
 
-`web/` is a separate npm package (its own `package.json`, `tsconfig.json`, `node_modules`)
-so React and Vite never enter the server's dependency tree, and the server's `@types/node`
-never enters the browser's. Run the backend and `npm run web` side by side, then open
-`http://127.0.0.1:5173`.
+`web/` is a **Next.js 16 App Router** app and its own npm package (separate
+`package.json`, `tsconfig.json`, `node_modules`), so React never enters the server's
+dependency tree and the Agent SDK never enters the browser's. Run the backend and
+`npm run web` side by side, then open `http://127.0.0.1:3000`.
 
-**No CORS layer, by design.** The backend binds to `127.0.0.1` and serves no CORS headers;
-the Vite dev server proxies `/health` and `/sessions` to it instead, so the browser sees a
-single origin — which is also how this would be deployed. The proxy strips `content-length`
-from `text/event-stream` responses so 3-2's token stream is not buffered.
+**The Fastify backend stays where it is.** Moving the session registry into Next was
+considered and rejected: one live `query()` per session is long-lived process state, and a
+dev-server hot reload would kill every SDK session and every warm MCP connection — plus
+`npm run e2e` would lose the HTTP contract it asserts. Next is the frontend and the public
+edge; Fastify remains the agent host.
+
+**Server-rendered, and the browser never learns the backend's address.** `src/app/page.tsx`
+is a Server Component that fetches `/sessions` and `/health` from the backend directly, so
+the first paint already carries real session state instead of an empty shell that fills in
+after hydration. Everything interactive lives under `<Chat>`, a client component hydrated
+from those props.
+
+**Same-origin proxy, no CORS layer.** The backend binds to `127.0.0.1` and serves no CORS
+headers; the browser only ever calls `/api/*`, which `src/app/api/[...path]/route.ts`
+forwards. That is a Route Handler rather than a `next.config` rewrite because one of the
+proxied routes is the SSE stream: the handler pipes the upstream body through untouched,
+drops `content-length` / `content-encoding`, sets `no-transform` and `x-accel-buffering:
+no`, forwards `Last-Event-ID` for replay, and passes `request.signal` upstream so a closed
+tab tears the subscription down instead of leaving the backend writing into a dead socket.
+
+Verified rather than assumed — a 12-line answer requested through the proxy arrived as
+`text_delta` events **0.6 s apart**, so nothing between the model and the browser buffers
+the turn.
 
 What 3-1 covers: session lifecycle (create / list / select / close), status–turns–cost per
 session, the `/health` policy summary in the header, and the outbound half of a turn
-(`POST /messages` → `202`, optimistic user bubble). Selection is kept in `localStorage`, so
-a refresh returns to the same session.
+(`POST /messages` → `202`, optimistic user bubble). Selection is kept in `localStorage`,
+read after mount so it cannot cause a hydration mismatch.
 
 What it deliberately does **not** cover: the inbound half. Assistant text, tool chips and
-approval prompts all arrive on the SSE stream and belong to 3-2 / 3-3 — until then a sent
-turn shows as accepted and the answer is only visible in the server log. The seams are in
-place: `TranscriptItem` already models an assistant bubble, and the 2-second status poll in
-`App.tsx` exists only because nothing subscribes to the `status` event yet — 3-2 replaces
-that poll rather than adding to it.
+approval prompts all arrive on the SSE stream and belong to 3-2 / 3-3. Until then a sent
+turn shows as accepted, and the answer is visible only by reading the stream directly —
+`curl -N http://127.0.0.1:3000/api/sessions/<id>/stream`. It is **not** in the server log,
+which carries Fastify request lines and the startup tool-policy line and nothing else. The
+seams are in place: `TranscriptItem` already models an assistant bubble, and the 2-second
+status poll in `Chat.tsx` exists only because nothing subscribes to the `status` event yet
+— 3-2 replaces that poll rather than adding to it.
 
-Wire types are **re-declared** in `web/src/api/types.ts` rather than imported from
-`src/server/session-manager.ts`, because that module pulls in the Agent SDK and
-`@types/node`. Only the JSON that actually crosses the wire is modelled; keep the two in
-step by hand.
+Wire types are **re-declared** in `web/src/lib/types.ts` rather than imported from
+`src/server/session-manager.ts`, because that module pulls in the Agent SDK. Only the JSON
+that actually crosses the wire is modelled; keep the two in step by hand.
 
-Verified through the proxy: `POST /sessions` → `201`, `GET /sessions` lists it,
-`POST /messages` → `202` with the status flipping to `busy`, `DELETE` → `204`.
+The visual style is claymorphism on ivory, with `#383838` as the single accent — soft
+raised surfaces on a warm ground, where selected and pressed states invert the shadow
+insets instead of introducing a second colour. `next/font/google` is deliberately unused so
+the build needs no network.
+
+Verified through the proxy against a live backend: `POST /sessions` → `201`, the new
+session appears in the **server-rendered HTML** (curl, no JS), `POST /messages` → `202`
+with the status flipping to `busy`, the stream delivering token deltas, `DELETE` → `204`.
 
 ## Not yet done
 

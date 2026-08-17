@@ -1,4 +1,6 @@
-import type { Session } from "../api/types.ts";
+"use client";
+
+import type { Session } from "@/lib/types";
 
 const STATUS_LABEL: Record<Session["status"], string> = {
   starting: "starting",
@@ -39,9 +41,7 @@ export function SessionList({
       </div>
 
       <nav className="session-list">
-        {sessions.length === 0 && (
-          <p className="empty">No sessions yet.</p>
-        )}
+        {sessions.length === 0 && <p className="empty">No sessions yet.</p>}
 
         {sessions.map((session) => (
           <div

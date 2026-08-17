@@ -1,12 +1,14 @@
 /**
- * Thin wrapper over the Phase 2 HTTP surface. Same-origin: the Vite dev server
- * proxies /sessions and /health to 127.0.0.1:3001, so no base URL and no CORS.
+ * Browser-side wrapper over the backend HTTP surface.
+ *
+ * Everything goes through the same-origin `/api/*` proxy route, never at the
+ * backend directly — the browser is not supposed to know where it lives.
  */
-import type { Health, PendingApproval, Session } from "./types.ts";
+import type { Health, PendingApproval, Session } from "./types";
 
 /** Backend errors arrive as `{error: "..."}`; surface that text, not "500". */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(`/api${path}`, {
     ...init,
     headers:
       init?.body === undefined
@@ -60,4 +62,7 @@ export const api = {
   pendingApprovals: async (id: string): Promise<PendingApproval[]> =>
     (await request<{ pending: PendingApproval[] }>(`/sessions/${id}/permissions`))
       .pending,
+
+  /** Where 3-2 opens the stream. Same-origin, so `EventSource` works as-is. */
+  streamUrl: (id: string): string => `/api/sessions/${id}/stream`,
 };
