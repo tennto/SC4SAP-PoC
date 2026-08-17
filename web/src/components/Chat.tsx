@@ -14,11 +14,12 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/client";
-import type { Health, Session } from "@/lib/types";
+import type { Health, PermissionResponse, Session } from "@/lib/types";
 import { useSessionStream } from "@/hooks/useSessionStream";
 import { SessionList } from "@/components/SessionList";
 import { Transcript } from "@/components/Transcript";
 import { Composer } from "@/components/Composer";
+import { ApprovalModal } from "@/components/ApprovalModal";
 
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
@@ -148,6 +149,25 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     }
   };
 
+  // Oldest first, one at a time: the model can park several tool calls at once,
+  // and answering them out of order is a worse story than a small queue.
+  const approval = stream.pending[0] ?? null;
+  const [settling, setSettling] = useState(false);
+
+  const settle = async (response: PermissionResponse): Promise<void> => {
+    if (!activeId || !approval) return;
+    setSettling(true);
+    try {
+      await api.respondToPermission(activeId, approval.reqId, response);
+      // The dialog closes on the `permission_resolved` event, not here — the
+      // backend deciding it was settled is what makes it settled.
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSettling(false);
+    }
+  };
+
   const composerDisabled =
     !active || status === "closed" || status === "error";
 
@@ -203,6 +223,17 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
           onSend={(text) => void send(text)}
         />
       </main>
+
+      {approval && (
+        <ApprovalModal
+          // Remount per request, so a queued second approval starts with an
+          // empty form rather than the previous one's selections.
+          key={approval.reqId}
+          request={approval}
+          busy={settling}
+          onSettle={(response) => void settle(response)}
+        />
+      )}
     </div>
   );
 }

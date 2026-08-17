@@ -40,6 +40,25 @@ export type PendingApproval = {
 
 export type PermissionDecision = "allow" | "deny" | "expired";
 
+/** One `AskUserQuestion` question, forwarded from the tool input verbatim. */
+export type Question = {
+  question: string;
+  header: string;
+  multiSelect: boolean;
+  options: { label: string; description?: string }[];
+};
+
+/** What settles a pending approval: `POST /sessions/:id/permissions/:reqId`. */
+export type PermissionResponse =
+  | {
+      behavior: "allow";
+      updatedInput?: Record<string, unknown>;
+      /** For questions: `{ [question text]: chosen label }`. */
+      answers?: Record<string, string>;
+      annotations?: Record<string, unknown>;
+    }
+  | { behavior: "deny"; message?: string };
+
 /** Structural minimum of an SDK message — enough to render, not to typecheck the SDK. */
 export type SdkMessage = {
   type: string;

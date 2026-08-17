@@ -4,7 +4,12 @@
  * Everything goes through the same-origin `/api/*` proxy route, never at the
  * backend directly — the browser is not supposed to know where it lives.
  */
-import type { Health, PendingApproval, Session } from "./types";
+import type {
+  Health,
+  PendingApproval,
+  PermissionResponse,
+  Session,
+} from "./types";
 
 /** Backend errors arrive as `{error: "..."}`; surface that text, not "500". */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -62,6 +67,21 @@ export const api = {
   pendingApprovals: async (id: string): Promise<PendingApproval[]> =>
     (await request<{ pending: PendingApproval[] }>(`/sessions/${id}/permissions`))
       .pending,
+
+  /**
+   * Settles one approval. `409` means it was already settled — by the 5-minute
+   * timeout, or by another tab watching the same session — which is a stale
+   * dialog rather than a failure.
+   */
+  respondToPermission: (
+    id: string,
+    reqId: string,
+    response: PermissionResponse,
+  ): Promise<{ ok: boolean }> =>
+    request<{ ok: boolean }>(`/sessions/${id}/permissions/${reqId}`, {
+      method: "POST",
+      body: JSON.stringify(response),
+    }),
 
   /** Where 3-2 opens the stream. Same-origin, so `EventSource` works as-is. */
   streamUrl: (id: string): string => `/api/sessions/${id}/stream`,

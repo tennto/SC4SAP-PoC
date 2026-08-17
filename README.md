@@ -5,8 +5,8 @@ Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude A
 Current state: **Phase 2 complete, Phase 3 started.** All six Phase 2 items (2-1 Fastify
 surface, 2-2 session registry, 2-3 token-level streaming relay, 2-4 approval queue, 2-5
 read-only tool policy, 2-6 scripted E2E) are done, with `npm run e2e` asserting the lot
-against a live server and a real SAP system. Items 3-1 and 3-2 add the Next.js frontend
-shell and the streaming transcript.
+against a live server and a real SAP system. Items 3-1 … 3-3 add the Next.js frontend
+shell, the streaming transcript and the approval modal.
 
 ## Setup
 
@@ -292,12 +292,44 @@ answer arrives as `text_delta`s and then as a complete assistant `message`, and 
 subscription replays both halves** with no deltas. `npm run e2e` still passes all 8
 scenarios / 19 checks after the session-manager change.
 
+## Approval modal (3-3)
+
+`permission_request` raises a modal over the chat; `permission_resolved` is what closes it.
+The dialog does not close itself on click — the backend deciding the request is settled is
+what makes it settled, which also means a second tab watching the same session sees the
+same dialog disappear.
+
+Two shapes ride that one channel and they are **not** the same decision:
+
+| `kind` | What the model is asking | UI |
+|---|---|---|
+| `tool` | permission to *act* | the exact input, pretty-printed, plus Allow / Deny |
+| `question` | the user to *choose* (`AskUserQuestion`) | one option button per choice, plus an "Other…" free-text field; multi-select questions keep several |
+
+There is nothing to deny on a question: the answer *is* the payload, sent as
+`{behavior: "allow", answers}` and echoed back to the model through `updatedInput`.
+Requests are answered oldest-first, one at a time, and the dialog is remounted per `reqId`
+so a queued second approval never inherits the first one's selections.
+
+**Allowing here cannot override the guardrail.** The L1 blocklist hook runs at PreToolUse,
+before `canUseTool`, so a forbidden row extraction is denied without ever raising a request
+— there is no dialog to click. This modal only ever grants what the guardrail already
+permitted.
+
+Verified through the proxy against a live backend: a `GetTableContents(T100, 3 rows)`
+attempt raised a `tool` request carrying its input, `POST …/permissions/:reqId` with
+`deny` returned `200`, a `permission_resolved: deny` followed, and the model's answer
+reported the call as denied with nothing extracted.
+
 ## Not yet done
 
-Phase 3 items 3-3 … 3-5 (approval modal, markdown, browser QA), Phase 4 (scenario E2E).
+Phase 3 items 3-4 and 3-5 (markdown rendering, browser QA), Phase 4 (scenario E2E).
 
-3-2's rendering has not been exercised in an actual browser yet — the evidence above is the
-event contract it consumes. Browser QA is plan item 3-5.
+The 3-2 and 3-3 *rendering* has only been exercised through the event contract it consumes,
+not in a browser driven by a test — browser QA is plan item 3-5. One bug of exactly that
+kind has already been caught by hand: `next dev` blocks its own chunks for a `127.0.0.1`
+browser, so the page server-rendered and never hydrated while curl saw everything working
+(fixed with `allowedDevOrigins`).
 
 Known gap in the read-only story: local write tools (`Write`, `Edit`, `Bash`) are **not**
 restricted, because skills legitimately write artifacts under `.sc4sap/` and the plan
