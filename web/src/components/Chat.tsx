@@ -20,13 +20,6 @@ import { SessionList } from "@/components/SessionList";
 import { Transcript } from "@/components/Transcript";
 import { Composer } from "@/components/Composer";
 
-/**
- * Refresh of the session *list* — turns and cost for every session, including
- * ones this tab is not watching. The active session's status comes from its
- * stream, so this can be slow.
- */
-const LIST_POLL_MS = 10_000;
-
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
 
@@ -77,12 +70,28 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
   }, []);
 
   useEffect(() => {
-    // The server-rendered snapshot covers the first paint; from here the
-    // client keeps itself current.
+    // The server-rendered snapshot covers the first paint.
     if (!health) api.health().then(setHealth).catch(() => {});
-    const timer = setInterval(() => void refresh(), LIST_POLL_MS);
-    return () => clearInterval(timer);
-  }, [refresh, health]);
+  }, [health]);
+
+  /**
+   * The session *list* is refreshed on events, never on a timer. The active
+   * session's own state arrives on its stream; the only thing a poll could add
+   * is another tab's or another session's turns and cost, which nobody is
+   * looking at while this tab is in the background. So: on regaining focus,
+   * and on the local actions that change the list.
+   */
+  useEffect(() => {
+    const onFocus = (): void => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    };
+  }, [refresh]);
 
   useEffect(() => {
     if (activeId) localStorage.setItem(ACTIVE_KEY, activeId);
