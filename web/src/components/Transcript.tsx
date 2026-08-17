@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { TranscriptItem } from "@/lib/types";
+import { Markdown } from "@/components/Markdown";
 
 /** `mcp__plugin_sc4sap_sap__GetProgram` reads as `GetProgram` in a chip. */
 function toolLabel(name: string): string {
@@ -78,12 +79,16 @@ export function Transcript({ items, idle }: Props) {
                 <span className="who">
                   {item.kind === "user" ? "You" : "Agent"}
                 </span>
-                <div className="text">
-                  {item.text}
-                  {item.kind === "assistant" && item.streaming && (
-                    <span className="caret" aria-hidden />
-                  )}
-                </div>
+                {item.kind === "assistant" ? (
+                  <div className="text">
+                    <Markdown>{item.text}</Markdown>
+                    {item.streaming && <span className="caret" aria-hidden />}
+                  </div>
+                ) : (
+                  // The user's own prompt is shown as typed — rendering it as
+                  // markdown would silently eat characters they meant literally.
+                  <div className="text">{item.text}</div>
+                )}
               </article>
             );
         }

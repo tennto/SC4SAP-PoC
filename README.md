@@ -5,8 +5,8 @@ Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude A
 Current state: **Phase 2 complete, Phase 3 started.** All six Phase 2 items (2-1 Fastify
 surface, 2-2 session registry, 2-3 token-level streaming relay, 2-4 approval queue, 2-5
 read-only tool policy, 2-6 scripted E2E) are done, with `npm run e2e` asserting the lot
-against a live server and a real SAP system. Items 3-1 … 3-3 add the Next.js frontend
-shell, the streaming transcript and the approval modal.
+against a live server and a real SAP system. Items 3-1 … 3-4 add the Next.js frontend
+shell, the streaming transcript, the approval modal and markdown rendering.
 
 ## Setup
 
@@ -321,9 +321,26 @@ attempt raised a `tool` request carrying its input, `POST …/permissions/:reqId
 `deny` returned `200`, a `permission_resolved: deny` followed, and the model's answer
 reported the call as denied with nothing extracted.
 
+## Markdown rendering (3-4)
+
+Assistant text renders through `react-markdown` + `remark-gfm`. Consultant answers are
+mostly tables (config keys, DDIC tables and their fields) and ABAP code blocks, which are
+unreadable as preformatted plain text.
+
+- **Raw HTML stays off.** `react-markdown` ignores embedded HTML unless `rehype-raw` is
+  added, and model output is untrusted text landing in the DOM. Links are forced to
+  `target="_blank" rel="noopener noreferrer"`.
+- **Wide tables scroll inside the bubble** rather than stretching it, and code blocks scroll
+  horizontally instead of wrapping ABAP mid-statement.
+- **The user's own prompt is not rendered as markdown** — it is shown exactly as typed,
+  because silently eating characters someone meant literally is worse than a plain bubble.
+- Markdown is rendered *while streaming*, so a half-written table spends a moment as plain
+  paragraphs before it snaps into a grid. That is the trade for not making the reader wait
+  for the turn to end.
+
 ## Not yet done
 
-Phase 3 items 3-4 and 3-5 (markdown rendering, browser QA), Phase 4 (scenario E2E).
+Phase 3 item 3-5 (browser QA), Phase 4 (scenario E2E).
 
 The 3-2 and 3-3 *rendering* has only been exercised through the event contract it consumes,
 not in a browser driven by a test — browser QA is plan item 3-5. One bug of exactly that
