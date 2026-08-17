@@ -5,7 +5,8 @@ Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude A
 Current state: **Phase 2 complete, Phase 3 started.** All six Phase 2 items (2-1 Fastify
 surface, 2-2 session registry, 2-3 token-level streaming relay, 2-4 approval queue, 2-5
 read-only tool policy, 2-6 scripted E2E) are done, with `npm run e2e` asserting the lot
-against a live server and a real SAP system. Item 3-1 adds the Next.js frontend shell.
+against a live server and a real SAP system. Items 3-1 and 3-2 add the Next.js frontend
+shell and the streaming transcript.
 
 ## Setup
 
@@ -71,6 +72,12 @@ events, and buffering every token would evict those within seconds. Ephemeral ev
 consume a sequence number, so `Last-Event-ID` stays monotonic — replay simply skips them.
 `input_json_delta` is dropped outright; partial tool arguments are not renderable and the
 complete input arrives on the assistant message.
+
+**The prompt is echoed onto the stream as a synthetic `user` message** when a turn is
+queued (added for 3-2). The SDK does not emit one, so without it the replay buffer holds
+answers with no questions and a reconnecting client rebuilds half a conversation. Tool
+results also arrive as `user` messages — a client tells them apart by their `tool_result`
+content blocks.
 
 **One live `query()` per session, in streaming input mode** — the prompt is an
 AsyncIterable the manager pushes into, not a fresh `query()` per message. Control requests
@@ -230,18 +237,8 @@ Verified rather than assumed — a 12-line answer requested through the proxy ar
 the turn.
 
 What 3-1 covers: session lifecycle (create / list / select / close), status–turns–cost per
-session, the `/health` policy summary in the header, and the outbound half of a turn
-(`POST /messages` → `202`, optimistic user bubble). Selection is kept in `localStorage`,
-read after mount so it cannot cause a hydration mismatch.
-
-What it deliberately does **not** cover: the inbound half. Assistant text, tool chips and
-approval prompts all arrive on the SSE stream and belong to 3-2 / 3-3. Until then a sent
-turn shows as accepted, and the answer is visible only by reading the stream directly —
-`curl -N http://127.0.0.1:3000/api/sessions/<id>/stream`. It is **not** in the server log,
-which carries Fastify request lines and the startup tool-policy line and nothing else. The
-seams are in place: `TranscriptItem` already models an assistant bubble, and the 2-second
-status poll in `Chat.tsx` exists only because nothing subscribes to the `status` event yet
-— 3-2 replaces that poll rather than adding to it.
+session, the `/health` policy summary in the header, and sending a turn. Selection is kept
+in `localStorage`, read after mount so it cannot cause a hydration mismatch.
 
 Wire types are **re-declared** in `web/src/lib/types.ts` rather than imported from
 `src/server/session-manager.ts`, because that module pulls in the Agent SDK. Only the JSON
@@ -256,10 +253,51 @@ Verified through the proxy against a live backend: `POST /sessions` → `201`, t
 session appears in the **server-rendered HTML** (curl, no JS), `POST /messages` → `202`
 with the status flipping to `busy`, the stream delivering token deltas, `DELETE` → `204`.
 
+## Streaming render (3-2)
+
+`useSessionStream` subscribes to `/api/sessions/:id/stream` and folds the events into a
+transcript. The transcript is **not** component state: a reload, a second tab and a
+reconnect all rebuild the same conversation from the backend's replay buffer instead of
+from anything the client remembered.
+
+`EventSource` rather than a hand-rolled fetch reader, because the browser sends
+`Last-Event-ID` by itself on reconnect — which is exactly the replay contract the backend
+implements. A fresh subscription replays the session from the start; a reconnect resumes
+where it stopped, so nothing is rendered twice.
+
+**Deltas and complete messages overlap on purpose.** `text_delta` opens a bubble and
+appends to it for the typing effect; when the complete assistant `message` lands it
+**replaces** that bubble's text rather than appending, so a viewer who watched the tokens
+and a viewer who arrived mid-turn end up with byte-identical transcripts. Since deltas are
+never in the replay buffer, a reconnecting client simply builds the same bubbles from the
+messages alone.
+
+`tool_start` opens a "Running GetProgram…" chip keyed by `toolUseId`; `tool_end` carries
+only a content-block index, so the hook keeps an index → id map to close the right one.
+Tool names are shown unqualified — `mcp__plugin_sc4sap_sap__GetProgram` reads as
+`GetProgram`. `thinking_delta` renders as a sunken, muted bubble.
+
+The 2-second status poll from 3-1 is **gone**: the active session's status comes off its
+stream, and the session *list* refreshes on a slow 10-second timer plus once on every
+return to `idle`, which is when turns and cost actually change.
+
+`permission_request` / `permission_resolved` are already tracked into `stream.pending` —
+3-3 only has to render it.
+
+This is also where the backend gained the synthetic user echo described above: without it
+the transcript rebuilt after a refresh was all answers and no questions.
+
+Verified against a live backend: the prompt appears on the stream as a `user` message, the
+answer arrives as `text_delta`s and then as a complete assistant `message`, and a **fresh
+subscription replays both halves** with no deltas. `npm run e2e` still passes all 8
+scenarios / 19 checks after the session-manager change.
+
 ## Not yet done
 
-Phase 3 items 3-2 … 3-5 (SSE render, approval modal, markdown, browser QA), Phase 4
-(scenario E2E).
+Phase 3 items 3-3 … 3-5 (approval modal, markdown, browser QA), Phase 4 (scenario E2E).
+
+3-2's rendering has not been exercised in an actual browser yet — the evidence above is the
+event contract it consumes. Browser QA is plan item 3-5.
 
 Known gap in the read-only story: local write tools (`Write`, `Edit`, `Bash`) are **not**
 restricted, because skills legitimately write artifacts under `.sc4sap/` and the plan

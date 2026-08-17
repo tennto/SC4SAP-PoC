@@ -83,13 +83,15 @@ export type Health = {
 };
 
 /**
- * What the transcript is made of. The backend has no notion of this — it is
- * the client's assembled view of the conversation.
+ * What the transcript is made of — the client's assembled view of the stream.
  *
- * `pending` marks a user turn that has been accepted (202) but whose answer
- * has not arrived; 3-2 clears it from the stream.
+ * `streaming` means the item is still being appended to by token deltas; the
+ * complete `message` event closes it and replaces its text with the
+ * authoritative version.
  */
 export type TranscriptItem =
-  | { kind: "user"; id: string; text: string; pending: boolean }
+  | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
+  | { kind: "thinking"; id: string; text: string; streaming: boolean }
+  | { kind: "tool"; id: string; name: string; running: boolean }
   | { kind: "notice"; id: string; text: string };

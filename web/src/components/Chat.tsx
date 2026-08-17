@@ -1,27 +1,31 @@
 "use client";
 
 /**
- * Plan item 3-1 — the interactive shell, hydrated from server-rendered state.
+ * Plan items 3-1 / 3-2 — the interactive shell, hydrated from server-rendered
+ * state and driven by the session's SSE stream.
  *
- * Scope boundary worth stating plainly: this owns session lifecycle (create /
- * list / select / close) and the *outbound* half of a turn. The inbound half —
- * assistant text, tool chips, approvals — is 3-2 and 3-3, and arrives on the
- * SSE stream at `api.streamUrl(id)`.
+ * The transcript is not local state: it is folded out of the stream by
+ * `useSessionStream`, so a reload, a second tab and a reconnect all rebuild the
+ * same conversation from the backend's replay buffer rather than from anything
+ * this component remembered.
  *
- * The seams 3-2 fills, kept explicit so it stays a small diff:
- *   - `TranscriptItem` already models an assistant bubble.
- *   - `refresh()` polling exists only because nothing subscribes to the
- *     `status` event yet; SSE replaces that poll rather than adding to it.
+ * Still to come: 3-3 renders `stream.pending` as an approval modal (the queue
+ * is already tracked here), 3-4 renders assistant text as markdown.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/client";
-import type { Health, Session, TranscriptItem } from "@/lib/types";
+import type { Health, Session } from "@/lib/types";
+import { useSessionStream } from "@/hooks/useSessionStream";
 import { SessionList } from "@/components/SessionList";
 import { Transcript } from "@/components/Transcript";
 import { Composer } from "@/components/Composer";
 
-/** Status/turn/cost refresh interval. Deleted in 3-2 — the stream pushes these. */
-const POLL_MS = 2_000;
+/**
+ * Refresh of the session *list* — turns and cost for every session, including
+ * ones this tab is not watching. The active session's status comes from its
+ * stream, so this can be slow.
+ */
+const LIST_POLL_MS = 10_000;
 
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
@@ -38,23 +42,18 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
   // Read from localStorage after mount, not during render: the server has no
   // localStorage and a differing first render is a hydration mismatch.
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [transcripts, setTranscripts] = useState<
-    Record<string, TranscriptItem[]>
-  >({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
+
+  const stream = useSessionStream(activeId);
 
   const active = useMemo(
     () => sessions.find((session) => session.id === activeId) ?? null,
     [sessions, activeId],
   );
 
-  const pushItem = useCallback((sessionId: string, item: TranscriptItem) => {
-    setTranscripts((current) => ({
-      ...current,
-      [sessionId]: [...(current[sessionId] ?? []), item],
-    }));
-  }, []);
+  // The stream is more current than the last list poll, so it wins.
+  const status = activeId ? (stream.status ?? active?.status ?? null) : null;
 
   const refresh = useCallback(async () => {
     try {
@@ -81,7 +80,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     // The server-rendered snapshot covers the first paint; from here the
     // client keeps itself current.
     if (!health) api.health().then(setHealth).catch(() => {});
-    const timer = setInterval(() => void refresh(), POLL_MS);
+    const timer = setInterval(() => void refresh(), LIST_POLL_MS);
     return () => clearInterval(timer);
   }, [refresh, health]);
 
@@ -89,6 +88,16 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     if (activeId) localStorage.setItem(ACTIVE_KEY, activeId);
     else localStorage.removeItem(ACTIVE_KEY);
   }, [activeId]);
+
+  // A finished turn is when turns and cost actually change, so pull the list
+  // once on the way back to idle rather than on a timer.
+  useEffect(() => {
+    if (stream.status === "idle") void refresh();
+  }, [stream.status, refresh]);
+
+  useEffect(() => {
+    if (stream.error) setError(stream.error);
+  }, [stream.error]);
 
   const createSession = async (): Promise<void> => {
     setBusy(true);
@@ -117,46 +126,21 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     }
   };
 
+  // No optimistic bubble: the backend echoes the prompt onto the stream, and
+  // rendering it twice — once locally, once on replay — is worse than the few
+  // milliseconds it takes to come back.
   const send = async (text: string): Promise<void> => {
     if (!activeId) return;
-    const sessionId = activeId;
-    pushItem(sessionId, {
-      kind: "user",
-      id: crypto.randomUUID(),
-      text,
-      pending: true,
-    });
     setError(null);
-
     try {
-      await api.sendMessage(sessionId, text);
-      // One standing note per session rather than one per turn.
-      setTranscripts((current) => {
-        const items = current[sessionId] ?? [];
-        if (items.some((item) => item.kind === "notice")) return current;
-        return {
-          ...current,
-          [sessionId]: [
-            ...items,
-            {
-              kind: "notice",
-              id: crypto.randomUUID(),
-              text:
-                "Accepted. The reply is streaming over SSE, which this UI " +
-                "subscribes to in plan item 3-2 — until then it is only " +
-                `visible by reading the stream directly: curl -N ${api.streamUrl(sessionId)}`,
-            },
-          ],
-        };
-      });
+      await api.sendMessage(activeId, text);
     } catch (err) {
       setError((err as Error).message);
     }
-    void refresh();
   };
 
   const composerDisabled =
-    !active || active.status === "closed" || active.status === "error";
+    !active || status === "closed" || status === "error";
 
   return (
     <div className="app">
@@ -175,8 +159,9 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
             <strong>
               {active ? `Session ${active.id.slice(0, 8)}` : "No session"}
             </strong>
-            {active && (
-              <span className={`badge ${active.status}`}>{active.status}</span>
+            {status && <span className={`badge ${status}`}>{status}</span>}
+            {active && !stream.connected && (
+              <span className="badge error">stream offline</span>
             )}
           </div>
           {health && (
@@ -197,10 +182,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
           </div>
         )}
 
-        <Transcript
-          items={activeId ? (transcripts[activeId] ?? []) : []}
-          idle={!active}
-        />
+        <Transcript items={stream.items} idle={!active} />
 
         <Composer
           disabled={composerDisabled}

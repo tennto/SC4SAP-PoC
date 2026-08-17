@@ -3,6 +3,12 @@
 import { useEffect, useRef } from "react";
 import type { TranscriptItem } from "@/lib/types";
 
+/** `mcp__plugin_sc4sap_sap__GetProgram` reads as `GetProgram` in a chip. */
+function toolLabel(name: string): string {
+  const parts = name.split("__");
+  return parts[parts.length - 1] ?? name;
+}
+
 type Props = {
   items: TranscriptItem[];
   /** No session selected yet — show the placeholder instead of an empty scroller. */
@@ -12,8 +18,7 @@ type Props = {
 export function Transcript({ items, idle }: Props) {
   const bottom = useRef<HTMLDivElement>(null);
 
-  // Follow the tail. 3-2 appends token deltas to the last item, so this keeps
-  // working as-is once streaming lands.
+  // Follow the tail as tokens arrive.
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: "end" });
   }, [items]);
@@ -33,22 +38,53 @@ export function Transcript({ items, idle }: Props) {
       )}
 
       {items.map((item) => {
-        if (item.kind === "notice") {
-          return (
-            <p key={item.id} className="notice">
-              {item.text}
-            </p>
-          );
+        switch (item.kind) {
+          case "notice":
+            return (
+              <p key={item.id} className="notice">
+                {item.text}
+              </p>
+            );
+
+          case "tool":
+            return (
+              <div
+                key={item.id}
+                className={`chip${item.running ? " running" : ""}`}
+              >
+                <span className="dot" aria-hidden />
+                {item.running
+                  ? `Running ${toolLabel(item.name)}…`
+                  : `Ran ${toolLabel(item.name)}`}
+              </div>
+            );
+
+          case "thinking":
+            return (
+              <article key={item.id} className="bubble thinking">
+                <span className="who">Thinking</span>
+                <div className="text">
+                  {item.text}
+                  {item.streaming && <span className="caret" aria-hidden />}
+                </div>
+              </article>
+            );
+
+          default:
+            return (
+              <article key={item.id} className={`bubble ${item.kind}`}>
+                <span className="who">
+                  {item.kind === "user" ? "You" : "Agent"}
+                </span>
+                <div className="text">
+                  {item.text}
+                  {item.kind === "assistant" && item.streaming && (
+                    <span className="caret" aria-hidden />
+                  )}
+                </div>
+              </article>
+            );
         }
-        return (
-          <article key={item.id} className={`bubble ${item.kind}`}>
-            <span className="who">{item.kind === "user" ? "You" : "Agent"}</span>
-            <div className="text">{item.text}</div>
-            {item.kind === "user" && item.pending && (
-              <span className="pending">sent</span>
-            )}
-          </article>
-        );
       })}
 
       <div ref={bottom} />

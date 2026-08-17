@@ -353,6 +353,19 @@ export class SessionManager {
       return false;
     }
     this.#setStatus(live, "busy");
+    // The SDK does not echo the prompt back on the output stream, so without
+    // this the human half of the conversation is missing from the replay
+    // buffer entirely and a reconnecting client rebuilds a transcript of
+    // answers with no questions. Emitted in the SDK's own user-message shape.
+    this.#emit(live, {
+      type: "message",
+      message: {
+        type: "user",
+        message: { role: "user", content: text },
+        parent_tool_use_id: null,
+        session_id: live.record.sdkSessionId ?? "",
+      } as SDKMessage,
+    });
     live.pump.push(text);
     return true;
   }
