@@ -10,7 +10,10 @@
     "smoke:hook": "tsx src/smoke-hook-block.ts",
     "server": "tsx src/server/index.ts",
     "e2e": "tsx src/e2e.ts",
-    "typecheck": "tsc --noEmit"
+    "web": "npm --prefix web run dev",
+    "web:install": "npm --prefix web install",
+    "web:build": "npm --prefix web run build",
+    "typecheck": "tsc --noEmit && npm --prefix web run typecheck"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.223",

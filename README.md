@@ -2,15 +2,16 @@
 
 Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude Agent SDK**, as the backend for a browser UI. Execution plan lives in the plugin repo's `README.md`.
 
-Current state: **Phase 2 complete.** All six plan items (2-1 Fastify surface, 2-2 session
-registry, 2-3 token-level streaming relay, 2-4 approval queue, 2-5 read-only tool policy,
-2-6 scripted E2E) are done, with `npm run e2e` asserting the lot against a live server and
-a real SAP system.
+Current state: **Phase 2 complete, Phase 3 started.** All six Phase 2 items (2-1 Fastify
+surface, 2-2 session registry, 2-3 token-level streaming relay, 2-4 approval queue, 2-5
+read-only tool policy, 2-6 scripted E2E) are done, with `npm run e2e` asserting the lot
+against a live server and a real SAP system. Item 3-1 adds the React + Vite frontend shell.
 
 ## Setup
 
 ```bash
 npm install
+npm run web:install       # frontend deps (separate package under web/)
 cp .env.example .env      # then fill in ANTHROPIC_API_KEY
 npm run workspace         # provision the session cwd (no API key needed)
 ```
@@ -28,7 +29,10 @@ an API key issued from the Console. Set a spend cap on it.
 | `npm run smoke:hook` | 1-5 | **yes** | Induces a blocklisted row extraction and checks the guardrail fires |
 | `npm run server` | 2-1 / 2-2 | **yes** | Backend API on `127.0.0.1:3001` (`PORT` / `HOST` override) |
 | `npm run e2e` | 2-6 | **yes** | Drives a running server over HTTP+SSE and asserts 8 scenarios |
-| `npm run typecheck` | — | no | `tsc --noEmit` against the real SDK types |
+| `npm run web` | 3-1 | — | Vite dev server on `127.0.0.1:5173`, proxying to the backend |
+| `npm run web:install` | 3-1 | no | Installs `web/`'s own dependency tree |
+| `npm run web:build` | 3-1 | no | Typechecks and builds the frontend bundle |
+| `npm run typecheck` | — | no | `tsc --noEmit` over the server **and** `web/` |
 
 \* `smoke:plugin` exits at the `init` message, before any model call, so it costs
 approximately nothing — but the CLI may still require a key to start.
@@ -194,9 +198,42 @@ second turn re-reads the first turn's history and stops at *its* `result` — th
 finished before it starts, and the previous answer gets mistaken for the new one. That bug
 bit during development and is the reason the cursor exists.
 
+## Frontend shell (3-1)
+
+`web/` is a separate npm package (its own `package.json`, `tsconfig.json`, `node_modules`)
+so React and Vite never enter the server's dependency tree, and the server's `@types/node`
+never enters the browser's. Run the backend and `npm run web` side by side, then open
+`http://127.0.0.1:5173`.
+
+**No CORS layer, by design.** The backend binds to `127.0.0.1` and serves no CORS headers;
+the Vite dev server proxies `/health` and `/sessions` to it instead, so the browser sees a
+single origin — which is also how this would be deployed. The proxy strips `content-length`
+from `text/event-stream` responses so 3-2's token stream is not buffered.
+
+What 3-1 covers: session lifecycle (create / list / select / close), status–turns–cost per
+session, the `/health` policy summary in the header, and the outbound half of a turn
+(`POST /messages` → `202`, optimistic user bubble). Selection is kept in `localStorage`, so
+a refresh returns to the same session.
+
+What it deliberately does **not** cover: the inbound half. Assistant text, tool chips and
+approval prompts all arrive on the SSE stream and belong to 3-2 / 3-3 — until then a sent
+turn shows as accepted and the answer is only visible in the server log. The seams are in
+place: `TranscriptItem` already models an assistant bubble, and the 2-second status poll in
+`App.tsx` exists only because nothing subscribes to the `status` event yet — 3-2 replaces
+that poll rather than adding to it.
+
+Wire types are **re-declared** in `web/src/api/types.ts` rather than imported from
+`src/server/session-manager.ts`, because that module pulls in the Agent SDK and
+`@types/node`. Only the JSON that actually crosses the wire is modelled; keep the two in
+step by hand.
+
+Verified through the proxy: `POST /sessions` → `201`, `GET /sessions` lists it,
+`POST /messages` → `202` with the status flipping to `busy`, `DELETE` → `204`.
+
 ## Not yet done
 
-Phase 3 (React frontend), Phase 4 (scenario E2E).
+Phase 3 items 3-2 … 3-5 (SSE render, approval modal, markdown, browser QA), Phase 4
+(scenario E2E).
 
 Known gap in the read-only story: local write tools (`Write`, `Edit`, `Bash`) are **not**
 restricted, because skills legitimately write artifacts under `.sc4sap/` and the plan
