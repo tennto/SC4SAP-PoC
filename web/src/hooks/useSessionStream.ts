@@ -136,15 +136,35 @@ function reduce(state: State, action: Action): State {
     case "thinking_delta":
       return appendDelta(state, "thinking", event.text);
 
-    case "tool_start":
+    case "tool_start": {
+      // A chunked read fires the same tool many times in a row; folding a run
+      // into one chip keeps that from reading as a fault. Only *consecutive*
+      // calls fold — anything the model says in between splits the run.
+      const last = state.items[state.items.length - 1];
+      if (last && last.kind === "tool" && last.name === event.name) {
+        const items = state.items.slice(0, -1);
+        items.push({ ...last, calls: last.calls + 1, active: last.active + 1 });
+        return {
+          ...state,
+          items,
+          toolIdByIndex: { ...state.toolIdByIndex, [event.index]: last.id },
+        };
+      }
       return {
         ...state,
         toolIdByIndex: { ...state.toolIdByIndex, [event.index]: event.toolUseId },
         items: [
           ...state.items,
-          { kind: "tool", id: event.toolUseId, name: event.name, running: true },
+          {
+            kind: "tool",
+            id: event.toolUseId,
+            name: event.name,
+            calls: 1,
+            active: 1,
+          },
         ],
       };
+    }
 
     case "tool_end": {
       const id = state.toolIdByIndex[event.index];
@@ -153,7 +173,7 @@ function reduce(state: State, action: Action): State {
         ...state,
         items: state.items.map((item) =>
           item.kind === "tool" && item.id === id
-            ? { ...item, running: false }
+            ? { ...item, active: Math.max(0, item.active - 1) }
             : item,
         ),
       };

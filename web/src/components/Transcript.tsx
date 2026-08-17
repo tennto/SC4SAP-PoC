@@ -46,18 +46,20 @@ export function Transcript({ items, idle }: Props) {
               </p>
             );
 
-          case "tool":
+          case "tool": {
+            const running = item.active > 0;
             return (
-              <div
-                key={item.id}
-                className={`chip${item.running ? " running" : ""}`}
-              >
+              <div key={item.id} className={`chip${running ? " running" : ""}`}>
                 <span className="dot" aria-hidden />
-                {item.running
+                {running
                   ? `Running ${toolLabel(item.name)}…`
                   : `Ran ${toolLabel(item.name)}`}
+                {item.calls > 1 && (
+                  <span className="chip-count">×{item.calls}</span>
+                )}
               </div>
             );
+          }
 
           case "thinking":
             return (

@@ -371,6 +371,15 @@ button.primary:hover:not(:disabled) {
   background: var(--ink-38);
 }
 
+.chip-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--ink-38);
+  border-left: 1px solid var(--line);
+  padding-left: 8px;
+  margin-left: 2px;
+}
+
 .chip.running {
   border-color: var(--ink-38);
   color: var(--ink);

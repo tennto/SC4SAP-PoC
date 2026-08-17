@@ -112,5 +112,11 @@ export type TranscriptItem =
   | { kind: "user"; id: string; text: string }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
   | { kind: "thinking"; id: string; text: string; streaming: boolean }
-  | { kind: "tool"; id: string; name: string; running: boolean }
+  /**
+   * One chip per *run* of the same tool, not per call: a chunked read fires
+   * `ReadProgram` many times in a row and a column of identical chips reads as
+   * a fault. `calls` is how many were folded in, `active` how many are still
+   * open.
+   */
+  | { kind: "tool"; id: string; name: string; calls: number; active: number }
   | { kind: "notice"; id: string; text: string };
