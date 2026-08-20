@@ -1,14 +1,23 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "SC4SAP Web PoC",
   description: "Browser UI over the sc4sap plugin, via the Claude Agent SDK",
 };
 
-// No `next/font/google` here on purpose: it fetches the font files at build
-// time, which would make the build require network access for nothing. The
-// system font stack is in globals.css.
+// Typography and icons are borrowed wholesale from sc4sap.dev: IBM Plex Sans
+// (with the KR/JP cuts, so one family carries all three scripts) for body and
+// UI, Schibsted Grotesk for headings, IBM Plex Mono for identifiers, and
+// Phosphor for icons.
+//
+// Plain <link> rather than `next/font/google`, which downloads and inlines the
+// files at build time — that would make a build require network access, and
+// Phosphor would still need a link of its own. Both are `preconnect`ed, and
+// globals.css keeps a system stack behind each family so an offline load
+// degrades to what the app looked like before rather than to Times.
+//
 // Props are spelled out rather than using Next's generated `LayoutProps<"/">`
 // global, which only exists once `next build` has emitted `.next/types` — so
 // `npm run typecheck` would fail on a clean checkout.
@@ -19,7 +28,27 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin=""
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css"
+        />
+      </head>
+      <body>
+        {/* The rail lives in the layout, not in the pages, so it survives
+            navigation instead of remounting on every route change. */}
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

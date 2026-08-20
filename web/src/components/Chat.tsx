@@ -172,7 +172,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     !active || status === "closed" || status === "error";
 
   return (
-    <div className="app">
+    <div className="chat">
       <SessionList
         sessions={sessions}
         activeId={activeId}

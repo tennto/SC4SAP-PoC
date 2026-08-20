@@ -1,67 +1,318 @@
 /**
- * Plan item 3-1 — the chat page.
+ * Home — the operator's dashboard.
  *
- * A Server Component: the session list and the `/health` policy snapshot are
- * fetched on the Next server, straight from the backend, and handed to the
- * client tree as props. So the first paint already shows real state instead of
- * an empty shell that fills in after hydration — and the browser never learns
- * the backend's address.
+ * Who is signed in, what system they are pointed at, what the API key has left,
+ * and whether anything is actually connected. The skill catalog moved to the
+ * rail, which is where you go when you already know what you want; this screen
+ * answers "am I set up, and can I afford to run something".
  *
- * Everything interactive lives under `<Chat>`, which is a client component.
+ * Only the backend row is live — it comes from the real `/health` call below.
+ * Account, SAP system and credits are fixtures from `lib/account.ts` until
+ * Phase 5 gives each of them a real source; see that file for the mapping.
  */
+import Link from "next/link";
 import { BACKEND } from "@/lib/backend";
-import type { Health, Session } from "@/lib/types";
-import { Chat } from "@/components/Chat";
+import type { Health } from "@/lib/types";
+import { ACCOUNT, CREDITS, SAP_SYSTEM } from "@/lib/account";
+import { Icon } from "@/components/Icon";
 
-// The backend holds sessions in memory and they change constantly, so this
-// page can never be prerendered — including at build time, when the backend
-// is usually not running at all.
 export const dynamic = "force-dynamic";
 
-type InitialState = {
-  sessions: Session[];
-  health: Health | null;
-  error: string | null;
-};
+const money = (value: number): string =>
+  value.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
-async function loadInitialState(): Promise<InitialState> {
+async function loadHealth(): Promise<{ health: Health | null; error: string | null }> {
   try {
-    const [sessionsResponse, healthResponse] = await Promise.all([
-      fetch(`${BACKEND}/sessions`, { cache: "no-store" }),
-      fetch(`${BACKEND}/health`, { cache: "no-store" }),
-    ]);
-
-    if (!sessionsResponse.ok || !healthResponse.ok) {
-      return {
-        sessions: [],
-        health: null,
-        error: `backend answered ${sessionsResponse.status} / ${healthResponse.status}`,
-      };
+    const response = await fetch(`${BACKEND}/health`, { cache: "no-store" });
+    if (!response.ok) {
+      return { health: null, error: `backend answered ${response.status}` };
     }
-
-    const { sessions } = (await sessionsResponse.json()) as {
-      sessions: Session[];
-    };
-    return { sessions, health: (await healthResponse.json()) as Health, error: null };
+    return { health: (await response.json()) as Health, error: null };
   } catch (err) {
-    // The backend is started separately, so "not running yet" is routine —
-    // render the shell with a banner rather than an error page.
-    return {
-      sessions: [],
-      health: null,
-      error: `backend unreachable: ${(err as Error).message}. Start it with \`npm run server\`.`,
-    };
+    return { health: null, error: (err as Error).message };
   }
 }
 
-export default async function Page() {
-  const initial = await loadInitialState();
+/** One line of the connection panel. `state` drives the dot, nothing else. */
+function ConnectionRow({
+  icon,
+  label,
+  state,
+  status,
+  detail,
+}: {
+  icon: string;
+  label: string;
+  state: "up" | "down" | "unknown";
+  status: string;
+  detail: React.ReactNode;
+}) {
+  return (
+    <li className={`conn-row is-${state}`}>
+      <span className="conn-icon">
+        <Icon name={icon} />
+      </span>
+      <span className="conn-main">
+        <span className="conn-label">{label}</span>
+        <span className="conn-detail">{detail}</span>
+      </span>
+      <span className="conn-state">
+        <span className="conn-dot" aria-hidden="true" />
+        {status}
+      </span>
+    </li>
+  );
+}
+
+export default async function HomePage() {
+  const { health, error } = await loadHealth();
+  const online = health !== null;
+  const usedShare = Math.min(1, CREDITS.usedUsd / CREDITS.limitUsd);
 
   return (
-    <Chat
-      initialSessions={initial.sessions}
-      initialHealth={initial.health}
-      initialError={initial.error}
-    />
+    <div className="page dashboard">
+      <header className="page-head rise">
+        <div>
+          <p className="eyebrow">SC4SAP · Web PoC</p>
+          <h1>Welcome back, {ACCOUNT.name.split(" ")[0]}</h1>
+          <p className="page-lede">
+            Everything this session is pointed at, in one place. Pick a skill
+            from the rail when you are ready to run one.
+          </p>
+        </div>
+
+      </header>
+
+      <section
+        className="panel connections rise"
+        style={{ "--delay": "110ms" } as React.CSSProperties}
+        aria-labelledby="connections-heading"
+      >
+        <div className="panel-head panel-head-row">
+          <div>
+            <h2 id="connections-heading">Connection</h2>
+            <p className="panel-note">
+              {online
+                ? "The agent backend is answering. Skills will run against the system below."
+                : "The agent backend is not answering, so nothing can run yet."}
+            </p>
+          </div>
+
+          <div className="conn-actions">
+            {online ? (
+              <button className="ghost" title="Not wired up yet">
+                <Icon name="arrows-clockwise" />
+                Reconnect
+              </button>
+            ) : (
+              <button className="primary" title="Not wired up yet">
+                <Icon name="plugs-connected" />
+                Connect to server
+              </button>
+            )}
+            <Link className="link-button" href="/skills/sap-doctor">
+              Run diagnostics
+            </Link>
+          </div>
+        </div>
+
+        <ul className="conn-list">
+          <ConnectionRow
+            icon="hard-drives"
+            label="Agent backend"
+            state={online ? "up" : "down"}
+            status={online ? "connected" : "offline"}
+            detail={
+              health ? (
+                <>
+                  {health.model} · {health.sessions} session
+                  {health.sessions === 1 ? "" : "s"} ·{" "}
+                  {health.toolPolicy.autoAllowed} read tools auto-allowed
+                </>
+              ) : (
+                <>{error ?? "unreachable"} — start it with `npm run server`</>
+              )
+            }
+          />
+          <ConnectionRow
+            icon="database"
+            label="SAP system"
+            state={online ? "up" : "unknown"}
+            status={online ? "reachable" : "unknown"}
+            detail={
+              <>
+                {SAP_SYSTEM.sid} · client {SAP_SYSTEM.client} ·{" "}
+                {SAP_SYSTEM.user} · <code>{SAP_SYSTEM.host}</code>
+              </>
+            }
+          />
+          <ConnectionRow
+            icon="key"
+            label="Claude API key"
+            state="up"
+            status="active"
+            detail={
+              <>
+                {CREDITS.keyLabel} · sk-ant-…{CREDITS.keyTail} · billed to this
+                account
+              </>
+            }
+          />
+        </ul>
+      </section>
+
+      <div className="card-grid">
+        <section
+          className="panel rise"
+          style={{ "--delay": "220ms" } as React.CSSProperties}
+        >
+          <div className="panel-head">
+            <h2>
+              <Icon name="user-circle" /> Account
+            </h2>
+          </div>
+          <dl className="facts">
+            <div>
+              <dt>Name</dt>
+              <dd>{ACCOUNT.name}</dd>
+            </div>
+            <div>
+              <dt>Email</dt>
+              <dd>{ACCOUNT.email}</dd>
+            </div>
+            <div>
+              <dt>Role</dt>
+              <dd>{ACCOUNT.role}</dd>
+            </div>
+            <div>
+              <dt>Organization</dt>
+              <dd>{ACCOUNT.organization}</dd>
+            </div>
+            <div>
+              <dt>Plan</dt>
+              <dd>{ACCOUNT.plan}</dd>
+            </div>
+            <div>
+              <dt>Member since</dt>
+              <dd>{ACCOUNT.memberSince}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
+          className="panel rise"
+          style={{ "--delay": "330ms" } as React.CSSProperties}
+        >
+          <div className="panel-head panel-head-row">
+            <h2>
+              <Icon name="database" /> SAP system
+            </h2>
+            <span className="tier">{SAP_SYSTEM.tier}</span>
+          </div>
+          <dl className="facts">
+            <div>
+              <dt>Profile</dt>
+              <dd>
+                {SAP_SYSTEM.alias} — {SAP_SYSTEM.description}
+              </dd>
+            </div>
+            <div>
+              <dt>Host</dt>
+              <dd>
+                <code>{SAP_SYSTEM.host}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>System / client</dt>
+              <dd>
+                {SAP_SYSTEM.sid} · {SAP_SYSTEM.client} · {SAP_SYSTEM.language}
+              </dd>
+            </div>
+            <div>
+              <dt>User</dt>
+              <dd>{SAP_SYSTEM.user}</dd>
+            </div>
+            <div>
+              <dt>Release</dt>
+              <dd>
+                {SAP_SYSTEM.sapVersion} · ABAP {SAP_SYSTEM.abapRelease}
+              </dd>
+            </div>
+            <div>
+              <dt>Industry / country</dt>
+              <dd>
+                {SAP_SYSTEM.industry} · {SAP_SYSTEM.country}
+              </dd>
+            </div>
+            <div>
+              <dt>Active modules</dt>
+              <dd className="chips">
+                {SAP_SYSTEM.activeModules.map((module) => (
+                  <span className="tag" key={module}>
+                    {module}
+                  </span>
+                ))}
+              </dd>
+            </div>
+            <div>
+              <dt>Blocklist</dt>
+              <dd>{SAP_SYSTEM.blocklistProfile}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
+          className="panel rise"
+          style={{ "--delay": "440ms" } as React.CSSProperties}
+        >
+          <div className="panel-head panel-head-row">
+            <h2>
+              <Icon name="wallet" /> Credits
+            </h2>
+            <span className="panel-note">{CREDITS.periodLabel}</span>
+          </div>
+
+          <p className="figure">
+            {money(CREDITS.balanceUsd)}
+            <span className="figure-unit">remaining</span>
+          </p>
+
+          <div
+            className="meter"
+            role="img"
+            aria-label={`${money(CREDITS.usedUsd)} of ${money(CREDITS.limitUsd)} used`}
+          >
+            <span
+              className="meter-fill"
+              style={{ width: `${(usedShare * 100).toFixed(1)}%` }}
+            />
+          </div>
+          <p className="meter-legend">
+            {money(CREDITS.usedUsd)} used of {money(CREDITS.limitUsd)} limit
+          </p>
+
+          <dl className="facts">
+            <div>
+              <dt>Output tokens</dt>
+              <dd>{CREDITS.tokensUsed.toLocaleString("en-US")}</dd>
+            </div>
+            <div>
+              <dt>Key</dt>
+              <dd>
+                <code>sk-ant-…{CREDITS.keyTail}</code>
+              </dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+
+      <p
+        className="fixture-note rise"
+        style={{ "--delay": "550ms" } as React.CSSProperties}
+      >
+        <Icon name="info" /> Account, SAP system and credit figures are
+        placeholders. Sign-in and per-user credentials arrive in Phase 5.
+      </p>
+    </div>
   );
 }

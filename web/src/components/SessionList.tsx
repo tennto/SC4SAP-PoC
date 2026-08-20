@@ -23,6 +23,10 @@ type Props = {
   onClose: (id: string) => void;
 };
 
+/**
+ * A second rail, inside the chat screen — distinct from the app-wide skill rail
+ * in `AppShell`, which is why it carries its own class names.
+ */
 export function SessionList({
   sessions,
   activeId,
@@ -32,9 +36,9 @@ export function SessionList({
   onClose,
 }: Props) {
   return (
-    <aside className="sidebar">
-      <div className="sidebar-head">
-        <h1>SC4SAP</h1>
+    <aside className="session-rail">
+      <div className="session-rail-head">
+        <h2>Sessions</h2>
         <button className="primary" onClick={onCreate} disabled={busy}>
           New session
         </button>
