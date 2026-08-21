@@ -13,15 +13,39 @@ import { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { GoogleMark } from "@/components/GoogleMark";
+import {
+  PASSWORD_MISMATCH,
+  PASSWORD_RULE,
+  isPasswordValid,
+} from "@/lib/password";
 
 export default function SignUpPage() {
-  const [name, setName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [confirm, setConfirm] = useState("");
+  const [confirmTouched, setConfirmTouched] = useState(false);
   const [attempted, setAttempted] = useState(false);
 
+  const passwordOk = isPasswordValid(password);
+  const confirmOk = confirm === password;
+  // Held back until the field has been left once, so the rule is not shown as
+  // an error against a password that is only half typed.
+  const showPasswordError = passwordTouched && !passwordOk;
+  // The confirmation reads against whatever the first field currently holds,
+  // so editing the password back above a matching confirmation re-flags it
+  // rather than leaving a stale pass.
+  const showConfirmError = confirmTouched && confirm.length > 0 && !confirmOk;
+
   const complete =
-    name.trim().length > 0 && email.trim().length > 0 && password.length >= 8;
+    lastName.trim().length > 0 &&
+    firstName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    passwordOk &&
+    confirmOk &&
+    confirm.length > 0;
 
   return (
     <main className="auth">
@@ -47,18 +71,33 @@ export default function SignUpPage() {
             setAttempted(true);
           }}
         >
-          <label className="field">
-            <span className="field-label">Name</span>
-            <input
-              type="text"
-              name="name"
-              autoComplete="name"
-              placeholder="Kim Sihoon"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
-          </label>
+          <div className="field-pair">
+            <label className="field">
+              <span className="field-label">Last name</span>
+              <input
+                type="text"
+                name="lastName"
+                autoComplete="family-name"
+                placeholder="Kim"
+                value={lastName}
+                onChange={(event) => setLastName(event.target.value)}
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span className="field-label">First name</span>
+              <input
+                type="text"
+                name="firstName"
+                autoComplete="given-name"
+                placeholder="Sihoon"
+                value={firstName}
+                onChange={(event) => setFirstName(event.target.value)}
+                required
+              />
+            </label>
+          </div>
 
           <label className="field">
             <span className="field-label">Email</span>
@@ -66,7 +105,7 @@ export default function SignUpPage() {
               type="email"
               name="email"
               autoComplete="email"
-              placeholder="you@company.com"
+              placeholder="example@company.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -76,16 +115,47 @@ export default function SignUpPage() {
           <label className="field">
             <span className="field-label">Password</span>
             <input
+              className={showPasswordError ? "is-invalid" : undefined}
               type="password"
               name="password"
               autoComplete="new-password"
-              placeholder="At least 8 characters"
+              placeholder="At least 10 characters"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              onBlur={() => setPasswordTouched(true)}
+              aria-invalid={showPasswordError || undefined}
               required
-              minLength={8}
             />
-            <span className="field-hint">At least 8 characters.</span>
+            {showPasswordError ? (
+              <span className="field-error" role="alert">
+                {PASSWORD_RULE}
+              </span>
+            ) : (
+              <span className="field-hint">
+                Letters, digits and one symbol. At least 10 characters.
+              </span>
+            )}
+          </label>
+
+          <label className="field">
+            <span className="field-label">Confirm password</span>
+            <input
+              className={showConfirmError ? "is-invalid" : undefined}
+              type="password"
+              name="confirmPassword"
+              autoComplete="new-password"
+              placeholder="Repeat the password"
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+              onBlur={() => setConfirmTouched(true)}
+              aria-invalid={showConfirmError || undefined}
+              required
+            />
+            {showConfirmError ? (
+              <span className="field-error" role="alert">
+                {PASSWORD_MISMATCH}
+              </span>
+            ) : null}
           </label>
 
           <button

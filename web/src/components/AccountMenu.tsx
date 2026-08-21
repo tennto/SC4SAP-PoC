@@ -13,9 +13,11 @@
  * already an overlay, so there is nothing to open sideways into and the menu
  * rises above the button instead.
  *
- * Language opens a submenu one step further right, in the same direction the
- * menu itself came from. It opens on click, never on hover — a hover-opened
- * submenu is unreachable on touch and easy to lose on the way to it.
+ * Language and Legal each open a submenu one step further right, in the same
+ * direction the menu itself came from. They open on click, never on hover — a
+ * hover-opened submenu is unreachable on touch and easy to lose on the way to
+ * it — and only one is open at a time, so the second never lands on top of the
+ * first.
  */
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -23,6 +25,7 @@ import { usePathname } from "next/navigation";
 import { ACCOUNT } from "@/lib/account";
 import { Icon } from "@/components/Icon";
 import { FeedbackModal } from "@/components/FeedbackModal";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 const LANGUAGES = [
   { code: "KR", label: "한국어" },
@@ -32,10 +35,17 @@ const LANGUAGES = [
 
 type Language = (typeof LANGUAGES)[number]["code"];
 
+const LEGAL_PAGES = [
+  { href: "/terms", label: "Terms of use", icon: "scroll" },
+  { href: "/privacy", label: "Privacy policy", icon: "shield-check" },
+] as const;
+
 export function AccountMenu({ collapsed }: { collapsed: boolean }) {
   const [open, setOpen] = useState(false);
-  const [langOpen, setLangOpen] = useState(false);
+  /** Which nested submenu is showing, if any. */
+  const [nested, setNested] = useState<"language" | "legal" | null>(null);
   const [feedback, setFeedback] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const [language, setLanguage] = useState<Language>("EN");
   const root = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -44,10 +54,10 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
     setOpen(false);
   }, [pathname]);
 
-  // Collapsing the menu with the submenu still flagged open would reopen both
+  // Collapsing the menu with a submenu still flagged open would reopen both
   // together the next time the account button is pressed.
   useEffect(() => {
-    if (!open) setLangOpen(false);
+    if (!open) setNested(null);
   }, [open]);
 
   useEffect(() => {
@@ -112,11 +122,15 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
 
           <div className="account-nest">
             <button
-              className={`account-item${langOpen ? " open" : ""}`}
+              className={`account-item${nested === "language" ? " open" : ""}`}
               role="menuitem"
               aria-haspopup="menu"
-              aria-expanded={langOpen}
-              onClick={() => setLangOpen((current) => !current)}
+              aria-expanded={nested === "language"}
+              onClick={() =>
+                setNested((current) =>
+                  current === "language" ? null : "language",
+                )
+              }
             >
               <Icon name="translate" />
               Language
@@ -124,7 +138,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
               <Icon name="caret-right" />
             </button>
 
-            {langOpen && (
+            {nested === "language" && (
               <div className="account-submenu" role="menu">
                 {LANGUAGES.map((option) => (
                   <button
@@ -134,7 +148,7 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
                     aria-checked={language === option.code}
                     onClick={() => {
                       setLanguage(option.code);
-                      setLangOpen(false);
+                      setNested(null);
                     }}
                   >
                     <span className="account-check">
@@ -148,16 +162,54 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
             )}
           </div>
 
-          <Link className="account-item" href="/terms" role="menuitem">
-            <Icon name="scroll" />
-            Terms of use
-          </Link>
+          {/* Two documents rather than one, so they fold into a submenu the
+              same way the languages do instead of adding a second flat row to
+              a menu that is mostly account controls. */}
+          <div className="account-nest">
+            <button
+              className={`account-item${nested === "legal" ? " open" : ""}`}
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={nested === "legal"}
+              onClick={() =>
+                setNested((current) => (current === "legal" ? null : "legal"))
+              }
+            >
+              <Icon name="scales" />
+              Legal
+              <Icon name="caret-right" />
+            </button>
+
+            {nested === "legal" && (
+              <div className="account-submenu" role="menu">
+                {LEGAL_PAGES.map((page) => (
+                  <Link
+                    key={page.href}
+                    className="account-item"
+                    href={page.href}
+                    role="menuitem"
+                  >
+                    <Icon name={page.icon} />
+                    {page.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
 
           <div className="account-divider" />
 
           {/* No auth to sign out of yet — Phase 5-5. Present so the menu is
-              the shape it will keep. */}
-          <button className="account-item" role="menuitem" title="Not wired up yet">
+              the shape it will keep, and it asks first: signing out is cheap to
+              confirm and annoying to do by accident on the way to Legal. */}
+          <button
+            className="account-item"
+            role="menuitem"
+            onClick={() => {
+              setConfirmLogout(true);
+              setOpen(false);
+            }}
+          >
             <Icon name="sign-out" />
             Log out
           </button>
@@ -165,6 +217,19 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
       )}
 
       {feedback && <FeedbackModal onClose={() => setFeedback(false)} />}
+
+      {confirmLogout && (
+        <ConfirmModal
+          kind="Log out"
+          heading="Log out of SC4SAP?"
+          description="Running sessions keep going on the backend, and their transcripts are waiting when you sign back in."
+          confirmLabel="Log out"
+          confirmIcon="sign-out"
+          note="No backend to sign out of yet."
+          onConfirm={() => setConfirmLogout(false)}
+          onCancel={() => setConfirmLogout(false)}
+        />
+      )}
     </div>
   );
 }

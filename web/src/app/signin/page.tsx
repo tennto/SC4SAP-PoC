@@ -16,13 +16,22 @@ import { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { GoogleMark } from "@/components/GoogleMark";
+import { PASSWORD_RULE, isPasswordValid } from "@/lib/password";
 
 export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordTouched, setPasswordTouched] = useState(false);
   const [attempted, setAttempted] = useState(false);
 
-  const complete = email.trim().length > 0 && password.length > 0;
+  // Sign-in holds the entered password to the same rule sign-up sets, so a
+  // password that could never have been registered is caught here rather than
+  // being spent on a round trip. Held back until the field has been left once,
+  // so the rule is not shown against a password still being typed.
+  const passwordOk = isPasswordValid(password);
+  const showPasswordError = passwordTouched && !passwordOk;
+
+  const complete = email.trim().length > 0 && passwordOk;
 
   return (
     <main className="auth">
@@ -53,7 +62,7 @@ export default function SignInPage() {
               type="email"
               name="email"
               autoComplete="username"
-              placeholder="you@company.com"
+              placeholder="example@company.com"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -63,14 +72,22 @@ export default function SignInPage() {
           <label className="field">
             <span className="field-label">Password</span>
             <input
+              className={showPasswordError ? "is-invalid" : undefined}
               type="password"
               name="password"
               autoComplete="current-password"
               placeholder="••••••••"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              onBlur={() => setPasswordTouched(true)}
+              aria-invalid={showPasswordError || undefined}
               required
             />
+            {showPasswordError ? (
+              <span className="field-error" role="alert">
+                {PASSWORD_RULE}
+              </span>
+            ) : null}
           </label>
 
           <div className="auth-row">

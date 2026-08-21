@@ -477,6 +477,15 @@ button.primary:hover:not(:disabled) {
   font-size: 13px;
 }
 
+/* A row with no value badge still ends in a caret, and it has to sit where the
+   badge would have put it. Two icons in one row only ever means a leading glyph
+   and a trailing caret — a row with a single icon is a plain item, and matching
+   on `:last-child` would push that one to the edge instead. */
+.account-item .ph + .ph {
+  margin-left: auto;
+  font-size: 13px;
+}
+
 /* ---------- language submenu ---------- */
 
 .account-nest {
@@ -490,7 +499,11 @@ button.primary:hover:not(:disabled) {
   left: 100%;
   top: -6px;
   z-index: 31;
-  width: 168px;
+  /* Sized to the longest row rather than to a guess: the language codes are
+     two characters and "Privacy policy" is fourteen, and a fixed width that
+     suits one wraps the other. */
+  width: max-content;
+  min-width: 168px;
   margin-left: 8px;
   padding: 6px;
   background: var(--panel);
@@ -1279,7 +1292,9 @@ button.primary:hover:not(:disabled) {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 11px 14px;
-  resize: vertical;
+  /* No drag handle. The composer is sized by the layout it sits in, and the
+     grip in its corner offered a resize that fought that sizing. */
+  resize: none;
 }
 
 .composer textarea::placeholder {
@@ -1395,6 +1410,48 @@ button.primary:hover:not(:disabled) {
   color: var(--ink-38);
 }
 
+/* ---------- confirm ----------
+   Narrower than the base modal: this one holds a question and two buttons,
+   where the approval dialog has to fit a pretty-printed tool payload. */
+.modal.confirm {
+  width: min(440px, 100%);
+  gap: 14px;
+  padding: 26px 24px 24px;
+}
+
+.confirm-question {
+  margin: 6px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.modal.confirm .modal-description {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-55);
+}
+
+/* The note gets its own line above the buttons rather than sharing theirs.
+   In the feedback dialog an auto margin pushes it left and everything fits on
+   one row, but this dialog is 200px narrower and its two labels are words
+   rather than "Cancel" / "Send" — sharing the row put the buttons on a wrapped
+   second line at unpredictable positions. A full-basis flex item is a row
+   break that does not depend on how long the labels happen to be. */
+.modal.confirm .modal-actions {
+  align-items: center;
+  flex-wrap: wrap;
+  /* The question is what the dialog is asking; the buttons are the answer.
+     Enough air between them that the second is read as a response to the
+     first rather than as the next line of it. */
+  margin-top: 22px;
+}
+
+.modal.confirm .modal-note {
+  flex: 0 0 100%;
+  margin: 0 0 2px;
+}
+
 /* ---------- feedback ---------- */
 
 .modal.feedback {
@@ -1420,8 +1477,8 @@ button.primary:hover:not(:disabled) {
 .rating-face {
   display: grid;
   place-items: center;
-  padding: 10px 0;
-  font-size: 27px;
+  padding: 12px 0;
+  font-size: 31px;
   color: var(--ink-38);
   background: var(--panel);
 }
@@ -1958,6 +2015,149 @@ button.primary:hover:not(:disabled) {
   border-radius: 12px;
 }
 
+/* ---------- legal prose ----------
+   Long-form reading, which nothing else in this app is. The column runs the
+   full width of the page rather than sitting in a narrow measure against the
+   left edge: a character cap — on the column or on the paragraphs inside it —
+   left a dead band down the right of the viewport and made the body look
+   detached from the header above it. There is no cap here at all, and the type
+   is set a step larger than the app's UI text because this is a document, not
+   a control surface. */
+.legal {
+  width: 100%;
+  padding-bottom: 40px;
+}
+
+.legal-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 0 0 24px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--ink-38);
+}
+
+.legal-meta b {
+  font-weight: 700;
+  color: var(--ink-55);
+}
+
+/* `.notice-block` carries an 88ch measure for the other screens that use it.
+   Inside the document that cap is the same dead band as any other, so it is
+   dropped here rather than being made narrower than the clauses below it. */
+.legal .notice-block {
+  max-width: none;
+}
+
+.legal-intro {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.75;
+  color: var(--ink-80);
+}
+
+/* A rule above each clause, not a box around it: the sections are one
+   continuous document and carding them would read as twenty-two unrelated
+   panels. The first one drops the rule so the notice above it is not
+   double-underlined. */
+.legal-section {
+  margin-top: 72px;
+  padding-top: 44px;
+  border-top: 1px solid var(--line);
+  scroll-margin-top: 24px;
+}
+
+.legal-section:first-of-type {
+  margin-top: 40px;
+  border-top: 0;
+}
+
+.legal-section > h2 {
+  display: flex;
+  gap: 14px;
+  margin: 0 0 20px;
+  font-family: var(--font-display);
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.legal-section > h2 .legal-num {
+  flex: none;
+  color: var(--ink-38);
+  font-variant-numeric: tabular-nums;
+}
+
+.legal-section h3 {
+  margin: 26px 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+.legal-section p,
+.legal-section ul,
+.legal-section ol {
+  font-size: 15px;
+  line-height: 1.8;
+  color: var(--ink-80);
+}
+
+.legal-section p {
+  margin: 0 0 12px;
+}
+
+.legal-section ul,
+.legal-section ol {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+
+.legal-section li {
+  margin-bottom: 7px;
+  padding-left: 2px;
+}
+
+.legal-section li::marker {
+  color: var(--ink-38);
+}
+
+.legal-section strong {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.legal-section code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--panel-2);
+}
+
+@media (max-width: 700px) {
+  .legal-section {
+    margin-top: 52px;
+    padding-top: 32px;
+  }
+
+  .legal-section > h2 {
+    font-size: 21px;
+    gap: 10px;
+  }
+
+  .legal-section p,
+  .legal-section ul,
+  .legal-section ol {
+    font-size: 14px;
+  }
+}
+
 .panel-head {
   margin-bottom: 18px;
 }
@@ -2018,8 +2218,12 @@ button.primary:hover:not(:disabled) {
   padding: 9px 12px;
 }
 
+/* No drag handle anywhere. Every textarea in the app is sized by the layout it
+   sits in — a modal of fixed shape, a composer pinned to the foot of the chat,
+   a field in a form grid — and the grip in the corner offered a resize that
+   fought all three. */
 .field textarea {
-  resize: vertical;
+  resize: none;
 }
 
 .field :disabled {
@@ -2052,6 +2256,21 @@ button.primary:hover:not(:disabled) {
   font-size: 11px;
   line-height: 1.5;
   color: var(--ink-38);
+}
+
+/* Invalid input. The border carries the state and the message underneath
+   names the rule; both use `--bad`, the same red the dead-connection status
+   already spends. Set at the hint's size so the message reads as the hint it
+   replaces, not as a second heading. */
+.field input.is-invalid,
+.field input.is-invalid:focus {
+  border-color: var(--bad);
+}
+
+.field-error {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--bad);
 }
 
 .panel-actions {
@@ -2236,6 +2455,7 @@ button.primary:hover:not(:disabled) {
   .account-submenu {
     position: static;
     width: auto;
+    min-width: 0;
     margin: 4px 0 4px 22px;
     box-shadow: none;
     animation-name: menu-rise;
@@ -2501,6 +2721,14 @@ button.primary:hover:not(:disabled) {
 .auth-form {
   display: flex;
   flex-direction: column;
+  gap: 14px;
+}
+
+/* Surname and given name are one question asked twice, so they share a row
+   rather than stacking into two full-width fields the eye reads as unrelated. */
+.field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
 

@@ -13,6 +13,10 @@
  * Nothing is submitted yet. There is no feedback endpoint on the backend, and
  * inventing one here would mean picking where feedback lands before anyone has
  * decided that.
+ *
+ * A backdrop click does not dismiss it. There is typed text in here, and
+ * losing a half-written paragraph to a misplaced click is a worse outcome than
+ * making someone reach for Cancel. Escape still closes it.
  */
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
@@ -39,14 +43,7 @@ export function FeedbackModal({ onClose }: { onClose: () => void }) {
   }, [onClose]);
 
   return (
-    <div
-      className="modal-backdrop"
-      onClick={(event) => {
-        // Only a click on the backdrop itself, not one that bubbled out of the
-        // dialog.
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
+    <div className="modal-backdrop">
       <div
         className="modal feedback"
         role="dialog"
