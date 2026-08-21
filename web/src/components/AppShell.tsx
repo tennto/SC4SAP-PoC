@@ -29,6 +29,16 @@ const NARROW = "(max-width: 900px)";
 
 const COLLAPSE_KEY = "sc4sap.railCollapsed";
 
+/**
+ * Routes that render without the shell.
+ *
+ * Sign-in is the screen you reach *before* there is a session to navigate, so
+ * a rail full of skills behind it would offer a way around the very gate the
+ * page exists to be. The shell lives in the root layout, which cannot opt a
+ * child route out, so the opt-out is here.
+ */
+const BARE_ROUTES = ["/signin", "/signup"];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -82,6 +92,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
   }, [narrow]);
 
+  const bare = BARE_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+
   const railCollapsed = !narrow && collapsed;
   const expanded = narrow ? drawerOpen : !collapsed;
 
@@ -103,6 +117,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : collapsed
       ? "list"
       : "caret-double-left";
+
+  if (bare) return <>{children}</>;
 
   return (
     <div

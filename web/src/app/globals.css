@@ -2005,6 +2005,8 @@ button.primary:hover:not(:disabled) {
 }
 
 .field input[type="text"],
+.field input[type="email"],
+.field input[type="password"],
 .field select,
 .field textarea {
   font: inherit;
@@ -2433,4 +2435,181 @@ button.primary:hover:not(:disabled) {
   border-radius: 10px;
   color: var(--ink-38);
   font-size: 12px;
+}
+
+/* ---------- sign-in ---------- */
+
+/* Its own screen rather than a page inside the shell, so it owns the viewport
+   and the centring rather than inheriting `.page`'s scroll column. */
+/* Pinned to the viewport and clipped rather than allowed to scroll: this is a
+   single card with nothing below it, and a scrollbar appearing beside it reads
+   as a page that has more to it than it does. `dvh`, not `vh`, so a mobile
+   browser's collapsing toolbar does not push it into overflow.
+
+   The cost is real — on a window shorter than the card the ends are cut off
+   instead of reachable — which is why the padding below is small. */
+.auth {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 16px;
+  height: 100dvh;
+  overflow: hidden;
+  padding: 24px 20px;
+  background: var(--bg);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 520px;
+  padding: 34px 38px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.auth-brand {
+  display: inline-flex;
+  text-decoration: none;
+}
+
+/* One step up from the rail's, which sits in a 244px column. Here it is the
+   only thing above the heading and can afford the size. */
+.auth-brand .rail-wordmark {
+  font-size: 14px;
+}
+
+.auth-head {
+  margin: 20px 0 22px;
+}
+
+.auth-head h1 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.auth-lede {
+  margin: 0;
+  color: var(--ink-55);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* One item now that "keep me signed in" is gone, so it sits against the right
+   edge rather than being stranded under the password field's left. */
+.auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  font-size: 11px;
+}
+
+/* Scoped down a step from the rest of the app's forms. This card is one
+   column of two fields, so the type does not need the size it earns on a
+   settings page laid out in a grid. */
+.auth-form .field-label {
+  font-size: 10px;
+}
+
+.auth-form .field input {
+  font-size: 13px;
+}
+
+/* The icon stays in flow, set a little further from the label than the 8px
+   the other buttons use, and the label still lands on the button's centre.
+   That falls out of the asymmetric padding: the flex row centres inside the
+   content box, so making the right padding exactly `icon + gap` wider than the
+   left shifts the row left by half of that — which is precisely the amount the
+   icon adds to the row's left. Net: the label's midpoint is the button's, and
+   the icon floats to its left rather than being pinned to an edge. */
+.auth-submit {
+  justify-content: center;
+  gap: 18px;
+  width: 100%;
+  padding: 10px 40px 10px 8px;
+  font-size: 13px;
+}
+
+.auth-submit .ph {
+  flex: none;
+  font-size: 14px;
+}
+
+.google-mark {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+/* Sits between the form and its result, so it is tinted rather than boxed —
+   a bordered block here would read as a fourth field. */
+.auth-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink-55);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.auth-status .ph {
+  /* Aligns the glyph to the first line's cap height rather than its box. */
+  margin-top: 1px;
+  flex: none;
+}
+
+/* A rule with the word sitting in a gap in it, rather than three elements in
+   a row: the line then meets the text at the same place at every width. */
+.auth-sep {
+  display: grid;
+  place-items: center;
+  margin: 2px 0;
+  color: var(--ink-38);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.auth-sep::before {
+  content: "";
+  grid-area: 1 / 1;
+  width: 100%;
+  height: 1px;
+  background: var(--line);
+}
+
+.auth-sep span {
+  grid-area: 1 / 1;
+  padding: 0 10px;
+  background: var(--panel);
+}
+
+.auth-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--ink-38);
+  font-size: 11px;
+}
+
+.auth-foot a {
+  color: var(--ink-55);
+  text-decoration: none;
+}
+
+.auth-foot a:hover {
+  color: var(--ink);
+  text-decoration: underline;
 }
