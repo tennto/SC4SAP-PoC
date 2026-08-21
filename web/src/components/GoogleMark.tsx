@@ -13,7 +13,7 @@ export function GoogleMark() {
   return (
     <Image
       className="google-mark"
-      src="/google_ic.png"
+      src="/assets/google_ic.png"
       alt=""
       aria-hidden="true"
       // Intrinsic size of the file. CSS sets what is actually rendered; these
