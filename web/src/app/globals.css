@@ -25,6 +25,16 @@
   --line: rgba(56, 56, 56, 0.14);
   --line-soft: rgba(56, 56, 56, 0.08);
 
+  /* ---- Status ----
+     The one deliberate exception to the single-ink palette above. Connection
+     state is the only thing on the dashboard a reader scans for rather than
+     reads, and shape alone made "reachable" and "unknown" cost a second look.
+     All three clear 5:1 on white, because they are used as 11px uppercase
+     text and not only as a dot. */
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #b91c1c;
+
   /* ---- Type ----
      Borrowed from sc4sap.dev so the app and the site read as one product.
      IBM Plex was drawn for engineering documentation and ships matching
@@ -54,6 +64,13 @@
      duration a hover wants. */
   --t-page: 560ms;
   --t-enter: 900ms;
+  /* The rail is asymmetric on purpose. Folding is a cut — one frame, nothing
+     to watch. Unfolding is the move worth seeing, so the column eases open and
+     the labels arrive behind it, late enough that no text is ever laid out at
+     an in-between width. */
+  --t-rail-in: 620ms;
+  --t-label-in: 280ms;
+  --d-label-in: 380ms;
 
   color-scheme: light;
   font-family: var(--font-sans);
@@ -183,9 +200,17 @@ button.primary:hover:not(:disabled) {
   height: 100vh;
 }
 
-/* Collapsed, the rail keeps the icons and drops everything else. */
+/* Collapsed, the rail keeps the icons and drops everything else.
+
+   The width transition lives on the two states rather than on one, because a
+   transition is read from the state being moved *to*: this rule is the
+   destination when folding, so folding takes `0s` and lands in a single frame
+   — including the head re-centring and the toggle swapping its glyph, which
+   are not animatable and would otherwise jump ahead of a sliding column. The
+   base `.shell` rule is the destination when unfolding, and eases. */
 .shell[data-collapsed="true"] {
   --rail-w: 62px;
+  transition: grid-template-columns 0s;
 }
 
 .content {
@@ -223,8 +248,8 @@ button.primary:hover:not(:disabled) {
   flex: none;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 32px;
+  width: 26px;
+  height: 24px;
   padding: 0;
   background: transparent;
   border-color: transparent;
@@ -233,7 +258,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .rail-toggle .ph {
-  font-size: 18px;
+  font-size: 13px;
 }
 
 .rail-toggle:hover:not(:disabled) {
@@ -245,8 +270,14 @@ button.primary:hover:not(:disabled) {
 .rail-brand {
   display: flex;
   align-items: center;
+  /* Allowed to clip. During the fade the wordmark is briefly still in flow at
+     a width that cannot hold it; without this it would push the toggle out of
+     the rail instead of being cropped. */
+  min-width: 0;
+  overflow: hidden;
   padding: 4px 8px;
   border-radius: 6px;
+  text-decoration: none;
   transition: background-color var(--t-base) var(--ease);
 }
 
@@ -261,13 +292,20 @@ button.primary:hover:not(:disabled) {
   outline-offset: 1px;
 }
 
-/* Height is the constraint — the wordmark is 2.79:1, so width follows.
-   Setting both keeps next/image from warning that one was overridden.
-   26px is about the floor: the "4" sits inside the C, and much below this
-   that counter fills in and the mark starts reading as "SC AX". */
-.rail-brand img {
-  height: 26px;
-  width: auto;
+/* The wordmark, set the way sc4sap.dev sets it in its nav: the product name
+   at full ink and 600, the "for SAP" tail one step back. 14px is the site's
+   own nav size, held here as a literal because this rail's root is 14px and
+   0.875rem would land at 12px. */
+.rail-wordmark {
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  color: var(--ink-80);
+  white-space: nowrap;
+}
+
+.rail-wordmark b {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 
@@ -501,7 +539,11 @@ button.primary:hover:not(:disabled) {
   flex-direction: column;
   margin: 8px 0 4px;
   padding: 0 8px;
-  font-size: 10px;
+  /* Two words at 62px would wrap to three lines and jog the whole nav's
+     height mid-collapse. Clipped instead — it is transparent by then. */
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -510,11 +552,93 @@ button.primary:hover:not(:disabled) {
 
 .nav-heading-hint {
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
   color: var(--ink-38);
+}
+
+/* Holds the link and its star. The star is absolute inside it so it cannot
+   affect the link's own layout, which is what keeps the collapsed rail's
+   centred icon exactly centred. */
+.nav-row {
+  position: relative;
+  display: flex;
+}
+
+.nav-row .nav-item {
+  flex: 1;
+  min-width: 0;
+  /* Room for the star, so a long label ellipsises before it reaches one. */
+  padding-right: 30px;
+}
+
+/* Centred by auto block margins, not by `translateY(-50%)`. The global
+   `button:active` press nudge is a `transform`, and it wins on specificity —
+   with the centring done that way the star dropped half its own height on
+   mousedown, far enough that the pointer could end up outside it and the
+   mouseup never completed a click. */
+.nav-fav {
+  position: absolute;
+  right: 3px;
+  top: 0;
+  bottom: 0;
+  margin-block: auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-38);
+  cursor: pointer;
+  /* Hidden until the row is pointed at. Twenty hollow stars down the rail
+     would read as decoration and compete with the icons that identify the
+     entries. A starred one stays visible — that is the state it reports. */
+  opacity: 0;
+  transition:
+    opacity var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    background-color var(--t-fast) var(--ease);
+}
+
+.nav-row:hover .nav-fav,
+.nav-fav:focus-visible,
+.nav-fav[data-on="true"] {
+  opacity: 1;
+}
+
+/* On the glyph, not on the button: `button .ph` above sets 15px and outranks
+   a `font-size` here, which is a `.ph` inheriting from its own context rather
+   than from its parent. */
+.nav-fav .ph {
+  font-size: 12px;
+}
+
+/* Held back from full ink. A solid star at `--ink` outweighs the entry's own
+   icon, and the row starts reading as the star with a label attached. */
+.nav-fav[data-on="true"] {
+  color: var(--ink-55);
+}
+
+.nav-fav:hover {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+.nav-fav:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+/* No hover to reveal it on, so it is always there. */
+@media (hover: none) {
+  .nav-fav {
+    opacity: 1;
+  }
 }
 
 .nav-item {
@@ -582,7 +706,7 @@ button.primary:hover:not(:disabled) {
 .nav-label {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -597,28 +721,63 @@ button.primary:hover:not(:disabled) {
   line-height: 1;
 }
 
+/* Everything the collapsed rail drops. Each one still ends at `display: none`
+   — kept in flow, they would wrap, clip, or push the toggle out of a 62px
+   column — but it now gets there by fading first. `allow-discrete` is what
+   buys that: on the way out the element stays displayed for the whole
+   transition and only vanishes at the end, and on the way back it is
+   displayed from the start of the active interval so the opacity has
+   something to animate. */
+.rail-brand,
+.rail-foot,
+.nav-heading,
+.nav-label,
+.nav-flag {
+  opacity: 1;
+  transition:
+    opacity var(--t-label-in) var(--ease) var(--d-label-in),
+    display var(--t-label-in) var(--ease) var(--d-label-in) allow-discrete;
+}
+
+@starting-style {
+  .rail-brand,
+  .rail-foot,
+  .nav-heading,
+  .nav-label,
+  .nav-flag {
+    opacity: 0;
+  }
+}
+
 .shell[data-collapsed="true"] .rail-brand,
 .shell[data-collapsed="true"] .rail-foot,
 .shell[data-collapsed="true"] .nav-heading,
 .shell[data-collapsed="true"] .nav-label,
 .shell[data-collapsed="true"] .nav-flag {
   display: none;
+  opacity: 0;
+  /* Nothing to fade on the way out — they go with the fold, in the same frame
+     the column does. A label dissolving over a rail that is already 62px wide
+     would read as a ghost, not as motion. */
+  transition: none;
 }
 
-/* The column width animates; the labels inside it do not slide with it. They
-   are `display: none` above, so they cut rather than smear — a label caught
-   mid-collapse at 90px reads as a rendering fault, not as motion. */
 .shell {
-  transition: grid-template-columns var(--t-base) var(--ease);
+  transition: grid-template-columns var(--t-rail-in) var(--ease);
 }
 
 .shell[data-collapsed="true"] .nav {
   padding-inline: 6px;
 }
 
-.shell[data-collapsed="true"] .nav-item {
+.shell[data-collapsed="true"] .nav-item,
+.shell[data-collapsed="true"] .nav-row .nav-item {
   justify-content: center;
   padding: 5px;
+}
+
+.shell[data-collapsed="true"] .nav-fav {
+  display: none;
 }
 
 .shell[data-collapsed="true"] .rail-head {
@@ -1554,11 +1713,17 @@ button.primary:hover:not(:disabled) {
   color: var(--ink-38);
 }
 
+/* Each row is its own grid, so an `auto` last column would size to its own
+   word and the dots would step in and out as the words change length. A fixed
+   floor puts every dot on the same left edge — wide enough for the longest
+   status this panel produces, `reachable`. */
 .conn-state {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
+  min-width: 92px;
   gap: 7px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1566,8 +1731,8 @@ button.primary:hover:not(:disabled) {
   white-space: nowrap;
 }
 
-/* State is carried by the dot's fill, the way the session badges carry it —
-   filled is live, hollow is not, dashed is unknown. One colour throughout. */
+/* State is carried by the dot's colour and by the word beside it, which is
+   tinted to match — see the status tokens at the top of this file. */
 .conn-dot {
   width: 8px;
   height: 8px;
@@ -1576,20 +1741,35 @@ button.primary:hover:not(:disabled) {
 }
 
 .conn-row.is-up .conn-dot {
-  background: var(--ink);
-  border-color: var(--ink);
+  background: var(--ok);
+  border-color: var(--ok);
   /* A slow breath, so a live connection reads as live without asking for
      attention the way a blink would. */
   animation: conn-breathe 2.6s ease-in-out infinite;
 }
 
 .conn-row.is-up .conn-state {
-  color: var(--ink);
+  color: var(--ok);
 }
 
+/* Filled rather than the dashed outline it used to be: with a colour to carry
+   the state, an unfilled dot reads as a third state instead of as "down". */
 .conn-row.is-down .conn-dot {
-  border-style: dashed;
-  border-color: var(--ink);
+  background: var(--bad);
+  border-color: var(--bad);
+}
+
+.conn-row.is-down .conn-state {
+  color: var(--bad);
+}
+
+.conn-row.is-unknown .conn-dot {
+  background: var(--warn);
+  border-color: var(--warn);
+}
+
+.conn-row.is-unknown .conn-state {
+  color: var(--warn);
 }
 
 @keyframes conn-breathe {
@@ -1957,6 +2137,7 @@ button.primary:hover:not(:disabled) {
   .chat,
   .rise,
   .rise-soft,
+  .fav-card,
   .meter-fill,
   .account-menu,
   .account-submenu {
@@ -2105,4 +2286,151 @@ button.primary:hover:not(:disabled) {
 .page {
   scrollbar-width: thin;
   scrollbar-color: var(--ink-38) transparent;
+}
+
+/* ---------- favourites (dashboard) ---------- */
+
+/* Sits above the connection panel, so it is deliberately lighter than one: a
+   shortcut strip, not a third thing to read. The bottom margin matches
+   `.connections`, which is how every band on this page is spaced. */
+.favorites {
+  margin-bottom: 18px;
+}
+
+.favorites .panel-head {
+  margin-bottom: 14px;
+}
+
+.fav-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Runs once, when the card is inserted — starring a skill is the only way one
+   appears, so the arrival always belongs to a click the user just made. It
+   does not re-run on re-render: the list is keyed by slug, so an existing card
+   is the same element it was before. Scaled from just under full size rather
+   than sliding, because the neighbouring cards are already shifting to make
+   room and a second direction of travel would fight that. */
+@keyframes fav-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+.fav-card {
+  animation: fav-in var(--t-slow) var(--ease) both;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  transition:
+    border-color var(--t-base) var(--ease),
+    background-color var(--t-base) var(--ease);
+}
+
+.fav-card:hover {
+  border-color: var(--ink-38);
+  background: var(--panel-2);
+}
+
+.fav-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  /* Right padding clears the remove button, which is absolute. */
+  padding: 10px 34px 10px 10px;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.fav-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink-55);
+  font-size: 16px;
+}
+
+.fav-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fav-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* One line: these are reminders of what the skill is, and a card that grows to
+   three lines stops being a shortcut. */
+.fav-summary {
+  font-size: 11px;
+  color: var(--ink-55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* See `.nav-fav` — centred by margins so the press nudge cannot displace it. */
+.fav-remove {
+  position: absolute;
+  right: 6px;
+  top: 0;
+  bottom: 0;
+  margin-block: auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  /* Filled, like the rail's star for the same skill — the two are the same
+     control in two places, and this one is always in its on-state, so it
+     carries the same held-back ink. */
+  color: var(--ink-55);
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease);
+}
+
+.fav-remove .ph {
+  font-size: 12px;
+}
+
+.fav-remove:hover {
+  background: var(--panel-3);
+}
+
+.fav-remove:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.fav-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--ink-38);
+  font-size: 12px;
 }

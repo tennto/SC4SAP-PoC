@@ -18,7 +18,6 @@
  * `NARROW` — the two must stay in step.
  */
 import { useCallback, useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SkillNav } from "@/components/SkillNav";
@@ -74,6 +73,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setDrawerOpen((open) => !open);
       return;
     }
+    // Both directions flip the state in one go. Folding is meant to be a cut,
+    // and unfolding is staged entirely in CSS — see `.shell` in globals.css.
     setCollapsed((current) => {
       const next = !current;
       localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
@@ -111,28 +112,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     >
       <aside className="rail" aria-label="Main navigation">
         <div className="rail-head">
-          {/* Hidden by CSS once the rail collapses — the wordmark is 2.8:1 and
-              does not survive a 62px column. */}
+          {/* Hidden by CSS once the rail collapses — the wordmark does not
+              survive a 62px column. Set as text rather than as the banner
+              image: it is the same wordmark sc4sap.dev puts at the left of its
+              nav, and as text it inherits the app's own ink and type stack
+              instead of carrying the site's baked-in ones. */}
           <Link
             className="rail-brand"
             href="/"
-            aria-label="SC4 AX — go to home"
+            aria-label="Super-Claude for SAP — go to home"
             onClick={() => setDrawerOpen(false)}
           >
-            <Image
-              src="/banner_ic.png"
-              alt="SC4 AX"
-              // Intrinsic dimensions, so the aspect ratio is right and the
-              // header does not reflow once the file lands. CSS sets the
-              // rendered height.
-              width={2385}
-              height={856}
-              // Without this the optimizer ships the 3840px variant for an
-              // ~84px slot. Pinning the slot lets it serve a small file that
-              // is still 3x the rendered size.
-              sizes="96px"
-              priority
-            />
+            <span className="rail-wordmark">
+              <b>Super-Claude</b> for SAP
+            </span>
           </Link>
 
           <button

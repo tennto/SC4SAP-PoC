@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
+import { FavoritesProvider } from "@/lib/favorites";
 
 export const metadata: Metadata = {
   title: "SC4SAP Web PoC",
@@ -43,11 +44,20 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css"
         />
+        {/* Only for the favourite star's on-state; see `Icon`. */}
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css"
+        />
       </head>
       <body>
-        {/* The rail lives in the layout, not in the pages, so it survives
-            navigation instead of remounting on every route change. */}
-        <AppShell>{children}</AppShell>
+        {/* Above the shell because both the rail and the dashboard read it,
+            and neither contains the other. */}
+        <FavoritesProvider>
+          {/* The rail lives in the layout, not in the pages, so it survives
+              navigation instead of remounting on every route change. */}
+          <AppShell>{children}</AppShell>
+        </FavoritesProvider>
       </body>
     </html>
   );

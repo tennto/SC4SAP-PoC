@@ -57,9 +57,12 @@ export type Credits = {
   periodLabel: string;
   /** Output tokens spent in the same window. */
   tokensUsed: number;
+  /**
+   * The key's *name* in the Console. Never any part of the key itself — no
+   * prefix, no tail, no length. A masked secret is still a secret leaking its
+   * shape, and this dashboard is served to a browser.
+   */
   keyLabel: string;
-  /** Last four characters of the key, which is all the Console ever shows. */
-  keyTail: string;
 };
 
 export const ACCOUNT: Account = {
@@ -95,5 +98,4 @@ export const CREDITS: Credits = {
   periodLabel: "August 2026",
   tokensUsed: 1_284_310,
   keyLabel: "sc4sap-web-poc",
-  keyTail: "16Q",
 };

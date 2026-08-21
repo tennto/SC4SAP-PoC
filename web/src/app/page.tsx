@@ -15,11 +15,16 @@ import { BACKEND } from "@/lib/backend";
 import type { Health } from "@/lib/types";
 import { ACCOUNT, CREDITS, SAP_SYSTEM } from "@/lib/account";
 import { Icon } from "@/components/Icon";
+import { FavoriteSkills } from "@/components/FavoriteSkills";
 
 export const dynamic = "force-dynamic";
 
+// Intl has no option for the gap, and en-US formats `$41.28` flush. Split with
+// a non-breaking space so the symbol cannot end a line on its own.
 const money = (value: number): string =>
-  value.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  value
+    .toLocaleString("en-US", { style: "currency", currency: "USD" })
+    .replace("$", "$ ");
 
 async function loadHealth(): Promise<{ health: Health | null; error: string | null }> {
   try {
@@ -83,6 +88,8 @@ export default async function HomePage() {
 
       </header>
 
+      <FavoriteSkills />
+
       <section
         className="panel connections rise"
         style={{ "--delay": "110ms" } as React.CSSProperties}
@@ -119,7 +126,7 @@ export default async function HomePage() {
         <ul className="conn-list">
           <ConnectionRow
             icon="hard-drives"
-            label="Agent backend"
+            label="Agent Status"
             state={online ? "up" : "down"}
             status={online ? "connected" : "offline"}
             detail={
@@ -136,7 +143,7 @@ export default async function HomePage() {
           />
           <ConnectionRow
             icon="database"
-            label="SAP system"
+            label="SAP System"
             state={online ? "up" : "unknown"}
             status={online ? "reachable" : "unknown"}
             detail={
@@ -148,15 +155,10 @@ export default async function HomePage() {
           />
           <ConnectionRow
             icon="key"
-            label="Claude API key"
+            label="Claude API Status"
             state="up"
             status="active"
-            detail={
-              <>
-                {CREDITS.keyLabel} · sk-ant-…{CREDITS.keyTail} · billed to this
-                account
-              </>
-            }
+            detail={<>{CREDITS.keyLabel} · billed to this account</>}
           />
         </ul>
       </section>
@@ -244,20 +246,6 @@ export default async function HomePage() {
                 {SAP_SYSTEM.industry} · {SAP_SYSTEM.country}
               </dd>
             </div>
-            <div>
-              <dt>Active modules</dt>
-              <dd className="chips">
-                {SAP_SYSTEM.activeModules.map((module) => (
-                  <span className="tag" key={module}>
-                    {module}
-                  </span>
-                ))}
-              </dd>
-            </div>
-            <div>
-              <dt>Blocklist</dt>
-              <dd>{SAP_SYSTEM.blocklistProfile}</dd>
-            </div>
           </dl>
         </section>
 
@@ -295,12 +283,6 @@ export default async function HomePage() {
             <div>
               <dt>Output tokens</dt>
               <dd>{CREDITS.tokensUsed.toLocaleString("en-US")}</dd>
-            </div>
-            <div>
-              <dt>Key</dt>
-              <dd>
-                <code>sk-ant-…{CREDITS.keyTail}</code>
-              </dd>
             </div>
           </dl>
         </section>

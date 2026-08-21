@@ -12,6 +12,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SKILLS_BY_GROUP } from "@/lib/skills";
+import { useFavorites } from "@/lib/favorites";
 import { Icon } from "@/components/Icon";
 
 type Props = {
@@ -32,6 +33,7 @@ const FIXED = [
 
 export function SkillNav({ collapsed, onNavigate }: Props) {
   const pathname = usePathname();
+  const { isFavorite, toggle } = useFavorites();
 
   const entry = (
     href: string,
@@ -39,24 +41,50 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
     label: string,
     title: string,
     extra?: React.ReactNode,
+    /** Skills only. Home and Chat are always there; starring them says
+        nothing. */
+    favouriteSlug?: string,
   ) => {
     // `/` would otherwise prefix-match every route.
     const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+    const starred = favouriteSlug !== undefined && isFavorite(favouriteSlug);
     return (
-      <Link
-        key={href}
-        href={href}
-        className={`nav-item${active ? " active" : ""}`}
-        title={collapsed ? title : undefined}
-        aria-current={active ? "page" : undefined}
-        onClick={onNavigate}
-      >
-        <span className="nav-icon">
-          <Icon name={icon} />
-        </span>
-        <span className="nav-label">{label}</span>
-        {extra}
-      </Link>
+      // The star is a sibling of the link rather than a child: a button inside
+      // an anchor is invalid, and nesting it would put a second activation
+      // target inside the navigation hit area.
+      <div className="nav-row" key={href}>
+        <Link
+          href={href}
+          className={`nav-item${active ? " active" : ""}`}
+          title={collapsed ? title : undefined}
+          aria-current={active ? "page" : undefined}
+          onClick={onNavigate}
+        >
+          <span className="nav-icon">
+            <Icon name={icon} />
+          </span>
+          <span className="nav-label">{label}</span>
+          {extra}
+        </Link>
+
+        {favouriteSlug !== undefined ? (
+          <button
+            type="button"
+            className="nav-fav"
+            data-on={starred ? "true" : "false"}
+            aria-pressed={starred}
+            aria-label={
+              starred
+                ? `Remove ${label} from favourites`
+                : `Add ${label} to favourites`
+            }
+            title={starred ? "Remove from favourites" : "Add to favourites"}
+            onClick={() => toggle(favouriteSlug)}
+          >
+            <Icon name="star" weight={starred ? "fill" : "regular"} />
+          </button>
+        ) : null}
+      </div>
     );
   };
 
@@ -89,6 +117,7 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
                   ·
                 </span>
               ) : null,
+              skill.slug,
             ),
           )}
         </div>
