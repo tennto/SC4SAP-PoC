@@ -122,7 +122,13 @@ samp {
 
 /* ---------- controls ---------- */
 
-button {
+/* `a.ghost` rides along on every `button` rule in this section. The Google
+   control is a link — it navigates, and `/api/auth/google` answers with a
+   redirect — but it has to look exactly like the button beside it, and
+   restating the declarations for an anchor is how two controls end up
+   drifting apart. */
+button,
+a.ghost {
   font: inherit;
   color: var(--ink);
   background: var(--panel);
@@ -144,33 +150,41 @@ button:hover:not(:disabled) {
   border-color: var(--ink-55);
 }
 
-button:active:not(:disabled) {
+button:active:not(:disabled),
+a.ghost:active {
   transform: translateY(1px);
 }
 
-button.ghost {
+button.ghost,
+a.ghost {
   background: transparent;
   border-color: var(--ink-38);
+  /* The one thing an anchor brings that a button does not. */
+  text-decoration: none;
 }
 
-button.ghost:hover:not(:disabled) {
+button.ghost:hover:not(:disabled),
+a.ghost:hover {
   background: var(--panel-2);
   border-color: var(--ink);
 }
 
 /* Buttons that carry an icon before their label. */
 button.primary,
-button.ghost {
+button.ghost,
+a.ghost {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-button .ph {
+button .ph,
+a.ghost .ph {
   font-size: 15px;
 }
 
-button:focus-visible {
+button:focus-visible,
+a.ghost:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
@@ -2273,6 +2287,37 @@ button.primary:hover:not(:disabled) {
   color: var(--bad);
 }
 
+/* A message about the field-pair above it, rather than about one input. The
+   form's 14px rhythm would leave it floating between the two rows, so it is
+   pulled back up to sit under the row it belongs to. */
+.auth-form > .field-error {
+  margin-top: -8px;
+}
+
+/* The way out of "that address is already registered", inline in the message
+   that says so. Carries the message's red rather than the app's link colour —
+   it is part of the sentence, not a second thing to notice. */
+.field-error-link {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 600;
+}
+
+/* The six-digit reset code. Monospace and tracked out so the digits are
+   countable at a glance and a transposition is visible — the same reason a
+   card number is grouped. Set wide enough for six figures plus the tracking
+   rather than sized to the box, so the placeholder and the value line up. */
+.field input.code-input {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  letter-spacing: 0.32em;
+  /* The tracking adds a gap after the last digit; pulling the text back by
+     half of it keeps the run visually centred. */
+  text-indent: 0.16em;
+  text-align: center;
+}
+
 .panel-actions {
   display: flex;
   align-items: center;
@@ -2294,6 +2339,23 @@ button.primary:hover:not(:disabled) {
 
 .link-button:hover {
   color: var(--ink);
+}
+
+/* `.link-button` was written for links, and the base `button` rule gives every
+   button a panel background, a border and padding. The reset resend control is
+   genuinely a button — it fires a request rather than navigating anywhere — so
+   the chrome comes back off here to match the links it sits among.
+   `button:disabled` still supplies the dimming during the cooldown. */
+button.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+}
+
+/* Nothing to click during the countdown, so it stops looking clickable. */
+button.link-button:disabled {
+  text-decoration: none;
 }
 
 /* ---------- motion ----------
@@ -2779,6 +2841,86 @@ button.primary:hover:not(:disabled) {
   height: 14px;
 }
 
+/* ---------- standalone legal ----------
+   Terms and Privacy read by someone who is not signed in. The document is the
+   same one the signed-in screen renders; only the frame differs, because
+   wrapping a reader who has no session in the app's navigation would put them
+   inside chrome they cannot use.
+
+   Centred and capped, where the in-app version fills the column beside the
+   rail — with no rail to balance it, a full-width legal document runs to a
+   measure nobody reads. */
+.legal-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  max-width: 900px;
+  /* `min-height`, not `height`: the whole point is that this page scrolls. */
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 26px 24px 40px;
+  box-sizing: border-box;
+}
+
+.legal-shell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-bottom: 20px;
+}
+
+.legal-shell-brand {
+  text-decoration: none;
+  color: inherit;
+}
+
+.legal-shell-head .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+
+.legal-shell-body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Inside the app `.page` is a scroll container inside the shell's content
+   column. Standing alone it has no such column, so the scrolling goes back to
+   the document and the horizontal padding to the wrapper above. */
+.legal-shell .page {
+  flex: none;
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
+}
+
+.legal-shell-foot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-55);
+}
+
+.legal-shell-foot a {
+  color: var(--ink-55);
+  text-underline-offset: 3px;
+}
+
+.legal-shell-foot a:hover {
+  color: var(--ink);
+}
+
 /* Sits between the form and its result, so it is tinted rather than boxed —
    a bordered block here would read as a fourth field. */
 .auth-status {
@@ -2795,6 +2937,34 @@ button.primary:hover:not(:disabled) {
   /* Aligns the glyph to the first line's cap height rather than its box. */
   margin-top: 1px;
   flex: none;
+}
+
+/* A rejected sign-in, not a note about one. Same red the invalid-field border
+   spends, so the form has one colour for "this did not work". */
+.auth-status.is-error {
+  color: var(--bad);
+}
+
+/* The submit button's glyph while a request is in flight. Phosphor's
+   `circle-notch` is a static ring with a gap, so the rotation has to come from
+   here; `reduce` stops it turning and leaves the gap as the still marker that
+   this button is busy. */
+.auth-submit .ph-circle-notch,
+.modal-actions .ph-circle-notch {
+  animation: auth-spin 900ms linear infinite;
+}
+
+@keyframes auth-spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-submit .ph-circle-notch,
+  .modal-actions .ph-circle-notch {
+    animation: none;
+  }
 }
 
 /* A rule with the word sitting in a gap in it, rather than three elements in

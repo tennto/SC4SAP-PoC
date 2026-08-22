@@ -1,31 +1,39 @@
 /**
- * Placeholder data for the home dashboard.
+ * The home dashboard's data shapes.
  *
- * NONE OF THIS IS REAL. Sign-up, sign-in and per-user credential intake do not
- * exist yet — they are Phase 5 (5-2 credential intake, 5-5 authentication) — so
- * the dashboard is laid out against fixtures instead of waiting on them.
+ * `Account` is now real: it is derived from the signed-in user's row by
+ * `lib/auth/users.ts` and reaches the screens through `lib/auth/session.ts`.
+ * There is no `ACCOUNT` constant any more — a page that needs one asks the
+ * session for it.
  *
- * The shapes are deliberately the shapes of the real sources, so swapping each
- * one is a matter of changing where the object comes from rather than
- * rewriting the screen:
+ * The other two are still fixtures, and still deliberately the shape of their
+ * real sources so that swapping each one is a matter of changing where the
+ * object comes from rather than rewriting the screen:
  *
- *   account     → the session's authenticated user            (Phase 5-5)
- *   sapSystem   → `~/.sc4sap/profiles/<alias>/config.json`
- *                 plus `sap.env`                              (Phase 5-2/5-3)
- *   credits     → the Anthropic Console usage/credit endpoint, keyed by the
- *                 user's own API key                          (Phase 5-4)
+ *   sapSystem   -> `~/.sc4sap/profiles/<alias>/config.json`
+ *                  plus `sap.env`                            (Phase 5-2/5-3)
+ *   credits     -> the Anthropic Console usage/credit endpoint, keyed by the
+ *                  user's own API key                        (Phase 5-4)
  *
- * The backend connection on this page is the one thing that is NOT fixture
- * data: it comes from the real `/health` call in `app/page.tsx`.
+ * The backend connection on this page is not fixture data either: it comes
+ * from the real `/health` call in `app/page.tsx`.
  */
 
 export type Account = {
+  /** The user row's `_id`, stringified. */
+  id: string;
+  /** Family name first, the order sign-up asks for the two parts in. */
   name: string;
   email: string;
-  role: string;
-  organization: string;
+  /** Not collected at sign-up. `null` until the settings screen can set it. */
+  role: string | null;
+  /** As above. */
+  organization: string | null;
   plan: string;
+  /** `YYYY-MM-DD`, from the row's `createdAt`. */
   memberSince: string;
+  /** Starred skill slugs, oldest first. See `lib/favorites.tsx`. */
+  favorites: string[];
 };
 
 export type SapSystem = {
@@ -63,15 +71,6 @@ export type Credits = {
    * shape, and this dashboard is served to a browser.
    */
   keyLabel: string;
-};
-
-export const ACCOUNT: Account = {
-  name: "Kim Sihoon",
-  email: "s2hoon326@gmail.com",
-  role: "SAP ABAP Developer",
-  organization: "SC4SAP",
-  plan: "PoC — bring your own key",
-  memberSince: "2026-08-06",
 };
 
 export const SAP_SYSTEM: SapSystem = {

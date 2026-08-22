@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { FavoritesProvider } from "@/lib/favorites";
+import { getAccount } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
   title: "SC4SAP Web PoC",
@@ -22,11 +23,29 @@ export const metadata: Metadata = {
 // Props are spelled out rather than using Next's generated `LayoutProps<"/">`
 // global, which only exists once `next build` has emitted `.next/types` — so
 // `npm run typecheck` would fail on a clean checkout.
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  /**
+   * Read here rather than in each screen, because the rail is in the layout
+   * and the account control is in the rail — a page-level read would leave the
+   * one component that shows who you are unable to see it.
+   *
+   * `getAccount` rather than `requireAccount`: this layout also wraps the
+   * sign-in and sign-up screens, where having no session is the normal state.
+   * Turning anonymous traffic away is `proxy.ts`'s job, and each protected
+   * page re-checks with `requireAccount`.
+   *
+   * Touching cookies makes every route under this layout dynamic. That is
+   * already true of the screens that matter — the dashboard is
+   * `force-dynamic` and the chat is a live stream — and a statically cached
+   * shell showing the previous visitor's name would be a bug, not an
+   * optimisation.
+   */
+  const account = await getAccount();
+
   return (
     <html lang="en">
       <head>
@@ -53,10 +72,13 @@ export default function RootLayout({
       <body>
         {/* Above the shell because both the rail and the dashboard read it,
             and neither contains the other. */}
-        <FavoritesProvider>
+        <FavoritesProvider
+          initial={account?.favorites ?? []}
+          signedIn={account !== null}
+        >
           {/* The rail lives in the layout, not in the pages, so it survives
               navigation instead of remounting on every route change. */}
-          <AppShell>{children}</AppShell>
+          <AppShell account={account}>{children}</AppShell>
         </FavoritesProvider>
       </body>
     </html>

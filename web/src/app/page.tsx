@@ -6,14 +6,16 @@
  * rail, which is where you go when you already know what you want; this screen
  * answers "am I set up, and can I afford to run something".
  *
- * Only the backend row is live — it comes from the real `/health` call below.
- * Account, SAP system and credits are fixtures from `lib/account.ts` until
- * Phase 5 gives each of them a real source; see that file for the mapping.
+ * The backend row and the account panel are live: the first from the real
+ * `/health` call below, the second from the signed-in user's row. SAP system
+ * and credits are still fixtures from `lib/account.ts` until Phase 5-2/5-4
+ * give each of them a real source; see that file for the mapping.
  */
 import Link from "next/link";
 import { BACKEND } from "@/lib/backend";
 import type { Health } from "@/lib/types";
-import { ACCOUNT, CREDITS, SAP_SYSTEM } from "@/lib/account";
+import { CREDITS, SAP_SYSTEM } from "@/lib/account";
+import { requireAccount } from "@/lib/auth/session";
 import { Icon } from "@/components/Icon";
 import { FavoriteSkills } from "@/components/FavoriteSkills";
 
@@ -70,6 +72,10 @@ function ConnectionRow({
 }
 
 export default async function HomePage() {
+  // Before anything is fetched or rendered. `proxy.ts` has already turned away
+  // requests with no cookie at all; this is the check that the cookie still
+  // names a session, and it redirects rather than rendering an empty shell.
+  const account = await requireAccount();
   const { health, error } = await loadHealth();
   const online = health !== null;
   const usedShare = Math.min(1, CREDITS.usedUsd / CREDITS.limitUsd);
@@ -79,7 +85,7 @@ export default async function HomePage() {
       <header className="page-head rise">
         <div>
           <p className="eyebrow">SC4SAP · Web PoC</p>
-          <h1>Welcome back, {ACCOUNT.name.split(" ")[0]}</h1>
+          <h1>Welcome back, {account.name.split(" ")[0]}</h1>
           <p className="page-lede">
             Everything this session is pointed at, in one place. Pick a skill
             from the rail when you are ready to run one.
@@ -176,27 +182,29 @@ export default async function HomePage() {
           <dl className="facts">
             <div>
               <dt>Name</dt>
-              <dd>{ACCOUNT.name}</dd>
+              <dd>{account.name}</dd>
             </div>
             <div>
               <dt>Email</dt>
-              <dd>{ACCOUNT.email}</dd>
+              <dd>{account.email}</dd>
             </div>
+            {/* Neither is asked for at sign-up. The row stays, so the panel
+                does not change shape once settings can fill them in. */}
             <div>
               <dt>Role</dt>
-              <dd>{ACCOUNT.role}</dd>
+              <dd>{account.role ?? "Not set"}</dd>
             </div>
             <div>
               <dt>Organization</dt>
-              <dd>{ACCOUNT.organization}</dd>
+              <dd>{account.organization ?? "Not set"}</dd>
             </div>
             <div>
               <dt>Plan</dt>
-              <dd>{ACCOUNT.plan}</dd>
+              <dd>{account.plan}</dd>
             </div>
             <div>
               <dt>Member since</dt>
-              <dd>{ACCOUNT.memberSince}</dd>
+              <dd>{account.memberSince}</dd>
             </div>
           </dl>
         </section>

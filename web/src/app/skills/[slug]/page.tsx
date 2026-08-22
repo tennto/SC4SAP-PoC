@@ -11,16 +11,24 @@
  * for free.
  */
 import Link from "next/link";
+import { requireAccount } from "@/lib/auth/session";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { findSkill, SKILLS, type SkillField } from "@/lib/skills";
+import { findSkill, type SkillField } from "@/lib/skills";
 import { Icon } from "@/components/Icon";
 
 type Params = { slug: string };
 
-export function generateStaticParams(): Params[] {
-  return SKILLS.map((skill) => ({ slug: skill.slug }));
-}
+/**
+ * No `generateStaticParams` any more. Every route in the app now reads the
+ * session cookie — the root layout for the rail's account control, this page
+ * for its own guard — so nothing here can be prerendered at build time, and
+ * enumerating the slugs for a prerender that cannot happen would only be a
+ * build-time error waiting to be hit.
+ *
+ * `lib/skills` is still the source of the catalog; it is read at request time
+ * by `findSkill` below and by the rail.
+ */
 
 export async function generateMetadata({
   params,
@@ -90,6 +98,9 @@ export default async function SkillPage({
 }: {
   params: Promise<Params>;
 }) {
+  // Same guard as the dashboard: `proxy.ts` checks that a cookie exists,
+  // this checks that it still resolves to a user before rendering.
+  await requireAccount();
   const skill = findSkill((await params).slug);
   if (!skill) notFound();
 

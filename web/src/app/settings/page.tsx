@@ -9,6 +9,7 @@
  * inventing new ones here.
  */
 import type { Metadata } from "next";
+import { requireAccount } from "@/lib/auth/session";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { SAP_SYSTEM } from "@/lib/account";
@@ -55,7 +56,11 @@ function Group({
   );
 }
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  // Same guard as the dashboard: `proxy.ts` checks that a cookie exists,
+  // this checks that it still resolves to a user before rendering.
+  await requireAccount();
+
   return (
     <div className="page">
       <header className="page-head rise">

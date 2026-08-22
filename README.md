@@ -12,14 +12,19 @@ shell, the streaming transcript, the approval modal and markdown rendering.
 
 ```bash
 npm install
-npm run web:install       # frontend deps (separate package under web/)
-cp .env.example .env      # then fill in ANTHROPIC_API_KEY
-npm run workspace         # provision the session cwd (no API key needed)
+npm run web:install               # frontend deps (separate package under web/)
+cp .env.example .env              # then fill in ANTHROPIC_API_KEY
+cp web/.env.example web/.env.local  # then fill in MONGODB_URI
+npm run workspace                 # provision the session cwd (no API key needed)
 ```
 
 `ANTHROPIC_API_KEY` is required. The Agent SDK **cannot** reuse a Claude Code / claude.ai
 login — Anthropic does not permit that for third-party SDK apps, so the PoC bills against
 an API key issued from the Console. Set a spend cap on it.
+
+`MONGODB_URI` is required by the frontend, and only by the frontend — the backend does not
+know that users exist. Any MongoDB will do; an Atlas free tier needs no local install. The
+`users` and `sessions` collections and their indexes are created on first use.
 
 ## Scripts
 
@@ -30,7 +35,7 @@ an API key issued from the Console. Set a spend cap on it.
 | `npm run smoke:hook` | 1-5 | **yes** | Induces a blocklisted row extraction and checks the guardrail fires |
 | `npm run server` | 2-1 / 2-2 | **yes** | Backend API on `127.0.0.1:3001` (`PORT` / `HOST` override) |
 | `npm run e2e` | 2-6 | **yes** | Drives a running server over HTTP+SSE and asserts 8 scenarios |
-| `npm run web` | 3-1 | — | Next.js dev server on `127.0.0.1:3000`, proxying to the backend |
+| `npm run web` | 3-1 / 5-5 | — | Next.js dev server on `127.0.0.1:3000`, proxying to the backend. Needs `MONGODB_URI` for anything behind sign-in |
 | `npm run web:install` | 3-1 | no | Installs `web/`'s own dependency tree |
 | `npm run web:build` | 3-1 | no | Production build of the frontend (`next build`) |
 | `npm run typecheck` | — | no | `tsc --noEmit` over the server **and** `web/` |
@@ -338,6 +343,229 @@ unreadable as preformatted plain text.
   paragraphs before it snaps into a grid. That is the trade for not making the reader wait
   for the turn to end.
 
+## Authentication (5-5)
+
+Accounts live entirely in the Next.js layer. The Fastify backend was not touched: it has no
+user model, and reaching it from a browser means going through `/api/*`, which is guarded.
+
+**Store.** MongoDB, two collections. `users` carries the name, the address twice
+(lower-cased for lookup, as-typed for display) and a password hash; a unique index on the
+lower-cased address is what actually prevents two sign-ups racing on the same email, since
+the "already registered" check above it is a read before a write. `sessions` carries the
+SHA-256 of a token and an `expiresAt` with a TTL index, so expiry is enforced by the
+database rather than trusted to every reader.
+
+**Passwords** are hashed with Node's own `scrypt` — bcrypt and argon2 are native modules,
+which means a compile step on every install and the usual place a Windows checkout falls
+over. The stored string carries its own cost parameters, so raising them later does not
+invalidate existing rows.
+
+**Sessions** are a random 256-bit token in an httpOnly, `SameSite=Lax` cookie, resolved
+against a row. Database-backed rather than a signed JWT, because sign-out has to actually
+end the session — a stateless token stays valid until it expires no matter what the server
+thinks. Only the hash is stored, so a database dump hands over no usable cookies.
+
+**Endpoints.** `POST /api/auth/signup` (201, signs the new account in), `POST
+/api/auth/signin`, `POST /api/auth/signout` (204 either way), `GET /api/auth/me`, plus the
+two reset endpoints below. These sit above `app/api/[...path]/route.ts` in the routing
+table — a concrete segment beats a catch-all — so they are served by Next and never reach
+the backend.
+
+Sign-in answers with one sentence for every failure and no field attribution, and spends a
+scrypt derivation even on an unknown address, so the form cannot be used to enumerate who
+has an account. Sign-up is the one place that cannot hide it, and says so plainly.
+
+**The guard is in two halves.** `web/src/proxy.ts` (Next 16's rename of `middleware.ts`)
+runs before every request and checks only whether a session cookie is *present* — no
+database round trip, on a file Next documents as something that may run outside the app's
+own runtime. `requireAccount()` then does the authoritative lookup inside each protected
+Server Component, before it renders anything. Anonymous traffic never reaches a page; a
+stale or forged cookie gets past the first half and is stopped by the second.
+
+Public routes are `/signin`, `/signup`, `/terms`, `/privacy` and `/api/auth/*`. Everything
+else, including the backend forwarder at `/api/*`, needs a session — an unauthenticated API
+call gets a 401 rather than a redirect to HTML that would surface at the call site as a
+JSON parse error.
+
+One consequence worth knowing: the root layout reads the session so the rail can show who
+is signed in, which makes every route in the app dynamic. `generateStaticParams` came out
+of the skill page for that reason.
+
+### Google sign-in
+
+OAuth 2.0 Authorization Code with PKCE, written out in `lib/auth/google.ts` rather than
+delegated to Auth.js. That is not NIH: the app already has sessions, a route guard, a
+password reset and per-user state built on its own session layer, and Auth.js would replace
+that layer and take all four with it. What is actually wanted from Google is a verified
+email address, and the flow that produces one ends by calling the same `startSession` the
+password form does.
+
+`GET /api/auth/google` plants three one-shot httpOnly cookies and redirects;
+`GET /api/auth/google/callback` spends them. Each answers a different attack:
+
+- **`state`** — the callback is a GET that somebody else can point a browser at. Without it
+  an attacker hands you *their* authorization code and your browser signs in as them.
+- **`code_verifier`** (PKCE) — an intercepted authorization code is useless without it.
+- **`nonce`** — binds the returned ID token to the request that started the flow, so a token
+  minted elsewhere cannot be replayed into this one.
+
+All three are `SameSite=Lax`, not `Strict`: the callback arrives as a top-level navigation
+from `accounts.google.com`, and `Strict` would withhold the cookies from exactly the request
+that needs them. They are deleted on the way in whatever the outcome, so a failed attempt
+cannot be retried with the same secrets.
+
+The ID token's signature is deliberately not verified. It arrives on the response to a
+request this server made directly to Google over TLS, authenticated with the client secret —
+there is no intermediary who could have substituted it, which is the case Google's own
+documentation exempts. `iss`, `aud`, `exp` and `nonce` **are** checked, because those say
+what the token is for.
+
+**Account resolution** runs in three steps: a row already carrying this Google `sub`; then a
+row with this address, which gets linked; then a new account. Matching on `sub` before
+address is deliberate — an address can be changed or reassigned on Google's side and `sub`
+cannot. Linking on address is safe only because `email_verified` is required: that is the
+same proof of mailbox control the password reset relies on, and an unverified address is
+refused outright. `users.google.sub` carries a sparse unique index, so one Google account
+cannot come to own two rows.
+
+A Google-created account has no `passwordHash` at all — absent, not a placeholder. Password
+sign-in for it fails with the same sentence every other failed sign-in gets, and spends the
+same scrypt derivation doing it, so the form does not become a way to ask which accounts
+sign in which way. Such an account gains a password by going through the reset flow, after
+which both routes work.
+
+The reserved-account rule applies here too, or Google would simply be the way around it.
+
+Everything that can fail redirects to `/signin?error=<code>`, which the form turns back into
+a sentence via `lib/auth/google-errors.ts` — the callback is reached by a browser navigation,
+so what it returns has to be a page. **With no `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`
+the button explains it is not configured** and the rest of the app is unaffected.
+
+Google exempts `http://localhost` from its HTTPS rule for redirect URIs, so this needs no
+deployment to develop against. The registered URI must match what the callback builds from
+the request origin character for character — reaching the app over `127.0.0.1` produces a
+different string and would need its own entry.
+
+### Favourite skills
+
+Starred skills are per-user and persistent: `favorites`, an array of slugs on the user's
+row. An array rather than a collection of its own — it is a short list, only ever read
+whole, and only ever alongside the user it belongs to. Rows written before the field existed
+have no field at all, and every reader treats that as an empty list, so there is no
+migration.
+
+The root layout has already read the session, so it hands the list straight to
+`FavoritesProvider`. The first paint is therefore already correct — no fetch on mount, and
+no moment where every star is hollow before the real answer lands.
+
+`POST /api/favorites` takes one slug and a boolean, not the whole array, and applies it with
+`$addToSet` / `$pull`. Two tabs starring different skills at the same moment both land, where
+writing the array back whole would let the slower request undo the faster one. `$addToSet`
+appends, so the list stays in the order things were starred. The slug is checked against the
+catalog rather than merely for being a string — it is going into the user's row, and an
+unbounded value would make that row somewhere to park arbitrary text.
+
+The response carries the list as the database now holds it and the client adopts it, so an
+optimistic guess that was wrong is corrected by the same round trip. A request that fails
+puts the star back: one that stays lit while nothing was saved is a worse lie than one that
+visibly pops back.
+
+### Reserved accounts
+
+`lib/reserved-accounts.ts` refuses sign-ups that would read as official — `admin@…`,
+`superuser@…`, a display name of "Administrator". This is not a security control: a real
+operations account would be created by an operator, not through the form. It is that the
+rail shows the account's name beside every session, and a name that looks official is
+something a person can lean on in a conversation with a colleague.
+
+Two lists, because one match rule cannot serve both halves:
+
+- **Anywhere in the local part** — long, specific terms where an accidental collision is
+  very unlikely: `admin`, `superuser`, `postmaster`, `webmaster`, `moderator`, `noreply`,
+  `helpdesk`, and the product's own `sc4sap` / `superclaude`. `admin` alone therefore also
+  catches `sysadmin`, `admin-prod` and `kim.admin.ops`.
+- **The whole local part only**, optionally with trailing digits — ordinary words where a
+  substring match would reject real people: `root`, `dev`, `ops`, `support`, `master`. So
+  `root`, `root2` and `r_o_o_t` are refused while `rootes` and `grootveld` are not.
+
+The address is normalized first — lower-cased, `+tag` dropped, every non-alphanumeric
+character removed — so padding a reserved word with dots, dashes or underscores does not
+walk past the list.
+
+Names are held to the exact rule only, never the substring one. Telling somebody their
+surname is reserved is a worse outcome than the display-name impersonation it would prevent.
+
+The rule runs in the form and in the endpoint, from the same module, so the two cannot
+drift. The endpoint is the one that decides; the form's copy only saves a round trip.
+
+### Password reset
+
+`POST /api/auth/forgot` issues a six-digit code and mails it; `POST /api/auth/reset` spends
+it. Both live behind one screen, `/forgot`, because a code has no link to click and the
+person is still in front of the form when they go and read it.
+
+A code rather than a link, because a link needs a host to point at and this app is
+localhost. Six digits is a million-wide space, which is small enough that the guessing
+defences are the substance of `lib/auth/reset.ts` rather than a footnote:
+
+- the code comes from `crypto.randomInt` — CSPRNG-backed and unbiased, not `Math.random()`
+  scaled into range;
+- only a scrypt hash of it is stored, so ~100ms is imposed per guess, online and offline;
+- five wrong guesses burn it, and the burnt row is **kept until it expires** rather than
+  deleted — the reissue cooldown works by finding a live row for that address, so deleting
+  it would hand out a fresh code immediately and make the five-guess ceiling meaningless;
+- a new code cannot be issued more than once a minute per address;
+- the code lives ten minutes, and the reset demands the address alongside it, so the odds
+  stay at five-in-10^6 rather than five against every account at once.
+
+`/api/auth/forgot` answers 200 for any well-formed address — registered or not, throttled
+or not, delivered or not. It is the one endpoint where enumerating accounts would be
+trivially scriptable, and none of those outcomes gives the caller anything to do
+differently.
+
+A completed reset revokes **every** session that user had, this browser included, and hands
+back no new one. Someone resetting a password often believes another party has it, and a
+reset that leaves that party signed in does not answer the problem; signing in with the new
+password is also the proof they know it.
+
+**Mail** goes through Resend's REST API (`lib/mail.ts`), via plain `fetch` rather than the
+SDK — the whole surface needed here is one POST with a bearer token. **With no
+`RESEND_API_KEY` the message is written to the `next dev` log instead of being sent**, which
+is what makes the flow work on a fresh checkout with no mail account. That is a development
+affordance and the log says so in as many words.
+
+`lib/mail.ts` is transport; what the message says and looks like is `lib/mail-templates.ts`.
+Both a plain-text and an HTML part are sent — some clients show only the former, and an
+HTML-only message also scores worse with spam filters.
+
+Email HTML is not web HTML and none of `globals.css` reaches it: no external stylesheet is
+fetched, `<style>` blocks are stripped by some clients, flexbox and grid are unreliable, and
+Outlook renders through Word. So the template is tables, every style inline, `bgcolor`
+attributes alongside the CSS, a system font stack, and the app's translucent ink tokens
+flattened to the opaque values they resolve to on white.
+
+Two decisions in there are worth keeping:
+
+- **The mark sits on a dark band**, and is the white cut of the logo. Clients that force
+  dark mode recolour CSS but never the pixels of an image, so a black transparent logo on a
+  white panel disappears the moment that panel is darkened for the reader. A band that is
+  already dark is left alone.
+- **The logo travels with the message** as an inline CID attachment (Resend's `content_id`),
+  not as a hosted URL. There is nowhere to host it — the app is on localhost, and nothing in
+  an inbox can reach that. The code itself is selectable text and never an image: an image
+  cannot be copied, and images are blocked by default in much of the world.
+
+If the logo file cannot be read the message still goes out, with a wordmark in its place.
+
+Resend's shared sender (`onboarding@resend.dev`, the default) needs no domain verification
+but **only delivers to the address that owns the Resend account**, and rejects reserved test
+domains such as `example.com` outright. Reaching anyone else means verifying a domain and
+pointing `RESEND_FROM` at it.
+
+**Not done here.** Google sign-in is still a dead button; there is no email verification, no
+rate limit on sign-in attempts (only on reset codes), and no way to change a password from
+inside the app while signed in.
+
 ## Not yet done
 
 Phase 3 item 3-5 (browser QA), Phase 4 (scenario E2E).
@@ -353,5 +581,8 @@ restricted, because skills legitimately write artifacts under `.sc4sap/` and the
 permits skill runs. `Bash` in particular could reach SAP outside the MCP layer. Worth
 closing before this is exposed beyond localhost.
 
-Known PoC limitations — no auth, no multi-user isolation, single shared SAP profile,
-no `team` skill (the SDK has no agent teams) — are tracked in the plan's Phase 5.
+Known PoC limitations — no multi-user isolation, single shared SAP profile, no `team`
+skill (the SDK has no agent teams) — are tracked in the plan's Phase 5. Authentication is
+now in (see below); what it does **not** yet do is separate one user's sessions, workspace
+or SAP profile from another's. Every signed-in account still drives the same backend and
+the same shared profile.

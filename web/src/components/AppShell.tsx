@@ -22,6 +22,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SkillNav } from "@/components/SkillNav";
 import { AccountMenu } from "@/components/AccountMenu";
+import type { Account } from "@/lib/account";
 import { Icon } from "@/components/Icon";
 
 /** Must match the `@media (max-width: …)` breakpoint in globals.css. */
@@ -37,9 +38,31 @@ const COLLAPSE_KEY = "sc4sap.railCollapsed";
  * page exists to be. The shell lives in the root layout, which cannot opt a
  * child route out, so the opt-out is here.
  */
-const BARE_ROUTES = ["/signin", "/signup"];
+const BARE_ROUTES = ["/signin", "/signup", "/forgot"];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+/**
+ * Reachable both signed in and signed out, and the only routes for which that
+ * is true. Signed in they are ordinary screens inside the rail, reached from
+ * the account menu; signed out they are reached from the footer of the auth
+ * screens, and wrapping them in the app's navigation would put someone who has
+ * not signed in inside the application chrome. So they get their own shell —
+ * see `legalStandalone` below.
+ */
+const LEGAL_ROUTES = ["/terms", "/privacy"];
+
+/**
+ * `account` is read from the session in the root layout and threaded down
+ * rather than fetched here, because the shell is a Client Component and the
+ * session lives behind `server-only` code. It is `null` on the bare routes,
+ * where there is no session yet by definition.
+ */
+export function AppShell({
+  children,
+  account,
+}: {
+  children: React.ReactNode;
+  account: Account | null;
+}) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
@@ -92,9 +115,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
   }, [narrow]);
 
-  const bare = BARE_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
-  );
+  const matches = (routes: string[]): boolean =>
+    routes.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`),
+    );
+
+  const bare = matches(BARE_ROUTES);
+  /**
+   * A legal page with nobody signed in. `account` is the whole test: a stale
+   * cookie that no longer resolves lands here too, which is right — that
+   * reader has no session either.
+   */
+  const legalStandalone = !account && matches(LEGAL_ROUTES);
 
   const railCollapsed = !narrow && collapsed;
   const expanded = narrow ? drawerOpen : !collapsed;
@@ -119,6 +151,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       : "caret-double-left";
 
   if (bare) return <>{children}</>;
+
+  if (legalStandalone) {
+    return (
+      <div className="legal-shell">
+        <header className="legal-shell-head">
+          <Link className="legal-shell-brand" href="/signin">
+            <span className="rail-wordmark">
+              <b>Super-Claude</b> for SAP
+            </span>
+          </Link>
+
+          <Link className="link-button" href="/signin">
+            <Icon name="arrow-left" /> Back to sign in
+          </Link>
+        </header>
+
+        {/* The document itself is untouched — same markup, same classes as the
+            signed-in screen. Only the frame around it differs, and the CSS
+            hands `.page` back the scrolling it normally delegates to the
+            shell's content column. */}
+        <main className="legal-shell-body">{children}</main>
+
+        <footer className="legal-shell-foot">
+          <Link href="/signin">Sign in</Link>
+          <span aria-hidden="true">·</span>
+          <Link href="/signup">Sign up</Link>
+          <span aria-hidden="true">·</span>
+          <Link href="/terms">Terms</Link>
+          <span aria-hidden="true">·</span>
+          <Link href="/privacy">Privacy</Link>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -161,7 +227,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
 
         <div className="rail-foot">
-          <AccountMenu collapsed={railCollapsed} />
+          <AccountMenu collapsed={railCollapsed} account={account} />
         </div>
       </aside>
 

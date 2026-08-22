@@ -14,6 +14,7 @@
  * Everything interactive lives under `<Chat>`, which is a client component.
  */
 import { BACKEND } from "@/lib/backend";
+import { requireAccount } from "@/lib/auth/session";
 import type { Health, Session } from "@/lib/types";
 import { Chat } from "@/components/Chat";
 
@@ -59,6 +60,9 @@ async function loadInitialState(): Promise<InitialState> {
 }
 
 export default async function ChatPage() {
+  // Same guard as the dashboard: `proxy.ts` checks that a cookie exists,
+  // this checks that it still resolves to a user before rendering.
+  await requireAccount();
   const initial = await loadInitialState();
 
   return (

@@ -32,6 +32,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...opting in for the template, which carries no secrets and is the only
+# record of which variables the app needs.
+!.env.example
+
+# The credential file Atlas onboarding hands out. `.env*` above does NOT catch
+# it — that pattern only matches names *starting* with `.env` — and it carries
+# the database password in plain text.
+atlas-credentials.env
+*credentials*.env
 
 # vercel
 .vercel

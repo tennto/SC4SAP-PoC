@@ -24,6 +24,7 @@ export function ConfirmModal({
   confirmIcon,
   cancelLabel = "Cancel",
   note,
+  busy = false,
   onConfirm,
   onCancel,
 }: {
@@ -37,6 +38,12 @@ export function ConfirmModal({
   cancelLabel?: string;
   /** Small print on the left of the button row. */
   note?: string;
+  /**
+   * The confirmed action is in flight. Both buttons lock, so a second press
+   * cannot fire it twice and cancelling cannot race the thing it would be
+   * cancelling.
+   */
+  busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -48,11 +55,11 @@ export function ConfirmModal({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") onCancel();
+      if (event.key === "Escape" && !busy) onCancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, [onCancel, busy]);
 
   return (
     <div className="modal-backdrop">
@@ -79,11 +86,16 @@ export function ConfirmModal({
 
         <div className="modal-actions">
           {note ? <p className="modal-note">{note}</p> : null}
-          <button className="ghost" onClick={onCancel}>
+          <button className="ghost" onClick={onCancel} disabled={busy}>
             {cancelLabel}
           </button>
-          <button className="primary" ref={confirmRef} onClick={onConfirm}>
-            {confirmIcon ? <Icon name={confirmIcon} /> : null}
+          <button
+            className="primary"
+            ref={confirmRef}
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {confirmIcon ? <Icon name={busy ? "circle-notch" : confirmIcon} /> : null}
             {confirmLabel}
           </button>
         </div>

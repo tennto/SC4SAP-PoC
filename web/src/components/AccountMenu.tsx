@@ -21,8 +21,8 @@
  */
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ACCOUNT } from "@/lib/account";
+import { usePathname, useRouter } from "next/navigation";
+import type { Account } from "@/lib/account";
 import { Icon } from "@/components/Icon";
 import { FeedbackModal } from "@/components/FeedbackModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -40,13 +40,27 @@ const LEGAL_PAGES = [
   { href: "/privacy", label: "Privacy policy", icon: "shield-check" },
 ] as const;
 
-export function AccountMenu({ collapsed }: { collapsed: boolean }) {
+export function AccountMenu({
+  collapsed,
+  account,
+}: {
+  collapsed: boolean;
+  /**
+   * `null` when the session cookie did not resolve to a user — a cookie that
+   * expired between the middleware waving the request through and the layout
+   * looking it up. The button then names the state instead of a person, and
+   * the only thing in the menu worth pressing is Log out, which clears it.
+   */
+  account: Account | null;
+}) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   /** Which nested submenu is showing, if any. */
   const [nested, setNested] = useState<"language" | "legal" | null>(null);
   const [feedback, setFeedback] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [language, setLanguage] = useState<Language>("EN");
+  const [loggingOut, setLoggingOut] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
@@ -78,6 +92,31 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
     };
   }, [open]);
 
+  /**
+   * Clear the session, then leave for the sign-in screen.
+   *
+   * `replace` rather than `push`, so the back button cannot return to a
+   * rendered copy of a screen this account no longer has, and `refresh` so the
+   * layout re-reads a session that is now gone.
+   *
+   * A failed request still navigates: `/api/auth/signout` answers 204 whether
+   * or not it found a row, so the realistic failure is the network, and
+   * stranding someone inside the app because a fetch did not land is the worse
+   * outcome — the middleware will bounce them right back here.
+   */
+  async function logOut(): Promise<void> {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await fetch("/api/auth/signout", { method: "POST" });
+    } catch {
+      // Deliberately swallowed; see above.
+    }
+    setConfirmLogout(false);
+    router.replace("/signin");
+    router.refresh();
+  }
+
   return (
     <div className="account" ref={root}>
       <button
@@ -85,7 +124,9 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
         aria-haspopup="menu"
-        title={collapsed ? `${ACCOUNT.name} — ${ACCOUNT.email}` : undefined}
+        title={
+          collapsed && account ? `${account.name} — ${account.email}` : undefined
+        }
       >
         {/* A person in a ring. Round, where every other icon container in the
             app is a rounded square, because this slot stands for a person
@@ -95,8 +136,8 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
           <Icon name="user" />
         </span>
         <span className="account-main">
-          <span className="account-name">{ACCOUNT.name}</span>
-          <span className="account-sub">{ACCOUNT.email}</span>
+          <span className="account-name">{account?.name ?? "Signed out"}</span>
+          <span className="account-sub">{account?.email ?? "No session"}</span>
         </span>
         <Icon name="caret-right" />
       </button>
@@ -199,9 +240,8 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
 
           <div className="account-divider" />
 
-          {/* No auth to sign out of yet — Phase 5-5. Present so the menu is
-              the shape it will keep, and it asks first: signing out is cheap to
-              confirm and annoying to do by accident on the way to Legal. */}
+          {/* Asks first: signing out is cheap to confirm and annoying to do
+              by accident on the way to Legal. */}
           <button
             className="account-item"
             role="menuitem"
@@ -225,9 +265,9 @@ export function AccountMenu({ collapsed }: { collapsed: boolean }) {
           description="Running sessions keep going on the backend, and their transcripts are waiting when you sign back in."
           confirmLabel="Log out"
           confirmIcon="sign-out"
-          note="No backend to sign out of yet."
-          onConfirm={() => setConfirmLogout(false)}
+          onConfirm={logOut}
           onCancel={() => setConfirmLogout(false)}
+          busy={loggingOut}
         />
       )}
     </div>
