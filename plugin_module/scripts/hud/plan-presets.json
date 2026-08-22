@@ -1,0 +1,22 @@
+{
+  "_comment": "Approximate 5-hour / 7-day / overage limits per Anthropic plan. Values are publicly discussed estimates; adjust as Anthropic refines their plan caps. 'extra' = the overage bucket activated once weekly usage exceeds the base limit.",
+  "_schema": {
+    "fiveH": "USD basis for the 5h block (100% at this value)",
+    "weekly": "USD basis for the 7d rolling window (100% at this value)",
+    "extra": "USD basis for the +extra overage segment"
+  },
+  "plans": {
+    "pro":    { "fiveH":  7,  "weekly":  40,  "extra":  20 },
+    "max5x":  { "fiveH": 35,  "weekly": 140,  "extra":  70 },
+    "max20x": { "fiveH": 140, "weekly": 560,  "extra": 280 },
+    "team":   { "fiveH":  35, "weekly": 200,  "extra": 100 },
+    "api":    { "fiveH":   0, "weekly":   0,  "extra":   0 }
+  },
+  "aliases": {
+    "pro":    ["pro", "claude-pro"],
+    "max5x":  ["max", "max5", "max-5x", "max_5x", "5x"],
+    "max20x": ["max20", "max-20x", "max_20x", "20x"],
+    "team":   ["team", "teams", "enterprise"],
+    "api":    ["api", "payg", "pay-as-you-go"]
+  }
+}

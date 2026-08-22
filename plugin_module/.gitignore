@@ -1,0 +1,21 @@
+node_modules/
+dist/
+vendor/
+.omc/
+.sc4sap/
+*.log
+.env
+.DS_Store
+.claude/settings.local.json
+
+# local dev tool state (never commit)
+.claude/
+.cursor/
+.entire/
+
+# exception: bundled keyring for git-clone distribution
+!runtime-deps/**/node_modules/
+!runtime-deps/**/node_modules/**
+
+# local-only plan doc (never commit)
+PLAN.local.md
