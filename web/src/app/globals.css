@@ -2741,6 +2741,109 @@ button.link-button:disabled {
   background: var(--bg);
 }
 
+/* ---------- sign-in: split layout ----------
+   Sign-in alone runs as two columns — a looping video on the left, the card on
+   the right. Sign-up and the password screens keep the single centred column,
+   which is why this hangs off its own class rather than off `.auth`.
+
+   The outer padding moves from `.auth` to the pane: the video is meant to run
+   to the window edges, and the card still needs its breathing room. */
+.auth-split {
+  /* The two knobs for the video. `--auth-media-w` is the column it gets; the
+     plate fills that width and takes whatever height the file's own aspect
+     ratio asks for, so this one number moves both dimensions together.
+     `--auth-media-shift` is how far in from the window's left edge it
+     starts. */
+  --auth-media-w: 38%;
+  --auth-media-shift: 200px;
+  /* And how far the card sits left of where centring the column would put
+     it. Its own knob, so moving the video does not drag the card with it. */
+  --auth-card-shift: 140px;
+  /* The shift is its own column rather than a left margin on the plate: a
+     margin would take the offset out of the video's width, where a spacer
+     moves it across at the size it already had. */
+  grid-template-columns:
+    minmax(0, var(--auth-media-shift))
+    minmax(0, var(--auth-media-w))
+    1fr;
+  justify-items: stretch;
+  /* The row is sized by the card column and centred in the window, rather
+     than stretched to it. That is what gives the video a height to match:
+     it has no intrinsic height of its own here (see below), so the row is
+     the card's, and the video stretches into it. */
+  align-content: center;
+  gap: 0;
+  padding: 0;
+}
+
+/* A plate sitting in the column rather than filling it, pushed right by the
+   shift. Its top and bottom line up with the card's because the margins here
+   match `.auth-pane`'s padding and the row is the card's height.
+
+   Both copies inside are absolutely positioned, so this box has no content
+   height to contribute — without that the row would size itself to the video
+   and the matching would be circular. */
+.auth-media {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  grid-column: 2;
+  margin: 24px 20px;
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+/* Filling a plate whose height is the card's means the file's own ratio will
+   not fit it, so `cover` crops to the edges rather than letterboxing or
+   stretching.
+
+   Both copies `LoopingVideo` renders are stacked here. No opacity transition:
+   its handoff still overlaps the two by `OVERLAP_MS`, but what the eye gets
+   at the join is a cut. */
+.auth-media-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* The centring `.auth` did for the whole viewport, now scoped to the right
+   column. `min-height: 0` so a card taller than the window is clipped by this
+   pane rather than stretching the grid row. */
+.auth-pane {
+  grid-column: 3;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 16px;
+  min-height: 0;
+  /* The 24px top and bottom are what the video's margins match — see
+     `.auth-media`. The extra on the right is the shift: padding rather than a
+     transform, so the card stays inside its column at every width. */
+  padding: 24px calc(20px + var(--auth-card-shift)) 24px 20px;
+  overflow: hidden;
+}
+
+/* One column below this: half a narrow window is not enough for either the
+   form or a video worth watching, and the form is the one with a job. */
+@media (max-width: 860px) {
+  .auth-split {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-pane {
+    grid-column: 1;
+    /* Nothing beside it to sit clear of once the video is gone. */
+    --auth-card-shift: 0px;
+  }
+
+  .auth-media {
+    display: none;
+  }
+}
+
 .auth-card {
   width: 100%;
   max-width: 520px;

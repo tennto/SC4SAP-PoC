@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { GoogleMark } from "@/components/GoogleMark";
+import { LoopingVideo } from "@/components/LoopingVideo";
 import { PASSWORD_RULE, isPasswordValid } from "@/lib/password";
 import { googleErrorMessage } from "@/lib/auth/google-errors";
 
@@ -89,108 +90,116 @@ export default function SignInPage() {
   }
 
   return (
-    <main className="auth">
-      <div className="auth-card rise">
-        <Link className="auth-brand" href="/">
-          <span className="rail-wordmark">
-            <b>Super-Claude</b> for SAP
-          </span>
-        </Link>
-
-        <header className="auth-head">
-          <h1>Sign in</h1>
-          <p className="auth-lede">
-            Use the account your SAP connection profile is registered to.
-          </p>
-        </header>
-
-        <form className="auth-form" onSubmit={submit}>
-          <label className="field">
-            <span className="field-label">Email</span>
-            <input
-              type="email"
-              name="email"
-              autoComplete="username"
-              placeholder="example@company.com"
-              value={email}
-              onChange={(event) => {
-                setEmail(event.target.value);
-                // A message about a Google attempt is not about the form they
-                // have now started filling in.
-                setError(null);
-              }}
-              disabled={busy}
-              required
-            />
-          </label>
-
-          <label className="field">
-            <span className="field-label">Password</span>
-            <input
-              className={showPasswordError ? "is-invalid" : undefined}
-              type="password"
-              name="password"
-              autoComplete="current-password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              onBlur={() => setPasswordTouched(true)}
-              aria-invalid={showPasswordError || undefined}
-              disabled={busy}
-              required
-            />
-            {showPasswordError ? (
-              <span className="field-error" role="alert">
-                {PASSWORD_RULE}
-              </span>
-            ) : null}
-          </label>
-
-          <div className="auth-row">
-            <Link className="link-button" href="/forgot">
-              Forgot password
-            </Link>
-          </div>
-
-          <button
-            className="primary auth-submit"
-            type="submit"
-            disabled={!complete || busy}
-          >
-            <Icon name={busy ? "circle-notch" : "sign-in"} />
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-
-          {error ? (
-            <p className="auth-status is-error" role="alert">
-              <Icon name="warning-circle" /> {error}
-            </p>
-          ) : afterReset ? (
-            <p className="auth-status" role="status">
-              <Icon name="check-circle" /> Password changed. Everything that was
-              signed in has been signed out — including this browser.
-            </p>
-          ) : null}
-
-          <div className="auth-sep">
-            <span>or</span>
-          </div>
-
-          {/* A link, not a button: `/api/auth/google` answers with a redirect
-              to Google, and a plain navigation is what should follow one. It
-              also means the flow survives with JavaScript still loading. */}
-          <a className="ghost auth-submit" href="/api/auth/google">
-            <GoogleMark />
-            Continue with Google
-          </a>
-        </form>
+    <main className="auth auth-split">
+      {/* Decoration, not content: muted, looping, and hidden from the
+          accessibility tree, so nothing here is announced or focusable. */}
+      <div className="auth-media" aria-hidden="true">
+        <LoopingVideo className="auth-media-video" src="/assets/video_f.mp4" />
       </div>
 
-      <p className="auth-foot rise" style={{ "--delay": "160ms" } as React.CSSProperties}>
-        <Link href="/signup">Sign up</Link>
-        <span aria-hidden="true">·</span>
-        <Link href="/terms">Terms</Link>
-      </p>
+      <div className="auth-pane">
+        <div className="auth-card rise">
+          <Link className="auth-brand" href="/">
+            <span className="rail-wordmark">
+              <b>Super-Claude</b> for SAP
+            </span>
+          </Link>
+
+          <header className="auth-head">
+            <h1>Sign in</h1>
+            <p className="auth-lede">
+              Use the account your SAP connection profile is registered to.
+            </p>
+          </header>
+
+          <form className="auth-form" onSubmit={submit}>
+            <label className="field">
+              <span className="field-label">Email</span>
+              <input
+                type="email"
+                name="email"
+                autoComplete="username"
+                placeholder="example@company.com"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  // A message about a Google attempt is not about the form they
+                  // have now started filling in.
+                  setError(null);
+                }}
+                disabled={busy}
+                required
+              />
+            </label>
+
+            <label className="field">
+              <span className="field-label">Password</span>
+              <input
+                className={showPasswordError ? "is-invalid" : undefined}
+                type="password"
+                name="password"
+                autoComplete="current-password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onBlur={() => setPasswordTouched(true)}
+                aria-invalid={showPasswordError || undefined}
+                disabled={busy}
+                required
+              />
+              {showPasswordError ? (
+                <span className="field-error" role="alert">
+                  {PASSWORD_RULE}
+                </span>
+              ) : null}
+            </label>
+
+            <div className="auth-row">
+              <Link className="link-button" href="/forgot">
+                Forgot password
+              </Link>
+            </div>
+
+            <button
+              className="primary auth-submit"
+              type="submit"
+              disabled={!complete || busy}
+            >
+              <Icon name={busy ? "circle-notch" : "sign-in"} />
+              {busy ? "Signing in…" : "Sign in"}
+            </button>
+
+            {error ? (
+              <p className="auth-status is-error" role="alert">
+                <Icon name="warning-circle" /> {error}
+              </p>
+            ) : afterReset ? (
+              <p className="auth-status" role="status">
+                <Icon name="check-circle" /> Password changed. Everything that was
+                signed in has been signed out — including this browser.
+              </p>
+            ) : null}
+
+            <div className="auth-sep">
+              <span>or</span>
+            </div>
+
+            {/* A link, not a button: `/api/auth/google` answers with a redirect
+                to Google, and a plain navigation is what should follow one. It
+                also means the flow survives with JavaScript still loading. */}
+            <a className="ghost auth-submit" href="/api/auth/google">
+              <GoogleMark />
+              Continue with Google
+            </a>
+          </form>
+        </div>
+
+        <p className="auth-foot rise" style={{ "--delay": "160ms" } as React.CSSProperties}>
+          <Link href="/signup">Sign up</Link>
+          <span aria-hidden="true">·</span>
+          <Link href="/terms">Terms</Link>
+        </p>
+      </div>
     </main>
   );
 }
