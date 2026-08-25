@@ -70,13 +70,21 @@ function textOf(message: SdkMessage): string {
     .join("\n\n");
 }
 
-/** True for the synthetic user messages that carry tool results, not human input. */
-function isToolResult(message: SdkMessage): boolean {
-  const content = message.message?.content;
-  return (
-    Array.isArray(content) &&
-    content.some((block) => (block as { type?: string }).type === "tool_result")
-  );
+/**
+ * True only for the human's own prompt.
+ *
+ * `type: "user"` is not the same thing as "the person typed this". The SDK
+ * puts tool results on user messages, and loading a skill injects the whole
+ * skill file the same way — which is how a page of `sap-doctor` markdown
+ * appeared in the transcript as something the reader had supposedly sent.
+ *
+ * The one user message that is genuinely theirs is the echo `session-manager`
+ * emits from `send()`, and it is the only one whose content is a plain string:
+ * everything the SDK generates is a block array. So the test is the shape,
+ * which needs no allow-list of the block types to reject.
+ */
+function isHumanPrompt(message: SdkMessage): boolean {
+  return typeof message.message?.content === "string";
 }
 
 /**
@@ -186,8 +194,8 @@ function reduce(state: State, action: Action): State {
       const message = event.message;
 
       if (message.type === "user") {
-        // Tool results also arrive as user messages; the chips already show those.
-        if (isToolResult(message)) return state;
+        // Tool results and injected skill files arrive as user messages too.
+        if (!isHumanPrompt(message)) return state;
         const text = textOf(message);
         if (!text) return state;
         return {

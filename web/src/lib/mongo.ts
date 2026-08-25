@@ -124,6 +124,54 @@ export type ResetDoc = {
 };
 
 /**
+ * A conversation, as the reader sees it — not as the backend runs it.
+ *
+ * The backend's session is a live SDK subprocess and dies with the process;
+ * this row outlives it, which is the whole point. `_id` is the id of the
+ * backend session that *first* opened the conversation and it never changes,
+ * so reviving a chat after a restart attaches a new backend session to the
+ * same row rather than starting a second history.
+ *
+ * Named `chat_sessions`, not `sessions` — that name is taken by sign-in
+ * sessions above, and the two have nothing to do with each other.
+ */
+export type ChatDoc = {
+  /** The first backend session id. Stable for the life of the conversation. */
+  _id: string;
+  userId: string;
+  /** First prompt, clipped — the same string the rail shows. */
+  title: string | null;
+  /** The SDK's own conversation id, for `POST /sessions {resume}`. */
+  sdkSessionId: string | null;
+  turns: number;
+  totalCostUsd: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/**
+ * One rendered turn. A document per message rather than an array on the chat
+ * row: Mongo caps a document at 16 MB, and a long conversation reaches that.
+ *
+ * `text` is what the transcript draws — the reader's prompt, or the agent's
+ * answer with the blocks of one turn already folded together. Tool results and
+ * thinking are not stored: they are not shown, and a single ABAP source read
+ * is larger than every answer in the conversation put together.
+ */
+export type ChatMessageDoc = {
+  _id?: ObjectId;
+  chatId: string;
+  userId: string;
+  /** Order within the chat. Unique per chat — see `ensureIndexes`. */
+  seq: number;
+  role: "user" | "agent";
+  text: string;
+  /** True if `text` was cut at the ceiling in `chat-store.ts`. */
+  truncated?: boolean;
+  at: Date;
+};
+
+/**
  * Indexes the auth code depends on for *correctness*, not just speed:
  *
  *   users.email      unique — the only thing standing between two sign-ups
@@ -174,6 +222,17 @@ function ensureIndexes(db: Db): Promise<void> {
         { email: 1 },
         { name: "reset_email" },
       );
+      // The rail's query: this user's conversations, most recent first.
+      await db.collection<ChatDoc>("chat_sessions").createIndex(
+        { userId: 1, updatedAt: -1 },
+        { name: "chat_by_user" },
+      );
+      // Unique, so a retried write cannot put the same turn in twice — the
+      // client appends by sequence number and a retry reuses it.
+      await db.collection<ChatMessageDoc>("chat_messages").createIndex(
+        { chatId: 1, seq: 1 },
+        { unique: true, name: "chat_message_seq" },
+      );
     })().catch((err: unknown) => {
       // A failed attempt must not be cached as a success, or every later
       // request would assume indexes that are not there.
@@ -200,4 +259,12 @@ export async function sessions(): Promise<Collection<SessionDoc>> {
 
 export async function resets(): Promise<Collection<ResetDoc>> {
   return (await database()).collection<ResetDoc>("resets");
+}
+
+export async function chats(): Promise<Collection<ChatDoc>> {
+  return (await database()).collection<ChatDoc>("chat_sessions");
+}
+
+export async function chatMessages(): Promise<Collection<ChatMessageDoc>> {
+  return (await database()).collection<ChatMessageDoc>("chat_messages");
 }

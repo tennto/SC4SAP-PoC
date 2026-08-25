@@ -72,6 +72,17 @@
   --t-label-in: 280ms;
   --d-label-in: 380ms;
 
+  /* The reading column on the chat screen: transcript and composer share it,
+     so an answer and the box you reply in sit on the same two edges. */
+  --measure: 900px;
+
+  /* The agent's answers, and only those — a second face is what separates the
+     long half of the transcript from the reader's own short turns. Noto Sans
+     Oriya carries Latin and Odia but no Hangul, so a Korean answer falls
+     through to the Plex KR cut behind it. */
+  --font-answer:
+    "Noto Sans Oriya", "IBM Plex Sans KR", var(--font-sans);
+
   color-scheme: light;
   font-family: var(--font-sans);
   font-size: 14px;
@@ -844,11 +855,33 @@ button.primary:hover:not(:disabled) {
 }
 
 .session-rail-head {
-  padding: 16px;
+  padding: 14px 12px 14px 16px;
   border-bottom: 1px solid var(--line);
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* The square `+` sits on the heading's own line: a full-width button under it
+   was the widest thing in the rail, for the action taken least often. */
+.session-add {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink-55);
+  font-size: 14px;
+}
+
+.session-add:hover:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--panel-2);
 }
 
 .session-rail-head h2 {
@@ -861,6 +894,11 @@ button.primary:hover:not(:disabled) {
 
 .session-list {
   overflow-y: auto;
+  /* Explicit, not inherited. `overflow-y: auto` makes the other axis compute
+     to `auto` as well, so the exit animation's sideways nudge counted as
+     overflow — a horizontal scrollbar appeared, and the height it took brought
+     a vertical one with it on a list of two rows. */
+  overflow-x: hidden;
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -868,6 +906,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .session-item {
+  position: relative;
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: stretch;
@@ -875,40 +914,72 @@ button.primary:hover:not(:disabled) {
   border-radius: 8px;
   overflow: hidden;
   background: var(--panel);
+  animation: session-in var(--t-slow) var(--ease) both;
 }
 
-.session-item:hover {
-  border-color: var(--ink-38);
+/* Held in the DOM by `SessionList` for exactly this long after it leaves the
+   props, so closing a session is a row collapsing rather than a row that was
+   there and then was not. */
+.session-item.leaving {
+  animation: session-out 420ms var(--ease) both;
+  pointer-events: none;
 }
 
-/* Selection is a fill, not a second colour. */
+@keyframes session-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+    /* Opens the gap as the row arrives, so the rows below it slide down
+       instead of being shoved. */
+    margin-bottom: -46px;
+  }
+}
+
+@keyframes session-out {
+  to {
+    opacity: 0;
+    transform: translateX(14px);
+    /* Closes the gap the row leaves behind, so the rows under it settle up
+       instead of jumping. */
+    margin-bottom: -46px;
+  }
+}
+
+/* Selection is the border alone — no fill. A tinted row read as disabled next
+   to the white ones, which is the opposite of what being selected means. */
 .session-item.active {
   border-color: var(--ink);
-  background: var(--panel-2);
 }
 
 .session-open {
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: start;
-  align-items: center;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
   text-align: left;
   background: transparent;
   border: 0;
   border-radius: 0;
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
 
-.session-id {
-  font-family: ui-monospace, "Cascadia Mono", monospace;
-  font-size: 13px;
+/* One line, always: the prompt is already clipped to ~60 characters on the
+   server, and a row that grows to fit a long question makes the list jump. */
+.session-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
 }
 
 .session-meta {
-  grid-column: 1 / -1;
   color: var(--ink-38);
-  font-size: 12px;
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .session-close {
@@ -917,9 +988,9 @@ button.primary:hover:not(:disabled) {
   border-left: 1px solid var(--line);
   border-radius: 0;
   color: var(--ink-38);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1;
-  padding: 0 12px;
+  padding: 0 9px;
 }
 
 .session-close:hover:not(:disabled) {
@@ -929,31 +1000,103 @@ button.primary:hover:not(:disabled) {
 
 /* ---------- main ---------- */
 
+/* No header band. Session identity and status already live in the rail on the
+   left, and a bar that said "No session" above an empty screen was the only
+   thing on it. */
 .main {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   background: var(--bg);
 }
 
-.topbar {
+/* ---------- stage ----------
+
+   One column, four rows: transcript, greeting, composer, tail. The empty state
+   and the conversation are the same layout at two settings, not two screens —
+   the greeting collapses while the tail's `flex-grow` runs to zero, and those
+   two on one curve are what carry the composer from the middle of the screen
+   down to the bottom of it. */
+
+.stage {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-  padding: 13px 20px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+  flex-direction: column;
 }
 
-.topbar strong {
-  margin-right: 10px;
+.stage-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.health {
-  color: var(--ink-38);
-  font-size: 12px;
-  text-align: right;
+/* Grows to match `.stage-body` on the empty state, so the pair above and below
+   centre the greeting; runs to zero as the conversation opens. `flex-grow` is
+   a plain number, which is why this one interpolates where a swap between two
+   layouts would have cut. */
+.stage-tail {
+  flex-grow: 0;
+  flex-basis: 0;
+  transition: flex-grow var(--t-slow) var(--ease);
+}
+
+.stage.is-hero .stage-tail {
+  flex-grow: 1;
+}
+
+.stage-greeting {
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    max-height var(--t-slow) var(--ease),
+    opacity var(--t-base) var(--ease),
+    transform var(--t-slow) var(--ease),
+    margin var(--t-slow) var(--ease);
+  margin: 0 auto;
+  /* Wider than the composer's measure on purpose: the greeting is one line at
+     the sizes this app is used at, and wrapping it to two made the empty state
+     read as a paragraph. */
+  width: min(1000px, 100%);
+  padding: 0 20px;
+  text-align: center;
+}
+
+.stage.is-hero .stage-greeting {
+  max-height: 220px;
+  opacity: 1;
+  transform: none;
+  margin-bottom: 22px;
+}
+
+.stage-greeting h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(24px, 3.2vw, 34px);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.stage-composer {
+  width: min(var(--measure), 100%);
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* The transcript shares the composer's measure, so an answer and the box you
+   reply in sit on the same two edges. */
+.stage-body .transcript {
+  flex: 1 1 0;
+  width: min(var(--measure), 100%);
+  margin: 0 auto;
+  /* The first turn starts well below the top edge: with no header band above
+     it, a prompt pinned to the top of the viewport read as cut off. */
+  padding: 64px 20px 8px;
 }
 
 /* Status reads as fill weight, not hue: working is solid, idle is outlined,
@@ -1021,7 +1164,9 @@ button.primary:hover:not(:disabled) {
   padding: 22px 20px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  /* Wider than a bubble list needed: with no border drawing the turn, the gap
+     between turns is the only thing separating them. */
+  gap: 38px;
   min-height: 0;
 }
 
@@ -1036,41 +1181,154 @@ button.primary:hover:not(:disabled) {
   margin: auto;
 }
 
-.bubble {
-  max-width: 76%;
-  padding: 12px 16px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
+/* No bubbles. The agent's half of this conversation is long-form markdown —
+   tables, code, headings — and a rounded box around it narrowed the measure
+   and boxed the tables for no gain. Who is speaking is carried by the label
+   above the text, which is the only part that was ever load-bearing. */
+.msg {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
-.bubble.user {
+/* The reader's own turns sit on the right — the side of the column their own
+   writing has always been on in a chat, and the one thing that keeps a
+   bubble-less transcript from reading as one long monologue. */
+/* A column, so the chip sits above the box rather than beside it: both are
+   inline-block — shrink-to-fit is what lets them hug the right edge — and in
+   normal flow that put them on the same line. */
+.msg.user {
   align-self: flex-end;
-  background: var(--panel-2);
-  border-color: var(--line);
+  max-width: 78%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
-.bubble.thinking {
-  background: transparent;
-  border-style: dashed;
-  border-color: var(--line);
+/* The one turn that keeps a container. A prompt is short and the reader wrote
+   it, so a box on the right reads as theirs — which is exactly what a page of
+   agent markdown does not want around it. */
+.msg.user .text {
+  /* Set left inside the box: a wrapped question ragged down its left edge is
+     harder to read than the alignment gains. */
+  text-align: left;
+  padding: 11px 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.msg.thinking {
   color: var(--ink-55);
   font-size: 13px;
 }
 
-.bubble .who {
-  display: block;
+/* A bordered chip, not a caption. With no bubble drawing the turn, this label
+   is the only thing marking the handover, so it is given an edge of its own —
+   and the two speakers are told apart by fill: the reader's own turns are
+   solid ink, the agent's are outlined. */
+.msg .who {
+  display: inline-block;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--ink-38);
-  margin-bottom: 5px;
+  line-height: 1;
+  padding: 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-55);
+  margin-bottom: 10px;
 }
 
-.bubble .text {
+.msg.user .who {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
+}
+
+.msg.assistant .who {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.msg.thinking .who {
+  border-style: dashed;
+  border-color: var(--ink-38);
+  color: var(--ink-38);
+}
+
+.msg .text {
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Markdown's first block brings a top margin that stacked on the label's own
+   gap and left the chip floating well clear of the answer. */
+.msg .text > :first-child {
+  margin-top: 0;
+}
+
+/* Markdown brings its own block spacing, so the pre-wrap that keeps a typed
+   prompt's line breaks would double every gap in an answer. */
+.msg.assistant .text {
+  white-space: normal;
+  font-family: var(--font-answer);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+/* Between a prompt landing and the first token coming back there is a whole
+   model call and nothing to show for it. Three dots, on the agent's own label,
+   in the place its answer is about to appear. */
+.msg.waiting .text {
+  min-height: 22px;
+}
+
+/* The same dots, but under an answer that is already on screen: the turn has
+   more to do and the reader should not have to guess that from a cursor that
+   stopped moving. */
+.dots-row {
+  margin-top: 14px;
+}
+
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-38);
+  animation: dot-pulse 1.25s var(--ease) infinite;
+}
+
+.dots span:nth-child(2) {
+  animation-delay: 160ms;
+}
+
+.dots span:nth-child(3) {
+  animation-delay: 320ms;
+}
+
+@keyframes dot-pulse {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
 }
 
 /* The token caret — a blinking slab on the last character. */
@@ -1279,6 +1537,7 @@ button.primary:hover:not(:disabled) {
 
 .notice {
   align-self: center;
+  margin-block: -14px;
   max-width: 620px;
   margin: 0;
   text-align: center;
@@ -1287,28 +1546,40 @@ button.primary:hover:not(:disabled) {
   word-break: break-word;
 }
 
-/* ---------- composer ---------- */
+/* ---------- composer ----------
+
+   One card, not a field plus a button: the box is the centrepiece of the empty
+   state, and a bordered input floating inside a bordered bar drew the frame
+   twice. The border moves to the card, and the field inside it is bare. */
 
 .composer {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 10px;
-  align-items: end;
-  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Off the floor. The composer is the thing the reader's hand is on, and sat
+     flush against the bottom edge it looked stuck to it. */
+  margin: 14px 0 34px;
+  padding: 12px 12px 10px;
   background: var(--panel);
-  border-top: 1px solid var(--line);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  transition: border-color var(--t-fast) var(--ease);
+}
+
+.composer:focus-within {
+  border-color: var(--ink-38);
 }
 
 .composer textarea {
   font: inherit;
   color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 11px 14px;
-  /* No drag handle. The composer is sized by the layout it sits in, and the
-     grip in its corner offered a resize that fought that sizing. */
+  background: transparent;
+  border: 0;
+  padding: 4px 4px 0;
+  /* No drag handle: the height is driven by the content, in `Composer.tsx`. */
   resize: none;
+  overflow-y: auto;
+  max-height: 220px;
 }
 
 .composer textarea::placeholder {
@@ -1317,11 +1588,40 @@ button.primary:hover:not(:disabled) {
 
 .composer textarea:focus {
   outline: none;
-  border-color: var(--ink);
 }
 
-.composer button {
-  padding: 11px 22px;
+.composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* A label, not a picker. The model is `SC4SAP_MODEL` on the server, so there
+   is nothing here to open. */
+.composer-model {
+  font-size: 12px;
+  color: var(--ink-55);
+  padding: 2px 4px;
+  user-select: none;
+}
+
+.composer-send {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.composer-send:disabled {
+  background: var(--panel-3);
+  color: var(--ink-38);
 }
 
 /* ---------- approval modal (3-3) ---------- */
@@ -2412,6 +2712,20 @@ button.link-button:disabled {
   }
 }
 
+/* Every turn arrives the same way: a short lift and fade, once, when the
+   element is inserted. Keyed by item id, so a streaming answer being appended
+   to is the same element and does not re-run it. */
+.msg-in {
+  animation: msg-in var(--t-base) var(--ease) both;
+}
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 /* One switch for the whole app. Anything that moves is listed here, so a
    reader who asked the OS for stillness gets it — including the two
    indefinite loops, which are the ones that actually hurt. */
@@ -2421,6 +2735,9 @@ button.link-button:disabled {
   .rise,
   .rise-soft,
   .fav-card,
+  .msg-in,
+  .session-item,
+  .dots span,
   .meter-fill,
   .account-menu,
   .account-submenu {
@@ -2431,6 +2748,8 @@ button.link-button:disabled {
   .rail,
   .nav-item,
   .nav-icon,
+  .stage-tail,
+  .stage-greeting,
   button {
     transition: none;
   }
@@ -2557,8 +2876,8 @@ button.link-button:disabled {
     padding: 22px 18px 72px;
   }
 
-  .bubble {
-    max-width: 92%;
+  .msg {
+    max-width: 100%;
   }
 }
 

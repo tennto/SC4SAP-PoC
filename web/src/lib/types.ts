@@ -22,6 +22,30 @@ export type Session = {
   createdAt: string;
   turns: number;
   totalCostUsd: number;
+  /** The first prompt, trimmed to a line. Null until the session is asked something. */
+  title: string | null;
+};
+
+/**
+ * A conversation as stored in Mongo — what survives sign-out and a restart.
+ * `id` is the backend session id that first opened it and never changes, so a
+ * revived chat attaches a new backend session to the same history.
+ */
+export type Chat = {
+  id: string;
+  title: string | null;
+  sdkSessionId: string | null;
+  turns: number;
+  totalCostUsd: number;
+  updatedAt: string;
+};
+
+/** One stored turn, already folded to what the transcript draws. */
+export type ChatMessage = {
+  seq: number;
+  role: "user" | "agent";
+  text: string;
+  at: string;
 };
 
 /** One approval blocking a turn (`permission_request`). Rendered in 3-3. */

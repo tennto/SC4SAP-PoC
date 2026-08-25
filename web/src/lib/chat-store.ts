@@ -1,0 +1,212 @@
+import "server-only";
+import { chatMessages, chats, type ChatDoc } from "@/lib/mongo";
+
+/**
+ * Persisting the conversation the reader can see.
+ *
+ * The backend keeps sessions in memory and evicts them; this is what survives
+ * a sign-out, a server restart, and a different machine. Only what the
+ * transcript draws is written — see `ChatMessageDoc` for why tool results are
+ * deliberately not.
+ */
+
+/**
+ * One message's ceiling. A runaway answer should cost one truncated row, not
+ * a collection. Generous enough that no real answer reaches it: a long report
+ * with tables runs to about a third of this.
+ */
+const MAX_TEXT = 64 * 1024;
+
+/** How much prior conversation a revived chat carries back to the model. */
+const CONTEXT_BUDGET = 24 * 1024;
+
+export type ChatSummary = {
+  id: string;
+  title: string | null;
+  sdkSessionId: string | null;
+  turns: number;
+  totalCostUsd: number;
+  updatedAt: string;
+};
+
+export type ChatMessage = {
+  seq: number;
+  role: "user" | "agent";
+  text: string;
+  at: string;
+};
+
+function summarize(doc: ChatDoc): ChatSummary {
+  return {
+    id: doc._id,
+    title: doc.title,
+    sdkSessionId: doc.sdkSessionId,
+    turns: doc.turns,
+    totalCostUsd: doc.totalCostUsd,
+    updatedAt: doc.updatedAt.toISOString(),
+  };
+}
+
+/** The rail, for one account. Most recently used first. */
+export async function listChats(userId: string): Promise<ChatSummary[]> {
+  const rows = await (await chats())
+    .find({ userId })
+    .sort({ updatedAt: -1 })
+    .limit(200)
+    .toArray();
+  return rows.map(summarize);
+}
+
+export async function readChat(
+  userId: string,
+  chatId: string,
+): Promise<{ chat: ChatSummary; messages: ChatMessage[] } | null> {
+  const doc = await (await chats()).findOne({ _id: chatId, userId });
+  if (!doc) return null;
+
+  const rows = await (await chatMessages())
+    .find({ chatId, userId })
+    .sort({ seq: 1 })
+    .toArray();
+
+  return {
+    chat: summarize(doc),
+    messages: rows.map((row) => ({
+      seq: row.seq,
+      role: row.role,
+      text: row.text,
+      at: row.at.toISOString(),
+    })),
+  };
+}
+
+/**
+ * Appends turns to a chat, creating it on the first one.
+ *
+ * Idempotent by `(chatId, seq)`: the client numbers its own turns, so a retry
+ * after a dropped response rewrites the same row instead of adding a second
+ * copy of the same answer.
+ */
+export async function appendTurns(
+  userId: string,
+  chatId: string,
+  input: {
+    title?: string | null;
+    sdkSessionId?: string | null;
+    turns?: number;
+    totalCostUsd?: number;
+    messages: { seq: number; role: "user" | "agent"; text: string }[];
+  },
+): Promise<void> {
+  const now = new Date();
+
+  await (await chats()).updateOne(
+    { _id: chatId, userId },
+    {
+      $set: {
+        updatedAt: now,
+        // Only overwrite what the caller actually knows. A send knows the
+        // title; only the end of a turn knows the cost.
+        ...(input.title !== undefined && input.title !== null
+          ? { title: input.title }
+          : {}),
+        ...(input.sdkSessionId ? { sdkSessionId: input.sdkSessionId } : {}),
+        ...(input.turns !== undefined ? { turns: input.turns } : {}),
+        ...(input.totalCostUsd !== undefined
+          ? { totalCostUsd: input.totalCostUsd }
+          : {}),
+      },
+      $setOnInsert: {
+        userId,
+        createdAt: now,
+        ...(input.title === undefined || input.title === null
+          ? { title: null }
+          : {}),
+        ...(input.sdkSessionId ? {} : { sdkSessionId: null }),
+        ...(input.turns === undefined ? { turns: 0 } : {}),
+        ...(input.totalCostUsd === undefined ? { totalCostUsd: 0 } : {}),
+      },
+    },
+    { upsert: true },
+  );
+
+  if (input.messages.length === 0) return;
+
+  await (await chatMessages()).bulkWrite(
+    input.messages.map((message) => {
+      const text = message.text.slice(0, MAX_TEXT);
+      return {
+        updateOne: {
+          filter: { chatId, seq: message.seq },
+          update: {
+            $set: {
+              userId,
+              role: message.role,
+              text,
+              at: now,
+              ...(text.length < message.text.length
+                ? { truncated: true }
+                : {}),
+            },
+          },
+          upsert: true,
+        },
+      };
+    }),
+    { ordered: false },
+  );
+}
+
+export async function deleteChat(
+  userId: string,
+  chatId: string,
+): Promise<void> {
+  await (await chats()).deleteOne({ _id: chatId, userId });
+  await (await chatMessages()).deleteMany({ chatId, userId });
+}
+
+/**
+ * The prior conversation, as a preamble for a chat whose backend session is
+ * gone.
+ *
+ * The SDK's own `resume` is the better path when it works, but it depends on
+ * the SDK's on-disk store still holding that conversation on this machine. So
+ * this is the fallback, and it is a plain reading of the transcript rather
+ * than a summary: summarizing costs a model call and loses the specifics —
+ * system ids, program names — that are the whole reason to look back.
+ *
+ * The newest turns are kept and the oldest dropped when the budget runs out.
+ */
+export function contextPreamble(messages: ChatMessage[]): string | null {
+  if (messages.length === 0) return null;
+
+  const kept: string[] = [];
+  let size = 0;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    const line = `${message.role === "user" ? "User" : "Assistant"}: ${message.text}`;
+    if (size + line.length > CONTEXT_BUDGET) break;
+    kept.unshift(line);
+    size += line.length;
+  }
+
+  if (kept.length === 0) return null;
+
+  const elided =
+    kept.length < messages.length
+      ? "\n(Earlier turns of this conversation have been omitted.)\n"
+      : "\n";
+
+  return [
+    "<prior_conversation>",
+    "This conversation continues an earlier session with the same user. Read",
+    "it for context — names, system ids and decisions already established —",
+    "then answer only the new message that follows it. Do not summarize or",
+    "repeat this history back unless asked to.",
+    elided,
+    ...kept,
+    "</prior_conversation>",
+    "",
+  ].join("\n");
+}

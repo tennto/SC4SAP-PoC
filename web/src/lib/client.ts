@@ -5,6 +5,8 @@
  * backend directly — the browser is not supposed to know where it lives.
  */
 import type {
+  Chat,
+  ChatMessage,
   Health,
   PendingApproval,
   PermissionResponse,
@@ -39,6 +41,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   health: (): Promise<Health> => request<Health>("/health"),
 
+  /**
+   * The stored conversations. These are served by Next routes rather than
+   * proxied to the backend — the backend has no idea who is signed in.
+   */
+  listChats: async (): Promise<Chat[]> =>
+    (await request<{ chats: Chat[] }>("/chats")).chats,
+
+  readChat: (
+    id: string,
+  ): Promise<{ chat: Chat; messages: ChatMessage[]; context: string | null }> =>
+    request(`/chats/${id}`),
+
+  saveTurns: (
+    id: string,
+    body: {
+      title?: string | null;
+      sdkSessionId?: string | null;
+      turns?: number;
+      totalCostUsd?: number;
+      messages: { seq: number; role: "user" | "agent"; text: string }[];
+    },
+  ): Promise<{ ok: boolean }> =>
+    request(`/chats/${id}`, { method: "POST", body: JSON.stringify(body) }),
+
+  deleteChat: (id: string): Promise<{ ok: boolean }> =>
+    request(`/chats/${id}`, { method: "DELETE" }),
+
   listSessions: async (): Promise<Session[]> =>
     (await request<{ sessions: Session[] }>("/sessions")).sessions,
 
@@ -57,11 +86,21 @@ export const api = {
   closeSession: (id: string): Promise<void> =>
     request<void>(`/sessions/${id}`, { method: "DELETE" }),
 
-  /** 202 — the answer arrives on the SSE stream, not in this response. */
-  sendMessage: (id: string, text: string): Promise<{ accepted: boolean }> =>
+  /**
+   * 202 — the answer arrives on the SSE stream, not in this response.
+   *
+   * `context` is prior conversation for a revived chat. The backend feeds it
+   * to the model and keeps it off the stream, so the transcript still shows
+   * only what was typed.
+   */
+  sendMessage: (
+    id: string,
+    text: string,
+    context?: string | null,
+  ): Promise<{ accepted: boolean }> =>
     request<{ accepted: boolean }>(`/sessions/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(context ? { text, context } : { text }),
     }),
 
   pendingApprovals: async (id: string): Promise<PendingApproval[]> =>
