@@ -40,6 +40,18 @@ const MCP_DISCOVERY_TIMEOUT_MS = 60_000;
 const HISTORY_LIMIT = 500;
 
 /**
+ * How long a busy session keeps working with nobody watching before its turn
+ * is abandoned.
+ *
+ * Long enough to cover a reload, a tab restore or a laptop lid — those drop the
+ * SSE connection and reattach within a second or two, and killing the turn for
+ * one of those would be worse than the cost of waiting. Short enough that a
+ * closed tab does not leave the model reading ABAP programs, and paying for
+ * them, for an answer nobody will ever see.
+ */
+const ORPHAN_GRACE_MS = 15_000;
+
+/**
  * How long an unanswered approval blocks the turn before it is denied.
  * Without a ceiling a closed browser tab wedges the session forever.
  * Overridable so the timeout path is testable without a five-minute wait.
@@ -114,9 +126,26 @@ export type SessionRecord = {
   createdAt: string;
   turns: number;
   totalCostUsd: number;
+  /**
+   * The first prompt, trimmed to a line — what the session list shows instead
+   * of a uuid. Null until the session has been asked something, which is the
+   * state a freshly created session is in.
+   */
+  title: string | null;
 };
 
 type Subscriber = (event: SequencedEvent) => void;
+
+/** First line of the prompt, clipped at a word boundary near 40 characters —
+ * about what a 244px rail shows before it ellipsises anyway, so the clip
+ * happens on a word here rather than mid-word in CSS. */
+function titleFrom(text: string): string {
+  const line = text.trim().split(/\r?\n/, 1)[0]?.trim() ?? "";
+  if (line.length <= 40) return line || "Untitled";
+  const clipped = line.slice(0, 40);
+  const lastSpace = clipped.lastIndexOf(" ");
+  return `${(lastSpace > 20 ? clipped.slice(0, lastSpace) : clipped).trimEnd()}…`;
+}
 
 /**
  * Turns discrete `push()` calls into the AsyncIterable that `query()` consumes.
@@ -195,6 +224,8 @@ type LiveSession = {
   openToolBlocks: Set<number>;
   /** Approvals blocking a turn, keyed by reqId. */
   pending: Map<string, PendingEntry>;
+  /** Counting down to abandoning a turn nobody is watching. See `#orphan`. */
+  orphanTimer?: ReturnType<typeof setTimeout>;
 };
 
 type PendingEntry = {
@@ -318,6 +349,7 @@ export class SessionManager {
         createdAt: new Date().toISOString(),
         turns: 0,
         totalCostUsd: 0,
+        title: null,
       },
       pump,
       session,
@@ -345,14 +377,27 @@ export class SessionManager {
   /**
    * Queues a user message. Returns false if the session is unknown or closed.
    * Does not wait for the turn — callers watch the SSE stream for output.
+   *
+   * `context` is prior conversation the caller wants the model to read before
+   * this message — the web app sends it when reviving a stored chat whose
+   * session did not survive the last restart. It goes to the SDK and *not* to
+   * the stream: the transcript shows what the reader typed, not the history
+   * the client re-attached behind it.
    */
-  send(id: string, text: string): boolean {
+  send(id: string, text: string, context?: string): boolean {
     const live = this.#sessions.get(id);
     if (!live) return false;
     if (live.record.status === "closed" || live.record.status === "error") {
       return false;
     }
+    // First prompt names the session, and nothing renames it afterwards: a
+    // list whose labels move under the reader is worse than one whose labels
+    // are only approximate.
+    if (live.record.title === null) live.record.title = titleFrom(text);
     this.#setStatus(live, "busy");
+    // A tab that sends and closes in the same breath unsubscribes while the
+    // session is still idle, so the countdown has to be armed here too.
+    if (live.subscribers.size === 0) this.#armOrphanTimer(live);
     // The SDK does not echo the prompt back on the output stream, so without
     // this the human half of the conversation is missing from the replay
     // buffer entirely and a reconnecting client rebuilds a transcript of
@@ -366,7 +411,8 @@ export class SessionManager {
         session_id: live.record.sdkSessionId ?? "",
       } as SDKMessage,
     });
-    live.pump.push(text);
+    live.pump.push(context ? `${context}
+${text}` : text);
     return true;
   }
 
@@ -387,7 +433,55 @@ export class SessionManager {
       if (entry.seq > afterSeq) subscriber(entry);
     }
     live.subscribers.add(subscriber);
-    return () => live.subscribers.delete(subscriber);
+    // Somebody is watching again — a reload, or a second tab.
+    this.#cancelOrphanTimer(live);
+
+    return () => {
+      live.subscribers.delete(subscriber);
+      if (live.subscribers.size === 0) this.#armOrphanTimer(live);
+    };
+  }
+
+  /**
+   * Starts the countdown to abandoning a turn that has lost its audience.
+   *
+   * Only a *busy* session is worth abandoning: an idle one costs nothing to
+   * leave sitting there, and evicting it would take away the conversation the
+   * reader is about to come back to.
+   */
+  #armOrphanTimer(live: LiveSession): void {
+    if (live.record.status !== "busy") return;
+    this.#cancelOrphanTimer(live);
+
+    live.orphanTimer = setTimeout(() => {
+      live.orphanTimer = undefined;
+      if (live.subscribers.size > 0) return;
+      if (live.record.status !== "busy") return;
+
+      // Anything blocking the turn on a human is answered for them — nobody is
+      // there to answer, and an un-settled approval leaves interrupt() waiting.
+      for (const entry of [...live.pending.values()]) {
+        entry.settle(
+          { behavior: "deny", message: "Client disconnected." },
+          "deny",
+        );
+      }
+
+      // Goes into the replay buffer, so a reader who comes back to this
+      // conversation is told why it stops where it does.
+      this.#emit(live, {
+        type: "error",
+        error: "Stopped: the browser disconnected before this turn finished.",
+      });
+      void live.session.interrupt().catch(() => {});
+      this.#setStatus(live, "idle");
+    }, ORPHAN_GRACE_MS);
+  }
+
+  #cancelOrphanTimer(live: LiveSession): void {
+    if (!live.orphanTimer) return;
+    clearTimeout(live.orphanTimer);
+    live.orphanTimer = undefined;
   }
 
   /** Approvals currently blocking this session, oldest first. */
@@ -515,8 +609,8 @@ export class SessionManager {
         "deny",
       );
     }
+    this.#cancelOrphanTimer(live);
     live.pump.close();
-    await live.session.interrupt().catch(() => {});
     // Tell subscribers before dropping the entry — after this the id 404s.
     this.#setStatus(live, "closed");
     live.subscribers.clear();
@@ -524,6 +618,16 @@ export class SessionManager {
     // sessions; the SDK session id is already in the client's hands if it
     // wants to resume.
     this.#sessions.delete(id);
+
+    /**
+     * The subprocess teardown is not on the response path. `interrupt()` on a
+     * session whose SDK has not finished booting can take seconds — and a
+     * caller closing several sessions in a row waited for every one of them
+     * before its list came back, which is how a closed session reappeared in
+     * the next `GET /sessions`. The entry is already gone by here; whether the
+     * subprocess has noticed yet changes nothing anyone can observe.
+     */
+    void live.session.interrupt().catch(() => {});
     return true;
   }
 

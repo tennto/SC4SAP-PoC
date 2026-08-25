@@ -63,17 +63,24 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     return reply.code(204).send();
   });
 
-  app.post<{ Params: IdParams; Body: { text?: string } }>(
+  app.post<{ Params: IdParams; Body: { text?: string; context?: string } }>(
     "/sessions/:id/messages",
     async (request, reply) => {
       const text = request.body?.text;
       if (typeof text !== "string" || text.trim() === "") {
         return reply.code(400).send({ error: "body.text is required" });
       }
+      // Optional prior-conversation preamble, sent by the web app when it
+      // revives a stored chat whose session died with the last server. It
+      // reaches the model and never the transcript — see `send()`.
+      const context = request.body?.context;
+      if (context !== undefined && typeof context !== "string") {
+        return reply.code(400).send({ error: "body.context must be a string" });
+      }
       if (!manager.get(request.params.id)) {
         return reply.code(404).send({ error: "unknown session" });
       }
-      if (!manager.send(request.params.id, text)) {
+      if (!manager.send(request.params.id, text, context)) {
         return reply.code(409).send({ error: "session is closed" });
       }
       // Accepted, not answered — the reply streams over SSE.
