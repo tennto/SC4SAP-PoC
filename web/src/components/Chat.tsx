@@ -374,7 +374,19 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       let context: string | null = null;
 
       if (!target) {
-        const session = await api.createSession();
+        // Reviving a stored chat: the new session carries that chat's totals
+        // so its own counting continues them. Without this the session starts
+        // at zero and `persist` writes that zero back over what the chat had
+        // spent — the rail loses the figures, and so does the record.
+        const session = await api.createSession(
+          undefined,
+          storedChat
+            ? {
+                turns: storedChat.turns,
+                totalCostUsd: storedChat.totalCostUsd,
+              }
+            : undefined,
+        );
         setSessions((current) => [...current, session]);
         setAttached((current) => ({ ...current, [activeId]: session.id }));
         target = session.id;

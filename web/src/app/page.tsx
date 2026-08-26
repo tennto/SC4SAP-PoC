@@ -18,8 +18,16 @@ import { CREDITS, SAP_SYSTEM } from "@/lib/account";
 import { requireAccount } from "@/lib/auth/session";
 import { Icon } from "@/components/Icon";
 import { FavoriteSkills } from "@/components/FavoriteSkills";
+import { ReconnectButton } from "@/components/ReconnectButton";
 
 export const dynamic = "force-dynamic";
+
+/** The word beside the dot for each answer the key check can give. */
+const CLAUDE_API_STATUS = {
+  up: "active",
+  down: "rejected",
+  unknown: "unknown",
+} as const;
 
 // Intl has no option for the gap, and en-US formats `$41.28` flush. Split with
 // a non-breaking space so the symbol cannot end a line on its own.
@@ -78,6 +86,10 @@ export default async function HomePage() {
   const account = await requireAccount();
   const { health, error } = await loadHealth();
   const online = health !== null;
+  // Every row with a real source behind it, not just the backend — what the
+  // reconnect control compares its own check against to tell "still fine"
+  // apart from "it came back".
+  const connected = health !== null && health.claudeApi.state === "up";
   const usedShare = Math.min(1, CREDITS.usedUsd / CREDITS.limitUsd);
 
   return (
@@ -112,17 +124,7 @@ export default async function HomePage() {
           </div>
 
           <div className="conn-actions">
-            {online ? (
-              <button className="ghost" title="Not wired up yet">
-                <Icon name="arrows-clockwise" />
-                Reconnect
-              </button>
-            ) : (
-              <button className="primary" title="Not wired up yet">
-                <Icon name="plugs-connected" />
-                Connect to server
-              </button>
-            )}
+            <ReconnectButton online={online} wasConnected={connected} />
             <Link className="link-button" href="/skills/sap-doctor">
               Run diagnostics
             </Link>
@@ -159,12 +161,25 @@ export default async function HomePage() {
               </>
             }
           />
+          {/* The one row whose state does not come from `online`: the backend
+              answering says nothing about whether the key it holds still
+              works, so the backend checks that separately and reports it. With
+              the backend down there is nobody to ask, which is `unknown` and
+              not `down` — an unanswered question is not a failed key. */}
           <ConnectionRow
             icon="key"
             label="Claude API Status"
-            state="up"
-            status="active"
-            detail={<>{CREDITS.keyLabel} · billed to this account</>}
+            state={health?.claudeApi.state ?? "unknown"}
+            status={CLAUDE_API_STATUS[health?.claudeApi.state ?? "unknown"]}
+            detail={
+              health ? (
+                <>
+                  {health.claudeApi.detail} · {CREDITS.keyLabel}
+                </>
+              ) : (
+                <>backend not answering, so the key could not be checked</>
+              )
+            }
           />
         </ul>
       </section>
@@ -248,17 +263,11 @@ export default async function HomePage() {
                 {SAP_SYSTEM.sapVersion} · ABAP {SAP_SYSTEM.abapRelease}
               </dd>
             </div>
-            <div>
-              <dt>Industry / country</dt>
-              <dd>
-                {SAP_SYSTEM.industry} · {SAP_SYSTEM.country}
-              </dd>
-            </div>
           </dl>
         </section>
 
         <section
-          className="panel rise"
+          className="panel panel-credits rise"
           style={{ "--delay": "440ms" } as React.CSSProperties}
         >
           <div className="panel-head panel-head-row">

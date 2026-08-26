@@ -19,6 +19,7 @@ import {
   type PermissionResponse,
   type SequencedEvent,
 } from "./session-manager.ts";
+import { claudeApiHealth } from "./claude-api.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
 const HEARTBEAT_MS = 15_000;
@@ -28,12 +29,20 @@ type IdParams = { id: string };
 export function buildApp(manager: SessionManager): FastifyInstance {
   const app = Fastify({ logger: true });
 
-  app.get("/health", async () => ({
+  app.get<{ Querystring: { fresh?: string } }>("/health", async (request) => ({
     ok: true,
     plugin: manager.config.pluginPath,
     workspace: manager.config.workspace,
     model: manager.config.model,
     sessions: manager.list().length,
+    // A real check, cached for a few seconds — see `claude-api.ts`. The one
+    // await in this handler, and the reason it can take a moment on a cold
+    // call. `?fresh=1` skips the cache, for a caller who asked for the check
+    // rather than merely happening to render a page.
+    claudeApi: await claudeApiHealth(
+      manager.config.model,
+      request.query.fresh === "1",
+    ),
     toolPolicy: {
       autoAllowed: manager.policy.allowedTools.length,
       denyPatterns: manager.policy.disallowedTools,
@@ -41,13 +50,35 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     },
   }));
 
-  app.post<{ Body: { resume?: string } | undefined }>(
-    "/sessions",
-    async (request, reply) => {
-      const session = manager.create({ resume: request.body?.resume });
-      return reply.code(201).send({ session });
-    },
-  );
+  app.post<{
+    Body:
+      | { resume?: string; priorTurns?: number; priorCostUsd?: number }
+      | undefined;
+  }>("/sessions", async (request, reply) => {
+    // The running totals of the conversation this session is picking up, sent
+    // by the web app when it revives a stored chat. Only a finite number is
+    // worth carrying: a bad one would be added to every later figure, so it
+    // is refused here rather than poisoning the count downstream.
+    const { priorTurns, priorCostUsd } = request.body ?? {};
+    for (const [name, value] of [
+      ["priorTurns", priorTurns],
+      ["priorCostUsd", priorCostUsd],
+    ] as const) {
+      if (value === undefined) continue;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        return reply
+          .code(400)
+          .send({ error: `body.${name} must be a non-negative number` });
+      }
+    }
+
+    const session = manager.create({
+      resume: request.body?.resume,
+      priorTurns,
+      priorCostUsd,
+    });
+    return reply.code(201).send({ session });
+  });
 
   app.get("/sessions", async () => ({ sessions: manager.list() }));
 

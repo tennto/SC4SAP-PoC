@@ -49,8 +49,6 @@ export type SapSystem = {
   sapVersion: string;
   abapRelease: string;
   tier: "DEV" | "QAS" | "PRD";
-  industry: string;
-  country: string;
   activeModules: string[];
   blocklistProfile: string;
 };
@@ -84,8 +82,6 @@ export const SAP_SYSTEM: SapSystem = {
   sapVersion: "S/4HANA",
   abapRelease: "758",
   tier: "DEV",
-  industry: "Other",
-  country: "KR",
   activeModules: ["MM", "SD", "FI", "CO"],
   blocklistProfile: "standard",
 };

@@ -39,7 +39,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: (): Promise<Health> => request<Health>("/health"),
+  /**
+   * `fresh` skips the backend's short cache on the Claude API key check. Pass
+   * it when a person asked for the check; leave it off for incidental reads.
+   */
+  health: (fresh = false): Promise<Health> =>
+    request<Health>(fresh ? "/health?fresh=1" : "/health"),
 
   /**
    * The stored conversations. These are served by Next routes rather than
@@ -71,12 +76,29 @@ export const api = {
   listSessions: async (): Promise<Session[]> =>
     (await request<{ sessions: Session[] }>("/sessions")).sessions,
 
-  /** `resume` reattaches to a prior SDK conversation (server restart, reconnect). */
-  createSession: async (resume?: string): Promise<Session> =>
+  /**
+   * `resume` reattaches to a prior SDK conversation (server restart,
+   * reconnect).
+   *
+   * `prior` is the stored chat's running totals, for a session being created
+   * to carry on a conversation that already has some behind it. The session
+   * counts from there instead of from zero, which is what keeps the rail's
+   * figures — and the stored ones this writes back over — cumulative across
+   * every session a conversation has had.
+   */
+  createSession: async (
+    resume?: string,
+    prior?: { turns: number; totalCostUsd: number },
+  ): Promise<Session> =>
     (
       await request<{ session: Session }>("/sessions", {
         method: "POST",
-        body: JSON.stringify(resume ? { resume } : {}),
+        body: JSON.stringify({
+          ...(resume ? { resume } : {}),
+          ...(prior
+            ? { priorTurns: prior.turns, priorCostUsd: prior.totalCostUsd }
+            : {}),
+        }),
       })
     ).session,
 

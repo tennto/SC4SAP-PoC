@@ -1626,6 +1626,11 @@ button.primary:hover:not(:disabled) {
 
 /* ---------- approval modal (3-3) ---------- */
 
+/* On the shared classes rather than on one dialog: every modal in the app
+   arrives the same way, and a screen where one fades in and the next appears
+   between two frames reads as two different products. The dim and the card
+   are animated separately — the ground darkens while the card comes up
+   through it, which is the same two-part arrival `.rise` gives a panel. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1634,6 +1639,7 @@ button.primary:hover:not(:disabled) {
   padding: 24px;
   background: rgba(56, 56, 56, 0.35);
   z-index: 10;
+  animation: modal-dim-in var(--t-base) var(--ease) both;
 }
 
 .modal {
@@ -1647,6 +1653,52 @@ button.primary:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  animation: modal-in var(--t-base) var(--ease) both;
+}
+
+/* Leaving is the arrival backwards and a little quicker: a dialog that has
+   been answered should not hold the screen as long as one that is asking for
+   attention. Only a modal that keeps itself mounted through the exit can use
+   this — see `NoticeModal`, which unmounts on the `animationend` below.
+
+   Written as their own keyframes rather than as the entrance with
+   `direction: reverse`. An animation is identified by its name, so reusing
+   the name would have changed the running one in place instead of starting a
+   second — and the entrance is finished and filling by then, which is a
+   state a duration change does not restart. No new animation, no
+   `animationend`, and a dialog that never closes. */
+.modal-backdrop.leaving {
+  animation: modal-dim-out var(--t-fast) var(--ease) both;
+}
+
+.modal-backdrop.leaving .modal {
+  animation: modal-out var(--t-fast) var(--ease) both;
+}
+
+@keyframes modal-dim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-dim-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
+@keyframes modal-out {
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
 }
 
 .modal-head {
@@ -1738,6 +1790,15 @@ button.primary:hover:not(:disabled) {
   font-size: 17px;
   font-weight: 600;
   line-height: 1.35;
+}
+
+/* Set like the icon on a panel heading — the same size relationship to its
+   text and the same tint, so a dialog's title reads as one of this app's
+   headings rather than as a badge with a sentence after it. */
+.confirm-question .ph {
+  margin-right: 9px;
+  font-size: 17px;
+  color: var(--ink-38);
 }
 
 .modal.confirm .modal-description {
@@ -2156,6 +2217,20 @@ button.primary:hover:not(:disabled) {
   align-items: start;
 }
 
+/* The dashboard's three cards are one row of the same kind of thing, and each
+   holding its own height left their bottom edges at three different places —
+   which reads as three unrelated panels rather than one row. They share the
+   tallest one's height instead; what that costs is space under the shorter
+   two, and a card with room to spare below its last row is the ordinary look
+   of a dashboard in a way that a ragged bottom edge is not.
+
+   Scoped here rather than on `.card-grid`, which settings also uses, where
+   the panels are of genuinely different sizes and stretching them would only
+   spread the short ones. */
+.dashboard .card-grid {
+  align-items: stretch;
+}
+
 .panel-head h2 .ph {
   margin-right: 7px;
   font-size: 15px;
@@ -2193,9 +2268,14 @@ button.primary:hover:not(:disabled) {
   padding-top: 2px;
 }
 
+/* A step down from the body size. These are values being scanned against
+   their labels, not prose being read, and at 14px they carried more weight
+   than the panels around them — a host name and a member-since date were
+   competing with the headings. */
 .facts dd {
   margin: 0;
   min-width: 0;
+  font-size: 13px;
   word-break: break-word;
 }
 
@@ -2229,6 +2309,15 @@ button.primary:hover:not(:disabled) {
   border-radius: 999px;
   background: var(--ink);
   color: #ffffff;
+}
+
+/* Out of the height matching the other two do. Account and SAP system are the
+   same kind of card — rows of label and value — and lining their bottoms up
+   makes them read as a pair. Credits is not that: a figure, a bar and one
+   row, and stretching it to a height it has no content for only produced
+   space that had to be explained away. It takes the height it needs. */
+.panel-credits {
+  align-self: start;
 }
 
 .figure {
@@ -2740,7 +2829,9 @@ button.link-button:disabled {
   .dots span,
   .meter-fill,
   .account-menu,
-  .account-submenu {
+  .account-submenu,
+  .modal-backdrop,
+  .modal {
     animation: none;
   }
 
@@ -3042,20 +3133,20 @@ button.link-button:disabled {
 
 /* Its own screen rather than a page inside the shell, so it owns the viewport
    and the centring rather than inheriting `.page`'s scroll column. */
-/* Pinned to the viewport and clipped rather than allowed to scroll: this is a
-   single card with nothing below it, and a scrollbar appearing beside it reads
-   as a page that has more to it than it does. `dvh`, not `vh`, so a mobile
-   browser's collapsing toolbar does not push it into overflow.
-
-   The cost is real — on a window shorter than the card the ends are cut off
-   instead of reachable — which is why the padding below is small. */
+/* Fills the viewport and centres in it, but is not pinned to it: the card is
+   the only thing on the screen and a scrollbar beside it would read as a page
+   with more to it than it has, so the height is a floor rather than a ceiling
+   and the overflow only ever appears on a window too short to hold the card —
+   where the alternative was the ends being cut off with no way to reach them.
+   `dvh`, not `vh`, so a mobile browser's collapsing toolbar is accounted for
+   rather than pushing the card out of view. */
 .auth {
   display: grid;
   align-content: center;
   justify-items: center;
   gap: 16px;
-  height: 100dvh;
-  overflow: hidden;
+  min-height: 100dvh;
+  overflow-y: auto;
   padding: 24px 20px;
   background: var(--bg);
 }
@@ -3074,10 +3165,21 @@ button.link-button:disabled {
      `--auth-media-shift` is how far in from the window's left edge it
      starts. */
   --auth-media-w: 38%;
-  --auth-media-shift: 200px;
+  /* Both shifts are a share of whatever the window has over the width at
+     which this layout collapses, rather than a fixed number of pixels.
+
+     A constant here does not survive a narrower window: the video column is a
+     percentage and shrinks with the window, but 200px and 140px of it do not,
+     so at 900px they were eating 340 of the 358px the card column had left —
+     a 178px card the Google control does not fit inside, and a video-plus-card
+     group whose centre had drifted 30px right of the window's. The
+     coefficients are what keeps that group centred: they are the two shifts'
+     share of the width the row spends on them, so as the window loses width
+     the pair converge on the collapsed layout instead of crushing the card. */
+  --auth-media-shift: max(0px, calc((100vw - 860px) * 0.28));
   /* And how far the card sits left of where centring the column would put
      it. Its own knob, so moving the video does not drag the card with it. */
-  --auth-card-shift: 140px;
+  --auth-card-shift: max(0px, calc((100vw - 860px) * 0.2));
   /* The shift is its own column rather than a left margin on the plate: a
      margin would take the offset out of the video's width, where a spacer
      moves it across at the size it already had. */
@@ -3093,6 +3195,12 @@ button.link-button:disabled {
   align-content: center;
   gap: 0;
   padding: 0;
+  /* Back to a hard viewport height, where `.auth` keeps a floor: the video
+     plate has no height of its own, so this row is what it stretches into and
+     a row free to grow would have nothing to size the plate against. The pane
+     inside takes the scrolling instead. */
+  height: 100dvh;
+  overflow: hidden;
 }
 
 /* A plate sitting in the column rather than filling it, pushed right by the
@@ -3129,8 +3237,10 @@ button.link-button:disabled {
 }
 
 /* The centring `.auth` did for the whole viewport, now scoped to the right
-   column. `min-height: 0` so a card taller than the window is clipped by this
-   pane rather than stretching the grid row. */
+   column. `min-height: 0` so a card taller than the window is contained by
+   this pane rather than stretching the grid row — and, since the row is what
+   sizes the video, scrolled here rather than at the page level, so the plate
+   beside it stays put. */
 .auth-pane {
   grid-column: 3;
   display: grid;
@@ -3142,7 +3252,7 @@ button.link-button:disabled {
      `.auth-media`. The extra on the right is the shift: padding rather than a
      transform, so the card stays inside its column at every width. */
   padding: 24px calc(20px + var(--auth-card-shift)) 24px 20px;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 /* One column below this: half a narrow window is not enough for either the
@@ -3263,6 +3373,30 @@ button.link-button:disabled {
   height: 14px;
 }
 
+/* A phone. The card's 38px sides are a third of the screen there, and the
+   two-up name row is asking a 300px window for two usable text fields. */
+@media (max-width: 520px) {
+  .auth {
+    padding: 20px 14px;
+  }
+
+  .auth-card {
+    padding: 26px 20px;
+  }
+
+  /* The asymmetry that centres the label against a floating icon survives —
+     it is the right padding less `icon + gap` — at a size that no longer
+     spends a seventh of the button on empty space. */
+  .auth-submit {
+    gap: 14px;
+    padding: 10px 30px 10px 8px;
+  }
+
+  .field-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- standalone legal ----------
    Terms and Privacy read by someone who is not signed in. The document is the
    same one the signed-in screen renders; only the frame differs, because
@@ -3372,7 +3506,8 @@ button.link-button:disabled {
    here; `reduce` stops it turning and leaves the gap as the still marker that
    this button is busy. */
 .auth-submit .ph-circle-notch,
-.modal-actions .ph-circle-notch {
+.modal-actions .ph-circle-notch,
+.conn-actions .ph-circle-notch {
   animation: auth-spin 900ms linear infinite;
 }
 

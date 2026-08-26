@@ -47,7 +47,7 @@ approximately nothing — but the CLI may still require a key to start.
 
 | Method | Path | Behaviour |
 |---|---|---|
-| `GET` | `/health` | Config snapshot + live session count |
+| `GET` | `/health` | Config snapshot, live session count, and a real Anthropic key check (`claudeApi`) |
 | `POST` | `/sessions` | Create. Optional `{"resume": "<sdk session id>"}` reattaches a prior conversation |
 | `GET` | `/sessions` | List |
 | `GET` | `/sessions/:id` | One (404 after delete) |
@@ -586,3 +586,80 @@ skill (the SDK has no agent teams) — are tracked in the plan's Phase 5. Authen
 now in (see below); what it does **not** yet do is separate one user's sessions, workspace
 or SAP profile from another's. Every signed-in account still drives the same backend and
 the same shared profile.
+
+### SAP reachability and reconnect — for Phase 5-2/5-3
+
+The dashboard's **SAP System** row is not a measurement. Its dot is `online ? "up" :
+"unknown"` — the *agent backend's* `/health`, reused — and its detail (`S4D · client 100
+· SVT_000214 · https://sap-dev.example.com:44300`) is the `SAP_SYSTEM` fixture in
+`web/src/lib/account.ts`. So the row goes green whenever the backend answers, whether SAP
+is up, down, or pointed at a host that does not exist. The other two rows are real: the
+backend row is the `/health` call itself, and the Claude API row is a live `GET /v1/models`
+against the configured key (`src/server/claude-api.ts`).
+
+The `Reconnect` button matches that. It re-reads — `router.refresh()`, which re-runs the
+page and so re-hits `/health` — and, when every row is up, says so in a dialog. It does not
+re-establish anything, because there is nothing yet to re-establish.
+
+**What Phase 5-2/5-3 needs to add, in order:**
+
+1. **A real SAP probe on the backend.** Read `~/.sc4sap/profiles/<alias>/config.json` plus
+   `sap.env` (the mapping is documented at the top of `web/src/lib/account.ts`) and reach
+   the system — a cheap authenticated round trip through the plugin's MCP layer, the
+   equivalent of the key check in `claude-api.ts`. Report it on `/health` as a `sapSystem`
+   field shaped like `claudeApi` (`state` / `detail` / `checkedAt`), with the same
+   three-way `up` / `down` / `unknown` split: an unreachable system and an unanswerable
+   question are different rows. Cache it on the same short TTL — `/health` is hit on every
+   dashboard render.
+2. **Point the row at it.** `state={health?.sapSystem.state ?? "unknown"}` in
+   `web/src/app/page.tsx`, alongside the Claude API row it will look exactly like, and the
+   detail from the profile rather than from the fixture. `allGreen` in that file already
+   folds in every real row, so the reconnect dialog starts telling the truth about SAP the
+   moment the row does.
+3. **Then, and only then, a reconnect endpoint.** `POST /sessions/:id/reconnect`, or a
+   manager-level equivalent. The SDK session holds the plugin's MCP servers warm between
+   turns (see the header of `src/server/session-manager.ts`), so reconnecting means tearing
+   down and re-establishing *that* connection — not re-running a health check. Point
+   `ReconnectButton`'s `check()` at it instead of at `router.refresh()`; the notice modal
+   and the busy state it already has stay as they are.
+
+Step 3 is worth nothing without step 1: today a reconnect could not report whether it had
+worked, because nothing measures the thing it would be reconnecting.
+
+### Replacing an expired Anthropic key — for Phase 5-4
+
+The Claude API row *is* measured, so it goes red on a key that has expired or been revoked.
+Nothing in the app can then act on that. `ANTHROPIC_API_KEY` is read once, from `.env`, by
+`process.loadEnvFile` in `src/config.ts` when the backend starts; one key serves the whole
+process and every signed-in account with it. Replacing it means editing `.env` and
+restarting `npm run server` — an operator at the machine, not a user at the screen.
+
+The `Reconnect` dialog says so rather than implying the button might help (see the `remedy`
+branch in `web/src/components/ReconnectButton.tsx`), which is the whole of the handling
+today. That is deliberate: a control that reports a failure it cannot act on has to name
+who can.
+
+Phase 5-4 already owns the fix, from the other end — `web/src/lib/account.ts` maps credits
+to "the Anthropic Console usage/credit endpoint, keyed by **the user's own API key**". The
+same per-user key is what makes an expired one replaceable from a settings screen, and it
+retires the shared-key limitation in the paragraph above at the same time.
+
+**What that needs:**
+
+1. **Somewhere to put it.** A field on the user's Mongo row, encrypted at rest — it is a
+   billable credential, and `lib/auth/users.ts` is where the row is already shaped. The
+   settings screen (`web/src/app/settings/page.tsx`) grows one field. Never send it back to
+   the browser; the panel's existing rule — the key's *name* may be shown, no part of the
+   key itself, not even masked — applies to every surface it touches.
+2. **A session that uses it.** `SessionManager.create()` already takes options, and the
+   Agent SDK accepts `options.env`, which **replaces** the subprocess environment rather
+   than merging into it (`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts`) — so
+   `env: { ...process.env, ANTHROPIC_API_KEY: usersKey }` gives a per-session key with no
+   mutation of `process.env` and no race between concurrent sessions. `.env` stays the
+   fallback for a user who has not set one.
+3. **A check that follows.** `src/server/claude-api.ts` caches one result for the whole
+   process, which stops being meaningful once the key differs per user: the cache becomes
+   keyed by the key it tested, and `/health` needs to be told whose key to test. That is
+   the first point where the backend has to learn that users exist — it currently does not,
+   by design (see the `MONGODB_URI` note above), so this is a boundary change and not only
+   a plumbing one.

@@ -118,6 +118,16 @@ export type Health = {
   workspace: string;
   model: string;
   sessions: number;
+  /**
+   * Whether the backend's Anthropic key still works — a real call, not an
+   * assumption. `unknown` means the check could not be completed, which the
+   * dashboard draws differently from a key that was refused.
+   */
+  claudeApi: {
+    state: "up" | "down" | "unknown";
+    detail: string;
+    checkedAt: string;
+  };
   toolPolicy: {
     autoAllowed: number;
     denyPatterns: string[];

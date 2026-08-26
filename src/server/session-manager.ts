@@ -224,6 +224,15 @@ type LiveSession = {
   openToolBlocks: Set<number>;
   /** Approvals blocking a turn, keyed by reqId. */
   pending: Map<string, PendingEntry>;
+  /**
+   * What this conversation had already spent before this session existed.
+   *
+   * `turns` needs no equivalent because the record accumulates it and can
+   * simply start at the carried-over figure. Cost cannot: the SDK reports a
+   * running total for its own run, so the record assigns rather than adds and
+   * the carried-over part has to be kept to add back each time.
+   */
+  priorCostUsd: number;
   /** Counting down to abandoning a turn nobody is watching. See `#orphan`. */
   orphanTimer?: ReturnType<typeof setTimeout>;
 };
@@ -307,7 +316,28 @@ export class SessionManager {
     return this.#policy;
   }
 
-  create(options: { resume?: string } = {}): SessionRecord {
+  /**
+   * `prior*` carry a conversation's running totals across the session that was
+   * counting them.
+   *
+   * A session's turn count and cost are its own, and a conversation outlives
+   * any one session: the web app stores its transcript and revives it against
+   * a fresh session whenever this process has forgotten it — a restart, an
+   * eviction, another machine. Starting that session's counters at zero does
+   * not just under-report the rail; the web app writes them back over the
+   * stored totals, so the history is lost rather than merely mis-shown.
+   *
+   * So the caller hands back what it has stored, and the counters continue
+   * rather than restart. Omitted, they are zero, which is what a genuinely new
+   * conversation wants.
+   */
+  create(
+    options: {
+      resume?: string;
+      priorTurns?: number;
+      priorCostUsd?: number;
+    } = {},
+  ): SessionRecord {
     const id = randomUUID();
     const pump = new InputPump();
 
@@ -341,14 +371,17 @@ export class SessionManager {
       },
     });
 
+    const priorTurns = Math.max(0, options.priorTurns ?? 0);
+    const priorCostUsd = Math.max(0, options.priorCostUsd ?? 0);
+
     const live: LiveSession = {
       record: {
         id,
         sdkSessionId: null,
         status: "starting",
         createdAt: new Date().toISOString(),
-        turns: 0,
-        totalCostUsd: 0,
+        turns: priorTurns,
+        totalCostUsd: priorCostUsd,
         title: null,
       },
       pump,
@@ -358,6 +391,7 @@ export class SessionManager {
       seq: 0,
       openToolBlocks: new Set(),
       pending: new Map(),
+      priorCostUsd,
     };
     this.#sessions.set(id, live);
     this.#consume(live);
@@ -649,7 +683,11 @@ ${text}` : text);
             // so assigning it pins the session at 1. Accumulate instead.
             live.record.turns += message.num_turns;
             if (!message.is_error) {
-              live.record.totalCostUsd = message.total_cost_usd;
+              // A running total for this SDK run, so it replaces rather than
+              // adds — and what it does not know about is whatever the
+              // conversation spent before this session picked it up.
+              live.record.totalCostUsd =
+                live.priorCostUsd + message.total_cost_usd;
             }
             this.#setStatus(live, "idle");
           }
