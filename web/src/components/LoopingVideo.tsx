@@ -26,15 +26,26 @@
  */
 import { useEffect, useRef } from "react";
 
-/** How early the incoming copy starts before the outgoing one runs out. */
+/**
+ * How early the incoming copy starts before the outgoing one runs out.
+ *
+ * Read this as a budget rather than as a duration the two are both on screen
+ * for: the switch happens the moment the incoming copy paints, so what this
+ * number buys is room for that to take a while.
+ *
+ * And it does. The copy being started has been paused for a whole lap of the
+ * clip, long enough that the browser has let its decoder go idle, so `play()`
+ * is a pipeline resume and not a resumption of playback — tens of
+ * milliseconds when it goes well, and not reliably that. Spending the budget
+ * costs nothing visible, because the outgoing copy is playing normally the
+ * entire time it is being spent; running out of it does cost something, since
+ * then the outgoing copy is at its end with nowhere to go. So this is set
+ * long, and being generous with it is free.
+ */
 const OVERLAP_MS = 600;
 
-/**
- * How long to wait for that first frame before switching anyway. Only reached
- * if the frame callback never fires — a video that was refused playback, say
- * — where a switch to a still element still beats a loop that has stopped.
- */
-const FRAME_TIMEOUT_MS = 200;
+/** `readyState` at which an element has a frame for its current position. */
+const HAVE_CURRENT_DATA = 2;
 
 /** `requestVideoFrameCallback` is not in the DOM lib TypeScript ships. */
 type FrameVideo = HTMLVideoElement & {
@@ -62,7 +73,6 @@ export function LoopingVideo({
     /** True from the moment a handoff starts until the switch has happened. */
     let handing = false;
     let frame = 0;
-    let timer = 0;
     let stopWaiting: (() => void) | null = null;
 
     /** Leaves a copy holding its first frame, decoded and ready to show. */
@@ -90,26 +100,60 @@ export function LoopingVideo({
       return () => video.removeEventListener("playing", listener);
     }
 
+    /** Sends the copy on screen round again. The fallback for a handoff that
+     *  cannot happen — the loop keeps running, just with a seam. */
+    function restart(video: HTMLVideoElement): void {
+      rewind(video);
+      void video.play().catch(() => {});
+    }
+
     function handoff(): void {
       if (handing) return;
-      handing = true;
 
       const coming = videos[1 - live];
+      // The other copy has no frame to show yet. Both elements load the same
+      // file, but they load on their own schedules and the hidden one is the
+      // one a browser deprioritises — so this is reachable on a cold first
+      // lap, not only on a broken load.
+      if (coming.readyState < HAVE_CURRENT_DATA) {
+        restart(videos[live]);
+        return;
+      }
+
+      handing = true;
       rewind(coming);
       // Autoplay policy allows this — both copies are muted — but a rejected
       // promise is unhandled otherwise, and a failure here means a video that
       // stops rather than anything worth reporting.
       void coming.play().catch(() => {});
 
+      // No deadline of its own: the deadline is the outgoing copy running out,
+      // which `onEnded` is already watching for. A timer shorter than the lead
+      // would give up while the copy on screen still had frames left to play,
+      // and giving up means seeking that copy — on screen, where the seek is
+      // the visible hitch this is all meant to avoid.
       stopWaiting = onFirstFrame(coming, swap);
-      timer = window.setTimeout(swap, FRAME_TIMEOUT_MS);
+    }
+
+    /** Ends a handoff whose incoming copy never presented a frame: it goes
+     *  back to being the hidden one, and the visible copy carries on. */
+    function abort(): void {
+      if (!handing) return;
+      stopWaiting?.();
+      stopWaiting = null;
+
+      const coming = videos[1 - live];
+      coming.pause();
+      rewind(coming);
+      handing = false;
+
+      restart(videos[live]);
     }
 
     function swap(): void {
       if (!handing) return;
       stopWaiting?.();
       stopWaiting = null;
-      window.clearTimeout(timer);
 
       const going = videos[live];
       const coming = videos[1 - live];
@@ -141,6 +185,15 @@ export function LoopingVideo({
     // stops `requestAnimationFrame` but not a muted video.
     function onEnded(event: Event): void {
       if (event.target !== videos[live]) return;
+      // A handoff that had the whole lead to present a frame and did not. The
+      // budget is spent — this copy is out of frames — so the handoff is the
+      // thing to drop. Switching anyway would cut to a copy that is not
+      // running yet, which is a held frame on screen either way and a torn
+      // one at the far end of it.
+      if (handing) {
+        abort();
+        return;
+      }
       handoff();
     }
 
@@ -150,7 +203,6 @@ export function LoopingVideo({
 
     return () => {
       cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
       stopWaiting?.();
       for (const video of videos) video.removeEventListener("ended", onEnded);
     };
