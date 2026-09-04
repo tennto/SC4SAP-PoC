@@ -27,6 +27,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { Select } from "@/components/Select";
 import {
   ABAP_RELEASE_RULE,
   ADT_URL_RULE,
@@ -652,26 +653,27 @@ export function SetupWizard({ firstName }: { firstName: string }) {
           {step === 2 ? (
             <>
               <div className="field-pair">
-                <label className="field">
-                  <span className="field-label">Release</span>
-                  <select
+                {/* A `div`, not a `label`: the control is a button, and a
+                    label wrapping a button is announced as a label for
+                    nothing. `aria-labelledby` does the association instead. */}
+                <div className="field">
+                  <span className="field-label" id="setup-release-label">
+                    Release
+                  </span>
+                  <Select
                     name="sapVersion"
+                    labelledBy="setup-release-label"
                     value={draft.sapVersion}
-                    onChange={(event) =>
-                      set(
-                        "sapVersion",
-                        event.target.value as SetupDraft["sapVersion"],
-                      )
+                    options={SAP_VERSIONS.map((version) => ({
+                      value: version.value,
+                      label: version.label,
+                    }))}
+                    onChange={(next) =>
+                      set("sapVersion", next as SetupDraft["sapVersion"])
                     }
                     autoFocus
-                  >
-                    {SAP_VERSIONS.map((version) => (
-                      <option key={version.value} value={version.value}>
-                        {version.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
 
                 <label className="field">
                   <span className="field-label">ABAP release</span>
@@ -733,20 +735,21 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                   </span>
                 </label>
 
-                <label className="field">
-                  <span className="field-label">Logon language</span>
-                  <select
+                <div className="field">
+                  <span className="field-label" id="setup-language-label">
+                    Logon language
+                  </span>
+                  <Select
                     name="language"
+                    labelledBy="setup-language-label"
                     value={draft.language}
-                    onChange={(event) => set("language", event.target.value)}
-                  >
-                    {LANGUAGES.map((language) => (
-                      <option key={language.code} value={language.code}>
-                        {language.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    options={LANGUAGES.map((language) => ({
+                      value: language.code,
+                      label: language.label,
+                    }))}
+                    onChange={(next) => set("language", next)}
+                  />
+                </div>
               </div>
             </>
           ) : null}
