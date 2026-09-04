@@ -36,18 +36,28 @@
   --bad: #b91c1c;
 
   /* ---- Type ----
-     Borrowed from sc4sap.dev so the app and the site read as one product.
-     IBM Plex was drawn for engineering documentation and ships matching
-     Korean and Japanese cuts, so one family carries every script in a
-     consultant answer. Schibsted Grotesk has the display weight Plex lacks
-     and carries no CJK, so it sits first and the Plex cuts catch the rest of
-     the headline. System stacks trail both, and are what an offline load
-     falls back to. */
+     Pretendard leads everything. It was drawn as a Korean face with a Latin
+     cut built on Inter's metrics, so one family carries Hangul and Latin at
+     the same colour — where a Latin-first stack with a Korean fallback behind
+     it renders a mixed sentence in two typefaces, at two weights, on two
+     baselines. That was the whole reason IBM Plex was here before, and
+     Pretendard does it for Hangul specifically rather than as a byproduct.
+
+     The variable build is asked for first and the static one behind it, so a
+     browser without `font-variation-settings` still gets Pretendard rather
+     than dropping to the system stack. After those, the platform faces the
+     app is asked to fall back to, ending in Malgun Gothic — Windows' own
+     Hangul face, and the last thing that can still set Korean if the network
+     is gone.
+
+     Schibsted Grotesk keeps the headline: it has the display weight Pretendard
+     is deliberately without, carries no Hangul, and now falls through to
+     Pretendard for the Korean in a headline instead of to a Plex cut. */
   --font-sans:
-    "IBM Plex Sans", "IBM Plex Sans KR", ui-sans-serif, system-ui, "Segoe UI",
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", "Malgun Gothic",
     sans-serif;
-  --font-display:
-    "Schibsted Grotesk", "IBM Plex Sans KR", var(--font-sans);
+  --font-display: "Schibsted Grotesk", var(--font-sans);
   --font-mono:
     "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
 
@@ -79,14 +89,20 @@
   /* The agent's answers, and only those — a second face is what separates the
      long half of the transcript from the reader's own short turns. Noto Sans
      Oriya carries Latin and Odia but no Hangul, so a Korean answer falls
-     through to the Plex KR cut behind it. */
-  --font-answer:
-    "Noto Sans Oriya", "IBM Plex Sans KR", var(--font-sans);
+     through to Pretendard behind it. */
+  --font-answer: "Noto Sans Oriya", var(--font-sans);
 
   color-scheme: light;
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.55;
+  /* Set on the root and inherited, rather than repeated per component. `rem`
+     rather than `em` deliberately: this is one fixed optical correction for
+     Pretendard's default fit, and an `em` value would scale it with every
+     font-size in the app — tightening a 22px heading three times as hard as a
+     11px label, which is the opposite of what tracking should do. The
+     headings keep their own `em` tracking on top; see below. */
+  letter-spacing: -0.03rem;
 }
 
 * {
@@ -116,11 +132,16 @@ h3 {
   letter-spacing: -0.02em;
 }
 
+/* The one place the root's tracking is undone. A monospace face is chosen for
+   its fixed advance width — an identifier, a URL, a six-digit code lining up
+   under the one above it — and negative tracking is exactly the thing that
+   takes that away. */
 code,
 kbd,
 pre,
 samp {
   font-family: var(--font-mono);
+  letter-spacing: normal;
 }
 
 /* Phosphor glyphs size off the font-size they inherit, so every icon context
@@ -2831,7 +2852,12 @@ button.link-button:disabled {
   .account-menu,
   .account-submenu,
   .modal-backdrop,
-  .modal {
+  .modal,
+  .setup,
+  .setup-brand,
+  .setup-rail,
+  .setup-card,
+  .setup-done > * {
     animation: none;
   }
 
@@ -3367,6 +3393,14 @@ button.link-button:disabled {
   font-size: 14px;
 }
 
+/* A step under the submit button above it. The two are the same control at the
+   same width, and the primary one is the account this app is actually built
+   around — Google is the alternative, so it does not need to match the
+   headline weight of the thing it is an alternative to. */
+a.ghost.auth-submit {
+  font-size: 12px;
+}
+
 .google-mark {
   flex: none;
   width: 14px;
@@ -3394,6 +3428,829 @@ button.link-button:disabled {
 
   .field-pair {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- setup wizard ----------
+   The screen a first sign-in lands on. One question at a time, each on a card
+   that is the only thing in front of you.
+
+   The window feeling comes from the ground, not from a shadow: the page is
+   `--panel-2` and the card is white, so the card reads as lifted off it while
+   the palette stays where the rest of the app left it — depth from tint, never
+   from a drop shadow. */
+/* A fixed-height scroll container, not a `min-height` block that grows the
+   document. That distinction is the whole reason a refresh used to stutter:
+   this box is exactly the viewport, and *any* downward transform inside a box
+   that tall — the screen's own arrival, the wordmark's, the rail's — pushed a
+   few pixels past the bottom and raised the document scrollbar for the length
+   of the animation. The scrollbar appearing and then going away again takes
+   ~15px of width with it, so every element on a centred screen slid sideways
+   and back on each load.
+
+   Owning the overflow here means the document never scrolls on this route and
+   nothing inside can make it. `safe center` so a window too short for the card
+   scrolls to reach its top rather than centring it out of reach. */
+.setup {
+  display: grid;
+  align-content: safe center;
+  justify-items: center;
+  gap: 48px;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: 34px 20px 40px;
+  background: var(--panel-2);
+  /* Fade only. `page-in`, the app's route arrival, carries a `translateY` —
+     which is exactly the transform this box cannot afford. The motion on this
+     screen comes from the three blocks inside it instead. */
+  animation: setup-open var(--t-page) var(--ease) both;
+}
+
+@keyframes setup-open {
+  from {
+    opacity: 0;
+  }
+}
+
+/* The screen's own masthead: the mark, then what this screen is. Stacked and
+   centred above the card rather than inside it, so the card stays one question
+   and nothing else.
+
+   It settles a beat before the rail below the card does — the two frame the
+   card, and arriving in reading order is what makes the screen resolve top to
+   bottom instead of all at once. */
+.setup-brand {
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+  animation: rise-in var(--t-enter) var(--ease) both;
+  animation-delay: 80ms;
+}
+
+/* Square, and sized to the title beside it rather than to any icon grid — it
+   is the largest thing on the screen that is not text. */
+.setup-logo {
+  width: 40px;
+  height: 40px;
+  /* The file is a black mark on its own transparent ground; nothing to crop,
+     but this keeps it honest if the asset is ever replaced with a padded one. */
+  object-fit: contain;
+}
+
+/* Bigger and heavier than the wordmark above it, and still under the card's
+   own heading — the order the eye should take them in is product, screen,
+   question, and the question is the one being answered. */
+.setup-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* The card and its rail. The wordmark above them is part of the same centred
+   group rather than pinned to the top of the window: a mark at the ceiling
+   with the card halfway down leaves a band of empty ground between them that
+   reads as a page still loading. */
+.setup-stage {
+  display: grid;
+  justify-items: center;
+  gap: 54px;
+  width: 100%;
+}
+
+/* One height for all four questions.
+   
+   The cards ask for one field, two, four and one, so left to themselves they
+   were 389, 460, 482 and 443px tall — every Next resized the box under the
+   reader, and on a centred screen a box that changes height also moves. So the
+   floor is the tallest of the four, measured at the width the card actually
+   renders at, and `--setup-card-min` is the one number to change if a card
+   ever grows past it. A floor rather than a fixed height: copy that outgrows
+   it should push the box open, not overflow it.
+
+   The slack that leaves on the shorter cards is split above and below the
+   content rather than dropped under it: a single field pinned to the top of a
+   490px box with a hundred pixels of nothing beneath it reads as a card that
+   failed to load the rest of itself. */
+.setup-card {
+  --setup-card-min: 490px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  width: min(560px, 100%);
+  min-height: var(--setup-card-min);
+  padding: 46px 58px 38px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+/* Which side the card comes in from says which way you just went. Forward
+   arrives from the right, Back from the left — the reverse of the move, not a
+   second forward one. `key={step}` on the form is what re-runs it.
+
+   `--t-enter`, the app's longest duration, rather than the `--t-base` a modal
+   uses. A dialog snaps because it is interrupting you; these four cards are
+   one continuous screen, and at 260ms the swap read as a flicker rather than
+   as a move. The easing is what makes the length free: `--ease` covers most of
+   the distance in the first fifth, so the card is legible almost immediately
+   and the remaining 700ms is only the settle — Next still feels instant.
+
+   The travel is longer to match. A 22px slide inside a 900ms envelope reads as
+   a drift; at 34px there is enough movement to be a card arriving. */
+.setup-stage[data-dir="forward"] .setup-card {
+  animation: setup-card-forward var(--t-enter) var(--ease) both;
+}
+
+.setup-stage[data-dir="back"] .setup-card {
+  animation: setup-card-back var(--t-enter) var(--ease) both;
+}
+
+/* The run resolving, rather than another card in it. A lift and a fade, no
+   sideways travel — a slide would read as "next question" when the questions
+   are over. */
+.setup-stage[data-dir="settle"] .setup-card {
+  animation: setup-card-settle var(--t-enter) var(--ease) both;
+}
+
+@keyframes setup-card-settle {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+
+/* The card the screen opens on. It has not been moved to — it is where the
+   screen starts — so it fades and does not travel: the page is already
+   arriving under it, and the wordmark and the rail are each arriving on their
+   own delay, and a fourth transform resolving at the same time is what made a
+   refresh stutter rather than settle.
+
+   Shorter than the swap, too. The slide has distance to cover and earns its
+   900ms; a fade that long on first paint just looks like a slow page. */
+.setup-stage[data-dir="initial"] .setup-card {
+  animation: setup-card-open var(--t-slow) var(--ease) both;
+}
+
+@keyframes setup-card-open {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes setup-card-forward {
+  from {
+    opacity: 0;
+    transform: translateX(34px);
+  }
+}
+
+@keyframes setup-card-back {
+  from {
+    opacity: 0;
+    transform: translateX(-34px);
+  }
+}
+
+/* Where you are, in words, above the question. A line of small caps rather
+   than a bar: a progress bar over the heading takes the first read, and the
+   first read on this screen belongs to the question. */
+.setup-kind {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-38);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* The help control sits at the far end of this row rather than in a corner of
+   its own: it is about the question below it, and the step marker is the only
+   thing at the top of the card to hang it off. */
+.setup-kind .setup-help {
+  margin-left: auto;
+}
+
+.setup-kind .ph {
+  font-size: 14px;
+  color: var(--ink-55);
+}
+
+.setup-head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.setup-head h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.setup-lede {
+  margin: 0;
+  color: var(--ink-55);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* Each line of the lede is its own block, so the break falls where it was
+   written rather than where the column happens to run out. A `<br>` would do
+   the same thing and read as markup doing a layout's job; this also means a
+   line that is too long for the card still wraps inside itself. */
+.setup-lede-line {
+  display: block;
+}
+
+.setup-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Matches the sign-in card, which is the other place a form is the whole
+   screen: labels a step down from the settings grid's, inputs a step down from
+   the body size. */
+.setup-fields .field-label {
+  font-size: 10px;
+}
+
+.setup-fields .field input,
+.setup-fields .field select {
+  font-size: 13px;
+}
+
+/* A secret that can be read back. The button sits inside the input's box
+   rather than beside it, so revealing costs the field no width, and the
+   input's right padding is what keeps the value clear of the glyph. */
+.field-secret {
+  position: relative;
+  display: block;
+}
+
+.field-secret input {
+  padding-right: 40px;
+}
+
+.field-reveal {
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--ink-38);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+}
+
+.field-reveal:hover {
+  color: var(--ink);
+  background: var(--panel-2);
+}
+
+/* The base button rule lifts a control on press. Nothing else inside a text
+   field moves, and one that jumps a pixel inside one reads as a glitch — so
+   the translate is restated here without it, since `transform` is also what
+   centres the button. */
+.field-reveal:active:not(:disabled) {
+  transform: translateY(-50%);
+}
+
+.field-reveal .ph {
+  font-size: 15px;
+}
+
+/* Small print that is genuinely an aside — where the key comes from, what will
+   not work as one. Under the hint rather than replacing it. */
+.setup-aside {
+  margin: 2px 0 0;
+  color: var(--ink-38);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.setup-aside a {
+  color: var(--ink-55);
+  text-underline-offset: 2px;
+}
+
+.setup-aside a:hover {
+  color: var(--ink);
+}
+
+.setup-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Back on the left, Next on the right, and the gap between them is the point:
+   the two are opposite moves, and side by side they invite the wrong one. */
+.setup-spacer {
+  flex: 1;
+}
+
+.setup-actions .primary {
+  padding: 9px 20px;
+  font-size: 13px;
+}
+
+.setup-actions .ghost {
+  padding: 9px 16px;
+  font-size: 13px;
+}
+
+/* The one way off this screen before it is finished — see the comment beside
+   it in SetupWizard. Deliberately quiet: leaving is allowed, but it is not
+   what the screen is for. */
+.setup-escape {
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- setup: help bubble ---------- */
+
+/* The anchor. `position: relative` is what the bubble is positioned against,
+   and the hover target is this wrapper rather than the button, so the pointer
+   can cross the gap between the two without the bubble closing under it. */
+.setup-help {
+  position: relative;
+  display: inline-flex;
+}
+
+.setup-help-button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--ink-38);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  cursor: help;
+}
+
+.setup-help-button .ph {
+  font-size: 13px;
+}
+
+.setup-help:hover .setup-help-button,
+.setup-help-button:focus-visible {
+  color: var(--ink);
+  border-color: var(--ink-55);
+}
+
+/* Ink on white rather than the panel's white on grey: this is the one thing on
+   the screen that sits *over* the card, and giving it the card's own surface
+   would leave it reading as part of the form. Inverted, it reads as a layer.
+
+   It opens to the *right*, out over the page ground beside the card. Below the
+   control it would land squarely on the heading and the lede — covering the
+   question the reader pressed it to understand — and the card's right edge is
+   the one direction with nothing behind it.
+
+   `visibility` as well as opacity, so a closed bubble is out of the hit-test
+   and cannot swallow a click on whatever is under it. The transform carries
+   the vertical centring as well as the entrance, so both halves are written
+   into every state below rather than one overwriting the other. */
+.setup-help-bubble {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 10px);
+  z-index: 2;
+  width: max-content;
+  max-width: 260px;
+  padding: 9px 12px;
+  color: #ffffff;
+  background: var(--ink);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: normal;
+  /* The row it hangs off is uppercase small caps; the bubble is a sentence. */
+  text-transform: none;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-4px, -50%);
+  transition:
+    opacity var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease),
+    visibility var(--t-fast);
+}
+
+/* `:focus-within` rather than a rule on the button, so the bubble is also
+   reachable by tabbing to the control. */
+.setup-help:hover .setup-help-bubble,
+.setup-help:focus-within .setup-help-bubble {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(0, -50%);
+}
+
+/* Below roughly 1140px there is no longer 260px of ground to the right of the
+   card, and a bubble that runs off the window is worse than one in a second
+   choice of position — so it goes back to opening upward, over the card's own
+   top margin, which is empty at every width. */
+@media (max-width: 1140px) {
+  .setup-help-bubble {
+    top: auto;
+    left: auto;
+    bottom: calc(100% + 8px);
+    right: 0;
+    max-width: 280px;
+    transform: translateY(4px);
+  }
+
+  .setup-help:hover .setup-help-bubble,
+  .setup-help:focus-within .setup-help-bubble {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-help-bubble {
+    transition: none;
+  }
+}
+
+/* ---------- setup: step rail ---------- */
+
+.setup-rail {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  width: min(560px, 100%);
+  /* Last of the three to settle; see `.setup-brand`. It does not re-run on a
+     step change — only the card is keyed, so only the card remounts. */
+  animation: rise-in var(--t-enter) var(--ease) both;
+  animation-delay: 260ms;
+}
+
+.setup-dots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each step is a button whether or not it can be pressed, so the row keeps one
+   set of metrics — a mix of buttons and spans would sit at two baselines. The
+   chrome comes off; the state is carried by the mark and the rule above it.
+
+   No hover rule anywhere in this block. The rail is an indicator and the run
+   is one-way, so there is no click to promise, and ink that arrives under the
+   pointer would be read as progress that is not there. */
+.setup-dot button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 4px;
+  background: none;
+  border: 0;
+  border-top: 2px solid var(--line);
+  border-radius: 0;
+  color: var(--ink-38);
+  font-size: 11px;
+}
+
+.setup-dot button:disabled {
+  /* The base rule dims a disabled button to 40%. Here "not reached yet" is
+     already said by the hairline and the hollow mark, and dimming on top of
+     that pushed the label under the contrast floor. */
+  opacity: 1;
+  cursor: default;
+}
+
+.setup-dot-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup-dot-mark .ph {
+  font-size: 11px;
+}
+
+.setup-dot-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Behind you, and where you are: both full ink, so the row reads as a bar that
+   has filled this far rather than as one lit dot on a dim track. Three steps
+   in should look like three steps done, and a mid-grey "done" state made the
+   first two read as half-finished.
+
+   What separates the two is the mark inside — a tick for a step behind you,
+   its number for the one you are on — not the weight of the ink. */
+.setup-dot.is-done button,
+.setup-dot.is-current button {
+  border-top-color: var(--ink);
+  color: var(--ink);
+}
+
+.setup-dot.is-done .setup-dot-mark,
+.setup-dot.is-current .setup-dot-mark {
+  color: #ffffff;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.setup-dot button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.setup-rail-note {
+  margin: 0;
+  color: var(--ink-38);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* ---------- setup: connecting ---------- */
+
+/* Nothing to fill in, so nothing to lay out in a column of fields — the card
+   holds three things stacked on its centre line and is taller than it needs to
+   be on purpose, so the swap from the last question does not collapse the box
+   under the reader. */
+.setup-connecting {
+  align-items: center;
+  gap: 22px;
+  justify-content: center;
+  text-align: center;
+}
+
+.setup-spinner {
+  width: 62px;
+  height: 62px;
+}
+
+.setup-spinner circle {
+  fill: none;
+  /* Rotate about the viewBox's centre, not each circle's own painted box —
+     the two arcs have different radii and would otherwise turn about two
+     different points. */
+  transform-box: view-box;
+  transform-origin: 32px 32px;
+}
+
+/* The ring both arcs travel, at the weight of every other hairline in the
+   app. Without it the arcs read as two loose strokes rather than as one
+   mechanism. */
+.setup-spinner-track {
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+/* Cut out of a full circle by the dash pattern: at r=26 the circumference is
+   163.4, so 41 on and 123 off leaves a single quarter-turn arc. Round caps,
+   which is most of why this reads as drawn rather than as clipped. */
+.setup-spinner-outer {
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 41 123;
+  animation: setup-spin 1900ms linear infinite;
+}
+
+/* r=15, circumference 94.2 — 31 on and 63 off is a third of a turn. A step
+   lighter than the outer arc and faster, running the other way: two arcs
+   turning together would beat against each other, where counter-rotation reads
+   as one moving part. Not lighter than that — at `--ink-38` on white it was
+   close enough to invisible that the mark read as a single arc. */
+.setup-spinner-inner {
+  stroke: var(--ink-55);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 31 63;
+  animation: setup-spin-reverse 1250ms linear infinite;
+}
+
+@keyframes setup-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes setup-spin-reverse {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+/* The rotating headline. Sized as the card's own heading would be, because
+   while the checks run it is the only heading there is. */
+.setup-connecting-line {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  /* Keyed in the markup, so each line fades up rather than being swapped in
+     place. Slower than a hover and shorter than the card's own arrival — it is
+     a word changing, not a screen. */
+  animation: setup-line-in var(--t-slow) var(--ease) both;
+}
+
+@keyframes setup-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* Which of the three checks is running. The quiet half of the pair above it:
+   the headline says the wait is normal, this says what is actually happening,
+   and only one of those is worth reading twice. */
+.setup-check {
+  margin: 0;
+  color: var(--ink-38);
+  font-size: 11.5px;
+  line-height: 1.5;
+  animation: setup-line-in var(--t-slow) var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The two indefinite loops on this screen, which are the ones that actually
+     hurt. The arcs stay where they are — a still ring with two gaps in it is
+     still legible as "not finished". */
+  .setup-spinner-outer,
+  .setup-spinner-inner,
+  .setup-connecting-line,
+  .setup-check {
+    animation: none;
+  }
+}
+
+/* ---------- setup: done ---------- */
+
+.setup-done-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  color: var(--ok);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 50%;
+}
+
+.setup-done-mark .ph {
+  font-size: 21px;
+}
+
+/* A narrower label column than the dashboard's 132px: this card is 560px wide
+   rather than a third of a grid, and the values beside them are short. */
+.setup-summary > div {
+  grid-template-columns: 118px 1fr;
+}
+
+.setup-done .notice-block {
+  margin: 0;
+}
+
+/* The one control on the card, centred rather than pushed to an edge. */
+.setup-done .setup-actions {
+  justify-content: center;
+}
+
+/* A pill, and the one thing in this app that casts a shadow.
+   
+   The flat theme takes its depth from borders and tints of the ink — see the
+   note at the top of this file — so this is a deliberate exception and not a
+   drift back to the claymorphism pass. It is the last press of a flow that has
+   just finished, on a card with nothing else to click, and it is the only
+   place in the app where a control is meant to be the thing you notice rather
+   than the thing you find.
+
+   The shadow is the ink at low opacity rather than black, so it reads as the
+   button sitting above the card instead of as a grey smear under it. Two
+   layers: a tight one for the contact edge, a wide one for the lift. */
+.setup-start {
+  padding: 12px 34px;
+  border-radius: 999px;
+  font-size: 14px;
+  box-shadow:
+    0 2px 4px rgba(56, 56, 56, 0.14),
+    0 8px 22px rgba(56, 56, 56, 0.18);
+}
+
+.setup-start:hover:not(:disabled) {
+  box-shadow:
+    0 3px 6px rgba(56, 56, 56, 0.16),
+    0 12px 28px rgba(56, 56, 56, 0.22);
+}
+
+/* The base rule drops every button a pixel on press. The shadow tightens with
+   it, so the button reads as being pushed toward the card rather than as
+   sliding down the face of it. */
+.setup-start:active:not(:disabled) {
+  box-shadow:
+    0 1px 2px rgba(56, 56, 56, 0.16),
+    0 4px 12px rgba(56, 56, 56, 0.18);
+}
+
+/* And the contents behind it, in reading order rather than all at once. The
+   card is the ground arriving; these are what is on it, and a confirmation
+   that assembles top-to-bottom reads as a result being reported where the same
+   thing in one frame reads as a screen that was already there.
+
+   `rise-soft-in` is the app's own primitive for exactly this — an element
+   arriving inside a block that is itself arriving. */
+.setup-done > * {
+  animation: rise-soft-in var(--t-slow) var(--ease) both;
+}
+
+.setup-done > *:nth-child(1) {
+  animation-delay: 160ms;
+}
+
+.setup-done > *:nth-child(2) {
+  animation-delay: 260ms;
+}
+
+.setup-done > *:nth-child(3) {
+  animation-delay: 360ms;
+}
+
+.setup-done > *:nth-child(4) {
+  animation-delay: 460ms;
+}
+
+.setup-done > *:nth-child(5) {
+  animation-delay: 560ms;
+}
+
+/* A phone. The card's 34px sides are a fifth of the screen there, and the
+   two-up field rows are asking a 300px window for two usable inputs. */
+@media (max-width: 560px) {
+  .setup {
+    gap: 24px;
+    padding: 24px 14px 28px;
+  }
+
+  .setup-stage {
+    gap: 28px;
+  }
+
+  .setup-logo {
+    width: 34px;
+    height: 34px;
+  }
+
+  .setup-card {
+    /* The field pairs stack at this width, so the tallest card is much taller
+       than the number measured above and a floor set from it would only add
+       dead space to the short ones. */
+    --setup-card-min: 0;
+
+    padding: 32px 22px 28px;
+  }
+
+  .setup-fields .field-pair {
+    grid-template-columns: 1fr;
+  }
+
+  /* Four labels do not fit across a phone, so the rail keeps the marks and
+     drops the words. The heading above already says which step this is. */
+  .setup-dot-label {
+    display: none;
   }
 }
 
@@ -3507,6 +4364,7 @@ button.link-button:disabled {
    this button is busy. */
 .auth-submit .ph-circle-notch,
 .modal-actions .ph-circle-notch,
+.setup-actions .ph-circle-notch,
 .conn-actions .ph-circle-notch {
   animation: auth-spin 900ms linear infinite;
 }

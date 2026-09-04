@@ -37,8 +37,13 @@ const COLLAPSE_KEY = "sc4sap.railCollapsed";
  * a rail full of skills behind it would offer a way around the very gate the
  * page exists to be. The shell lives in the root layout, which cannot opt a
  * child route out, so the opt-out is here.
+ *
+ * `/setup` is the one entry here that *does* have a session behind it. It is
+ * bare for the same reason rather than a different one: it exists because
+ * nothing in the rail can run yet, and offering the rail beside it is an offer
+ * the screen cannot honour.
  */
-const BARE_ROUTES = ["/signin", "/signup", "/forgot"];
+const BARE_ROUTES = ["/signin", "/signup", "/forgot", "/setup"];
 
 /**
  * Reachable both signed in and signed out, and the only routes for which that
