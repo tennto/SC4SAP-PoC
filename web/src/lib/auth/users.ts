@@ -38,6 +38,8 @@ export function toAccount(doc: UserDoc): Account {
     memberSince: doc.createdAt.toISOString().slice(0, 10),
     // Rows written before favourites were stored have no field at all.
     favorites: doc.favorites ?? [],
+    // The presence of the sub-document, never its contents. See `Account`.
+    hasConnection: doc.connection != null,
   };
 }
 

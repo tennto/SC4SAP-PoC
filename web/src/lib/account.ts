@@ -34,6 +34,16 @@ export type Account = {
   memberSince: string;
   /** Starred skill slugs, oldest first. See `lib/favorites.tsx`. */
   favorites: string[];
+  /**
+   * Whether `/setup` has been completed for this account.
+   *
+   * A boolean and not the connection itself, deliberately. `Account` is handed
+   * to Client Components — the rail reads it in the root layout — and the
+   * connection carries two sealed secrets plus a logon user. What the client
+   * actually needs to know is whether the app is usable yet, and that is one
+   * bit. Anything wanting the rest asks the server for it.
+   */
+  hasConnection: boolean;
 };
 
 export type SapSystem = {

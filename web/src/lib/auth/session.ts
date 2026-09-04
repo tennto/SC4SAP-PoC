@@ -115,16 +115,39 @@ export async function getAccount(): Promise<Account | null> {
 }
 
 /**
- * The guard for a protected Server Component.
+ * Signed in, and nothing more.
  *
  * `proxy.ts` already turns anonymous traffic away, but it only sees whether a
  * cookie is *present* — deliberately, so that no request costs a database round
  * trip before it reaches the code that was going to make one anyway. This is
- * the check that the cookie names a session that still exists, and it is what a
- * page should call when it is about to render someone's data.
+ * the check that the cookie names a session that still exists.
+ *
+ * The one caller is `/setup`, which is reached *because* the account is not
+ * finished being set up and so cannot use the guard below. Everything else
+ * wants `requireAccount`.
  */
-export async function requireAccount(): Promise<Account> {
+export async function requireSignedIn(): Promise<Account> {
   const account = await getAccount();
   if (!account) redirect("/signin");
+  return account;
+}
+
+/**
+ * The guard for a protected Server Component: signed in, and set up.
+ *
+ * The second half is what routes a new account to the wizard. It lives here
+ * rather than in `proxy.ts` for the same reason the session check does — the
+ * middleware may run outside this app's runtime and must not reach for the
+ * pooled Mongo client — and it lives in the guard rather than in each page so
+ * that a screen added later cannot forget it.
+ *
+ * An account with no connection has nothing any of these screens can show: the
+ * dashboard would draw every row as unknown, and every skill in the rail would
+ * fail at its first tool call. Sending it to `/setup` is not a restriction, it
+ * is the only thing there is to do.
+ */
+export async function requireAccount(): Promise<Account> {
+  const account = await requireSignedIn();
+  if (!account.hasConnection) redirect("/setup");
   return account;
 }

@@ -9,16 +9,21 @@ export const metadata: Metadata = {
   description: "Browser UI over the sc4sap plugin, via the Claude Agent SDK",
 };
 
-// Typography and icons are borrowed wholesale from sc4sap.dev: IBM Plex Sans
-// (with the KR/JP cuts, so one family carries all three scripts) for body and
-// UI, Schibsted Grotesk for headings, IBM Plex Mono for identifiers, and
-// Phosphor for icons.
+// Typography and icons: Pretendard for body and UI, Schibsted Grotesk for
+// headings, IBM Plex Mono for identifiers, and Phosphor for icons. See the
+// `--font-*` tokens in globals.css for why each one is where it is.
+//
+// Pretendard is not on Google Fonts, so it comes from jsDelivr — the same CDN
+// Phosphor already uses. The `dynamic-subset` build is the one to link: it
+// splits the family across `unicode-range`d subsets, so an English screen
+// fetches the Latin slice and nothing else, and the ~2,800 Hangul syllables
+// are only pulled by a page that actually sets Korean.
 //
 // Plain <link> rather than `next/font/google`, which downloads and inlines the
 // files at build time — that would make a build require network access, and
-// Phosphor would still need a link of its own. Both are `preconnect`ed, and
-// globals.css keeps a system stack behind each family so an offline load
-// degrades to what the app looked like before rather than to Times.
+// neither Pretendard nor Phosphor is on Google Fonts anyway. Every origin is
+// `preconnect`ed, and globals.css keeps a platform stack behind each family
+// ending in Malgun Gothic, so an offline load still sets Hangul.
 //
 // Props are spelled out rather than using Next's generated `LayoutProps<"/">`
 // global, which only exists once `next build` has emitted `.next/types` — so
@@ -55,9 +60,19 @@ export default async function RootLayout({
           href="https://fonts.gstatic.com"
           crossOrigin=""
         />
+        {/* Pretendard and Phosphor both. `crossOrigin` because a font file is
+            fetched anonymously whatever its stylesheet was, and a preconnect
+            without it opens a second connection the font cannot use. */}
+        <link rel="preconnect" href="https://cdn.jsdelivr.net" crossOrigin="" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Oriya:wght@400;500;600&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+Oriya:wght@400;500;600&display=swap"
           rel="stylesheet"
+        />
+        {/* Ahead of the icon sheets below it, because this one sets the text
+            of every screen and those only set glyphs beside it. */}
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css"
         />
         <link
           rel="stylesheet"

@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
    * leaving the other silently broken.
    */
   allowedDevOrigins: ["127.0.0.1", "localhost"],
+
+  /**
+   * The dev-only route indicator sits on top of the page and shows up in
+   * screenshots. Compile and runtime errors are still surfaced without it.
+   */
+  devIndicators: false,
 };
 
 export default nextConfig;

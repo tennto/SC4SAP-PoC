@@ -89,7 +89,46 @@ export type UserDoc = {
    * it — every reader treats a missing field as an empty list.
    */
   favorites?: string[];
+  /**
+   * What `/setup` collected: which ABAP stack this account works against, how
+   * it logs in, and the Anthropic key it thinks with.
+   *
+   * Absent until setup is completed, and that absence is what routes a new
+   * account to the wizard — see `requireAccount` in `lib/auth/session.ts`.
+   *
+   * On the user row rather than in a collection of its own, for the same
+   * reason `favorites` is: exactly one per account, never read without the
+   * account, never listed on its own.
+   */
+  connection?: ConnectionDoc;
   createdAt: Date;
+};
+
+/**
+ * One account's connection.
+ *
+ * The two secrets are stored sealed and are named for it — `…Sealed`, so no
+ * reader can mistake one for a value it can use, and so a field holding
+ * plaintext could never be added under the same name by accident. Everything
+ * else is stored as typed; none of it is a secret, and the dashboard shows
+ * most of it back.
+ *
+ * See `lib/secrets.ts` for what sealed means and what it does not.
+ */
+export type ConnectionDoc = {
+  /** ADT base URL — scheme, host and port, no path. */
+  adtUrl: string;
+  sapUser: string;
+  /** AES-256-GCM. Never the password. */
+  sapPasswordSealed: string;
+  sapVersion: "S4" | "ECC";
+  abapRelease: string;
+  client: string;
+  language: string;
+  /** AES-256-GCM. Never the key, and never any part of it. */
+  apiKeySealed: string;
+  /** When setup last completed. Rewritten if it is run again. */
+  connectedAt: Date;
 };
 
 /** A live sign-in. The token itself is never stored; see `lib/auth/session.ts`. */
