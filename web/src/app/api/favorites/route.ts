@@ -1,6 +1,6 @@
 import { ObjectId } from "mongodb";
 import { users } from "@/lib/mongo";
-import { getAccount } from "@/lib/auth/session";
+import { apiConnected } from "@/lib/auth/api-guard";
 import { findSkill } from "@/lib/skills";
 
 /**
@@ -22,12 +22,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request): Promise<Response> {
-  const account = await getAccount();
   // `proxy.ts` already turned away anything with no cookie; this is the check
-  // that the cookie still resolves to somebody.
-  if (!account) {
-    return Response.json({ error: "Not signed in." }, { status: 401 });
-  }
+  // that the cookie still resolves to somebody, and that they have finished
+  // setup — a starred skill is a shortcut into a rail an unconfigured account
+  // cannot reach.
+  const auth = await apiConnected();
+  if ("response" in auth) return auth.response;
+  const account = auth.account;
 
   let body: unknown;
   try {

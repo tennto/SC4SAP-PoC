@@ -8,16 +8,17 @@
  * an exact segment wins over a catch-all.
  */
 import { NextResponse } from "next/server";
-import { getAccount } from "@/lib/auth/session";
+import { apiConnected } from "@/lib/auth/api-guard";
 import { listChats } from "@/lib/chat-store";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(): Promise<NextResponse> {
-  const account = await getAccount();
-  if (!account) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+export async function GET(): Promise<Response> {
+  // Signed in *and* set up. A conversation belongs to a connection, and an
+  // account with none has nothing for one to run against — see `apiConnected`.
+  const auth = await apiConnected();
+  if ("response" in auth) return auth.response;
+  const account = auth.account;
 
   try {
     return NextResponse.json({ chats: await listChats(account.id) });

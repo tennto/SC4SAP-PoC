@@ -1,11 +1,20 @@
 import { NextRequest } from "next/server";
 import { BACKEND } from "@/lib/backend";
+import { apiConnected } from "@/lib/auth/api-guard";
 
 /**
  * Same-origin proxy to the Fastify backend: `/api/<anything>` →
  * `BACKEND/<anything>`.
  *
- * A Route Handler rather than a `next.config` rewrite, because one of the
+ * Guarded, and that is the second reason it is a Route Handler. `proxy.ts` can
+ * only see that a session cookie exists; this is the one place that can ask
+ * whether the account behind it has finished setup. Without that check a
+ * signed-in but unconfigured account could open a real agent session by
+ * calling `/api/sessions` from a URL bar — every *page* redirects it to the
+ * wizard, but a `fetch` is not a page, and the session it starts spends the
+ * operator's key.
+ *
+ * A Route Handler rather than a `next.config` rewrite, also because one of the
  * proxied routes is the SSE stream and this needs explicit control over it:
  * the upstream body is piped through untouched, `content-length` and
  * `content-encoding` are dropped (they describe the upstream framing, not
@@ -33,6 +42,10 @@ async function proxy(
   request: NextRequest,
   context: { params: Promise<{ path?: string[] }> },
 ): Promise<Response> {
+  // Before anything is forwarded, and before the request body is even read.
+  const auth = await apiConnected();
+  if ("response" in auth) return auth.response;
+
   const { path = [] } = await context.params;
   const target = `${BACKEND}/${path.join("/")}${request.nextUrl.search}`;
 

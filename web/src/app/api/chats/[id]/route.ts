@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAccount } from "@/lib/auth/session";
+import { apiConnected } from "@/lib/auth/api-guard";
 import {
   appendTurns,
   contextPreamble,
@@ -15,11 +15,12 @@ type Context = { params: Promise<{ id: string }> };
 export async function GET(
   _request: Request,
   { params }: Context,
-): Promise<NextResponse> {
-  const account = await getAccount();
-  if (!account) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+): Promise<Response> {
+  // Signed in *and* set up. A conversation belongs to a connection, and an
+  // account with none has nothing for one to run against — see `apiConnected`.
+  const auth = await apiConnected();
+  if ("response" in auth) return auth.response;
+  const account = auth.account;
 
   const { id } = await params;
   try {
@@ -48,11 +49,12 @@ export async function GET(
 export async function POST(
   request: Request,
   { params }: Context,
-): Promise<NextResponse> {
-  const account = await getAccount();
-  if (!account) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+): Promise<Response> {
+  // Signed in *and* set up. A conversation belongs to a connection, and an
+  // account with none has nothing for one to run against — see `apiConnected`.
+  const auth = await apiConnected();
+  if ("response" in auth) return auth.response;
+  const account = auth.account;
 
   const { id } = await params;
   const body = (await request.json()) as {
@@ -84,11 +86,12 @@ export async function POST(
 export async function DELETE(
   _request: Request,
   { params }: Context,
-): Promise<NextResponse> {
-  const account = await getAccount();
-  if (!account) {
-    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
-  }
+): Promise<Response> {
+  // Signed in *and* set up. A conversation belongs to a connection, and an
+  // account with none has nothing for one to run against — see `apiConnected`.
+  const auth = await apiConnected();
+  if ("response" in auth) return auth.response;
+  const account = auth.account;
 
   const { id } = await params;
   try {
