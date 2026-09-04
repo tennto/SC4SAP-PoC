@@ -4,3 +4,8 @@ node_modules/
 workspace/
 dist/
 *.log
+
+# Rendered docs. The Markdown is the source; the PDF is a build artifact of it
+# (`npm run docs:pdf`) and is a megabyte of binary that changes wholesale on
+# every edit.
+docs/*.pdf

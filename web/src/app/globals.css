@@ -3431,6 +3431,182 @@ a.ghost.auth-submit {
   }
 }
 
+/* ---------- select ----------
+   The custom listbox in `components/Select.tsx`. A native select's open list is
+   drawn by the operating system and takes no CSS at all, which is why this
+   exists — see the header of that file.
+
+   The closed control is styled to match `.field input` exactly, because it sits
+   in a row beside them and any difference reads as a mistake. The open list
+   borrows the account menu's language: white panel, hairline border, 10px
+   radius, one soft shadow. */
+.select {
+  position: relative;
+}
+
+.select-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  /* Matches `.field input`'s 9px/12px, less 1px each side for the border this
+     draws itself, so the text sits on the same baseline as the inputs beside
+     it. The right side is tighter than the left on purpose: it holds the
+     caret, and a caret pinned to the far edge of a 260px field reads as
+     belonging to the card rather than to the control. */
+  padding: 9px 11px 9px 12px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  text-align: left;
+}
+
+.select-button:hover:not(:disabled) {
+  border-color: var(--ink-38);
+}
+
+/* The base button rule drops every control a pixel on press. A form field
+   should not move under the finger — nothing else in this row does. */
+.select-button:active:not(:disabled) {
+  transform: none;
+}
+
+.select-button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.select-button.is-open {
+  border-color: var(--ink-55);
+}
+
+.select-button:disabled {
+  background: var(--panel-2);
+  color: var(--ink-55);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Turns over rather than swapping glyph: the caret is the one thing on the
+   control that says what the click will do, and a flip reads as the list
+   itself moving. */
+.select-caret {
+  flex: none;
+  font-size: 14px;
+  color: var(--ink-38);
+  transition: transform var(--t-base) var(--ease);
+}
+
+.select-button.is-open .select-caret {
+  transform: rotate(180deg);
+  color: var(--ink);
+}
+
+/* The open list. Overhangs the card, which is why nothing in the setup screen
+   clips its overflow. */
+.select-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 232px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  /* The second shadow in the app, and for the same reason as the account
+     menu's: a layer floating over other content has to be separable from it,
+     and a border alone does not do that against a white card. */
+  box-shadow: 0 10px 30px rgba(56, 56, 56, 0.16);
+  animation: select-list-in var(--t-base) var(--ease) both;
+}
+
+/* Down and open, from just under the control it came out of — the same short
+   lift the account menu uses, turned through ninety degrees. */
+@keyframes select-list-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-80);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  /* Faster than the app's usual settle. This one tracks a pointer moving down
+     a list, and a 620ms fade would still be catching up two rows later. */
+  transition:
+    background-color var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.select-option:active {
+  transform: none;
+}
+
+.select-option span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-option .ph {
+  flex: none;
+  font-size: 14px;
+  color: var(--ink-55);
+}
+
+/* One highlight for both inputs. The pointer sets it on hover and the arrow
+   keys set it directly, so the mouse and the keyboard can never light two
+   different rows — and `:hover` is deliberately not used, or moving the mouse
+   away from a row the keyboard is on would leave nothing lit. */
+.select-option.is-active {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.select-option[aria-selected="true"] {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .select-list {
+    animation: none;
+  }
+
+  .select-caret {
+    transition: none;
+  }
+}
+
 /* ---------- setup wizard ----------
    The screen a first sign-in lands on. One question at a time, each on a card
    that is the only thing in front of you.
