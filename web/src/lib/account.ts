@@ -24,6 +24,14 @@ export type Account = {
   id: string;
   /** Family name first, the order sign-up asks for the two parts in. */
   name: string;
+  /**
+   * The given name on its own, for greetings.
+   *
+   * Carried rather than split off `name` where it is needed: that string puts
+   * the family name first, so every greeting that reached for "the first word"
+   * was addressing people by their surname.
+   */
+  firstName: string;
   email: string;
   /** Not collected at sign-up. `null` until the settings screen can set it. */
   role: string | null;

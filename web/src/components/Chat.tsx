@@ -43,6 +43,8 @@ type Props = {
   initialSessions: Session[];
   initialHealth: Health | null;
   initialError: string | null;
+  /** For the greeting on the empty state. Empty when the row has no name. */
+  firstName: string;
 };
 
 type History = {
@@ -52,7 +54,12 @@ type History = {
   context: string | null;
 };
 
-export function Chat({ initialSessions, initialHealth, initialError }: Props) {
+export function Chat({
+  initialSessions,
+  initialHealth,
+  initialError,
+  firstName,
+}: Props) {
   const [health, setHealth] = useState<Health | null>(initialHealth);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [chats, setChats] = useState<StoredChat[]>([]);
@@ -67,7 +74,61 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
   // so the composer starts gliding down on the keystroke rather than when the
   // backend's echo of the prompt comes back off the stream.
   const [submitted, setSubmitted] = useState(false);
+  /**
+   * How many stream items there were when a prompt was handed over, or `null`
+   * when nothing is outstanding.
+   *
+   * The session is still `idle` between the press and the backend saying it
+   * has started, so `status` alone left a gap at the front of every turn with
+   * no indicator in it. This closes that gap from the press, and it holds a
+   * count rather than a flag so it can tell "the backend has answered" from
+   * "the backend answered something earlier" — the item count only moves past
+   * this number when *this* prompt produces something.
+   */
+  const [awaitingAck, setAwaitingAck] = useState<number | null>(null);
+  /** What `persist` last wrote — see the signature it builds. */
+  const saved = useRef<string | null>(null);
+  /**
+   * Where the stream stood when the prompt was handed over, held until the
+   * turn ends — or `null` between turns.
+   *
+   * A second mark rather than a second use of the one above, because the two
+   * answer different questions and stop being true at different moments.
+   * `awaitingAck` asks "is anything happening", and the session saying `busy`
+   * settles that. This asks "is this turn's own prompt on screen yet", and the
+   * only thing that settles *that* is the backend echoing it back — which
+   * arrives after the status does.
+   */
+  const [sendMark, setSendMark] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(initialError);
+  /**
+   * The bar is saying something that goes away on its own.
+   *
+   * Only one thing does: the notice that a turn was stopped, which the reader
+   * caused by pressing the button and does not need to dismiss as well. Every
+   * other message in this bar is a failure they did not ask for and it stays
+   * until they have read it.
+   */
+  const [passing, setPassing] = useState(false);
+  /**
+   * The last message the bar carried, kept through its exit.
+   *
+   * The bar is always mounted so that opening and closing can both be
+   * animated — an element that unmounts on dismissal has no closing state to
+   * animate. That means the text has to outlive `error` going null, or the bar
+   * would collapse on an empty row.
+   */
+  const [errorShown, setErrorShown] = useState<string | null>(initialError);
+  /**
+   * A stop is in flight, so the "Stopped." coming back off the stream is the
+   * answer to a button press rather than news.
+   *
+   * A flag rather than matching the message text: the wording belongs to the
+   * backend, and a screen that decided how to treat a notice by reading its
+   * prose would quietly change behaviour the next time that sentence was
+   * edited.
+   */
+  const expectStop = useRef(false);
 
   /**
    * Three refs, all of them there for the same reason: creating and closing
@@ -131,6 +192,12 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     [historyItems, stream.items],
   );
 
+  /** Something went wrong and the reader has to dismiss it. */
+  const fail = useCallback((message: string): void => {
+    setPassing(false);
+    setError(message);
+  }, []);
+
   const refresh = useCallback(async () => {
     const seq = ++listSeq.current;
     // Anything created while this request is in flight cannot be in its
@@ -160,7 +227,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
         ),
       ]);
     } catch (err) {
-      setError((err as Error).message);
+      fail((err as Error).message);
     }
   }, []);
 
@@ -170,7 +237,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     } catch (err) {
       // History being unavailable is not a reason to take the screen down:
       // live sessions still work without it.
-      setError((err as Error).message);
+      fail((err as Error).message);
     }
   }, []);
 
@@ -179,6 +246,46 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     if (stored) setActiveId(stored);
     void refreshChats();
   }, [refreshChats]);
+
+  /**
+   * Read a chat that was opened without going through the rail.
+   *
+   * `selectChat` loads the stored transcript when a row is clicked, and that
+   * used to be the only way in. It is not any more: a reload restores the last
+   * chat from `localStorage`, and a skill run hands one over the same way — and
+   * both landed on a chat with an id, no history and no live session, which
+   * draws as the greeting. The conversation was there the whole time; nothing
+   * had asked for it.
+   *
+   * Skipped while the chat has a live backend session, which rebuilds itself
+   * from that session's replay buffer — reading the stored copy as well would
+   * show every turn twice. `sessions` arrives with the server render, so this
+   * is settled on the first pass rather than racing it.
+   */
+  useEffect(() => {
+    if (!activeId || backendId) return;
+    if (history?.chatId === activeId) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const found = await api.readChat(activeId);
+        if (cancelled) return;
+        setHistory({
+          chatId: activeId,
+          messages: found.messages,
+          context: found.context,
+        });
+      } catch {
+        // A chat id with nothing stored behind it — a session created and
+        // never asked anything. The empty state is the right answer.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, backendId, history?.chatId]);
 
   useEffect(() => {
     // The server-rendered snapshot covers the first paint.
@@ -205,6 +312,8 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
   }, [refresh]);
 
   useEffect(() => {
+    // A different conversation has a different last-written state.
+    saved.current = null;
     if (activeId) localStorage.setItem(ACTIVE_KEY, activeId);
     else localStorage.removeItem(ACTIVE_KEY);
     // Switching chats re-decides the empty state from that chat's own
@@ -217,9 +326,63 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     if (stream.items.length > 0) setSubmitted(false);
   }, [stream.items.length]);
 
+  /**
+   * The latch lets go once `status` can carry the indicator on its own.
+   *
+   * "Anything new on the stream" was the wrong test and it flickered. The
+   * backend's echo of the prompt can arrive before its `status: busy` does,
+   * and in the render between the two the latch had already let go while
+   * status still said `idle` — so the waiting row unmounted and came back a
+   * frame later, which is the flash of a label appearing twice.
+   *
+   * The tests below are each proof that the turn is under way or over: the
+   * session said so, it failed, or an answer to *this* prompt is already on
+   * the stream. Anything short of that and the latch keeps holding.
+   */
   useEffect(() => {
-    if (stream.error) setError(stream.error);
-  }, [stream.error]);
+    if (awaitingAck === null) return;
+    const answered = stream.items
+      .slice(awaitingAck)
+      .some((item) => item.kind === "assistant");
+    if (status === "busy" || status === "error" || status === "closed" || answered) {
+      setAwaitingAck(null);
+    }
+  }, [awaitingAck, status, stream.items]);
+
+  useEffect(() => {
+    if (!stream.error) return;
+    // The reader pressed the button; the bar already says so. This is the
+    // backend agreeing, which is not news twice.
+    if (expectStop.current) {
+      expectStop.current = false;
+      return;
+    }
+    fail(stream.error);
+    // `errorSeq` and not just the message: two stops in a row report the same
+    // sentence, and watching the string alone missed the second one entirely.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream.error, stream.errorSeq, fail]);
+
+  /**
+   * A passing notice takes itself off after long enough to be read.
+   *
+   * Long enough, and no longer: it is confirming something the reader just
+   * did, so it is read in a glance or not at all, and a bar that lingers past
+   * that is a bar they have to think about dismissing.
+   */
+  useEffect(() => {
+    if (!passing || !error) return;
+    const timer = setTimeout(() => {
+      setError(null);
+      setPassing(false);
+    }, 2600);
+    return () => clearTimeout(timer);
+  }, [passing, error]);
+
+  // Held through the exit — see `errorShown`.
+  useEffect(() => {
+    if (error) setErrorShown(error);
+  }, [error]);
 
   /**
    * Writes the rendered turns of the live session to the reader's account.
@@ -234,6 +397,27 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       (row) => row.kind !== "notice" && row.text.trim() !== "",
     );
     if (rows.length === 0) return;
+
+    /**
+     * Nothing has changed since the last write, so do not make it again.
+     *
+     * This is what breaks a loop, not an optimisation. Writing calls
+     * `refreshChats()`, which replaces `chats`, which gives `storedChat` a new
+     * identity, which gives this callback a new identity — and the effect that
+     * runs it lists it as a dependency, so it ran again, and again. The
+     * conversation was being saved dozens of times a second and the tab
+     * stopped responding.
+     *
+     * The signature is what was actually written: the chat, how many turns,
+     * and how much text. Anything that would change the stored rows changes
+     * it; a fresh `chats` array that says the same thing does not.
+     */
+    const signature = `${activeId}|${rows.length}|${rows.reduce(
+      (total, row) => total + row.text.length,
+      0,
+    )}`;
+    if (signature === saved.current) return;
+    saved.current = signature;
 
     const base = historyItems.length;
     try {
@@ -252,15 +436,33 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
         })),
       });
     } catch (err) {
-      setError((err as Error).message);
+      fail((err as Error).message);
     }
   }, [activeId, stream.items, historyItems.length, storedChat, live]);
 
-  // A finished turn is when turns, cost and the answer all stop changing, so
-  // both the list poll and the write happen on the way back to idle rather
-  // than on a timer.
+  /**
+   * A finished turn is when turns, cost and the answer all stop changing, so
+   * both the list poll and the write happen on the way back to idle rather
+   * than on a timer.
+   *
+   * On the *transition*, which is the part this was missing. An effect cannot
+   * list a callback in its dependencies and then treat itself as an edge:
+   * `refresh()` replaces `sessions`, `live` comes out of that with a new
+   * identity, `persist` is rebuilt because it closes over `live`, and this
+   * effect re-runs because `persist` is in its list — so it fetched the
+   * session list and the chat list again, and again, for as long as the page
+   * was open. Comparing against the previous status is what makes an edge an
+   * edge.
+   */
+  const wasIdle = useRef(false);
   useEffect(() => {
-    if (stream.status !== "idle") return;
+    const settled = stream.status === "idle";
+    const arrived = settled && !wasIdle.current;
+    wasIdle.current = settled;
+    if (!arrived) return;
+
+    // The turn is over, so there is no prompt still waiting to be echoed.
+    setSendMark(null);
     void refresh();
     void persist().then(() => refreshChats());
   }, [stream.status, refresh, persist, refreshChats]);
@@ -281,7 +483,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
         context: found.context,
       });
     } catch (err) {
-      setError((err as Error).message);
+      fail((err as Error).message);
     }
   };
 
@@ -294,7 +496,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       setHistory(null);
       setActiveId(session.id);
     } catch (err) {
-      setError((err as Error).message);
+      fail((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -335,7 +537,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       // 404 is the outcome that was asked for: the session is already gone,
       // whether this tab closed it twice or another one got there first.
       if (!/unknown session/i.test(message)) {
-        setError(message);
+        fail(message);
         closed.current.delete(backend);
       }
     }
@@ -343,7 +545,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
     try {
       await api.deleteChat(id);
     } catch (err) {
-      setError((err as Error).message);
+      fail((err as Error).message);
     } finally {
       closing.current.delete(id);
       await refresh();
@@ -367,6 +569,8 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
   const send = async (text: string): Promise<void> => {
     if (!activeId) return;
     setSubmitted(true);
+    setAwaitingAck(stream.items.length);
+    setSendMark(stream.items.length);
     setError(null);
 
     try {
@@ -398,9 +602,42 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       // the list now rather than waiting for the turn to finish.
       void refresh();
     } catch (err) {
-      setError((err as Error).message);
+      fail((err as Error).message);
       setSubmitted(false);
+      setAwaitingAck(null);
+      setSendMark(null);
     }
+  };
+
+  /**
+   * Abandon the turn in flight.
+   *
+   * The latches go first and the request second. They are what holds the
+   * indicator up, and leaving them set while the round trip runs would keep
+   * the dots on a turn the reader has already called off — the press is the
+   * decision, the request is only how it gets carried out.
+   *
+   * A refusal is not surfaced: the only way this fails on a session that was
+   * running a moment ago is that the answer landed first, which is not
+   * something to interrupt someone with.
+   */
+  const stop = async (): Promise<void> => {
+    if (!backendId) return;
+    expectStop.current = true;
+    setAwaitingAck(null);
+    setSendMark(null);
+    // Said here rather than waited for. The backend reports the same thing a
+    // round trip later, but the press is the moment it is true — and if the
+    // request is refused because the answer landed first, the reader still
+    // needs to know their press did something.
+    setPassing(true);
+    setError("Stopped.");
+    try {
+      await api.stopSession(backendId);
+    } catch {
+      // See above.
+    }
+    void refresh();
   };
 
   /**
@@ -409,6 +646,9 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
    */
   const startAndSend = async (text: string): Promise<void> => {
     setSubmitted(true);
+    // A new session, so its stream starts empty whatever this one holds.
+    setAwaitingAck(0);
+    setSendMark(0);
     setError(null);
     try {
       const session = await api.createSession();
@@ -418,8 +658,10 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       await api.sendMessage(session.id, text);
       void refresh();
     } catch (err) {
-      setError((err as Error).message);
+      fail((err as Error).message);
       setSubmitted(false);
+      setAwaitingAck(null);
+      setSendMark(null);
     }
   };
 
@@ -436,7 +678,7 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       // The dialog closes on the `permission_resolved` event, not here — the
       // backend deciding it was settled is what makes it settled.
     } catch (err) {
-      setError((err as Error).message);
+      fail((err as Error).message);
     } finally {
       setSettling(false);
     }
@@ -465,9 +707,12 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       const stored = rows.get(session.id);
       rows.set(session.id, {
         id: session.id,
-        // A live session that has been asked something knows its own title;
-        // one that has not keeps whatever was stored.
-        title: session.title ?? stored?.title ?? null,
+        // The stored title wins. It is the one the app chose deliberately —
+        // a skill run is saved as "Analyze Code · ZMMR1002" — where the live
+        // session's is derived from the raw prompt text and, for a run started
+        // from a skill screen, is the slash command that began it. The live
+        // one is the fallback for a session that has never been saved.
+        title: stored?.title ?? session.title ?? null,
         turns: session.turns,
         totalCostUsd: session.totalCostUsd,
       });
@@ -496,6 +741,14 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
    */
   const hero =
     !submitted &&
+    // A prompt in flight is not an empty screen, whatever the transcript holds
+    // yet. `submitted` alone was not enough: starting a chat from the greeting
+    // sets `activeId`, and the effect that watches it clears that latch — so
+    // between the session being created and its echo arriving, `hero` came
+    // back on, took the whole transcript down with it, and put it up again a
+    // moment later. That unmount is what made the waiting row appear twice and
+    // its fade look like it never ran; it ran, from the start, twice.
+    awaitingAck === null &&
     items.length === 0 &&
     // A session with turns behind it is not empty — its transcript is simply
     // still being replayed off the stream, and flashing the greeting for those
@@ -516,14 +769,24 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
       />
 
       <main className="main">
-        {error && (
-          <div className="error" role="alert">
-            {error}
-            <button onClick={() => setError(null)} aria-label="Dismiss">
-              ×
-            </button>
-          </div>
-        )}
+        {/* Always mounted, opened by a class. An element that only exists
+            while it has something to say cannot be animated on the way out —
+            it is gone by the time the animation would run. */}
+        <div className={`error${error ? " is-open" : ""}`} role="alert">
+          {errorShown}
+          <button
+            onClick={() => {
+              setError(null);
+              setPassing(false);
+            }}
+            aria-label="Dismiss"
+            // Not reachable by keyboard while the bar is closed, where it is
+            // a button on a message that is not there.
+            tabIndex={error ? 0 : -1}
+          >
+            ×
+          </button>
+        </div>
 
         {/* Four rows: transcript, greeting, composer, tail. The greeting
             collapses and the tail's flex-grow runs to zero on the same curve,
@@ -532,12 +795,27 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
         <div className={`stage${hero ? " is-hero" : ""}`}>
           <div className="stage-body">
             {!hero && (
-              <Transcript items={items} idle={false} busy={status === "busy"} />
+              <Transcript
+                items={items}
+                idle={false}
+                busy={status === "busy" || awaitingAck !== null}
+                pending={awaitingAck !== null || stream.items.length === sendMark}
+              />
             )}
           </div>
 
           <div className="stage-greeting">
-            <h1>I&rsquo;m your SAP supporter. How can I help?</h1>
+            {/* Deliberately not "I am your assistant, how can I help" — that
+                is the line every chat window opens with, and it says nothing
+                this one could not. What can be asked is already spelled out
+                in the composer below, so this does not repeat it either; it
+                just says hello and gets out of the way.
+
+                Falls back to the greeting without a name rather than to a
+                blank one: an account can exist with no name on it. */}
+            <h1>
+              {firstName ? `Good to see you, ${firstName}!` : "Good to see you!"}
+            </h1>
           </div>
 
           <div className="stage-composer">
@@ -545,6 +823,11 @@ export function Chat({ initialSessions, initialHealth, initialError }: Props) {
               disabled={composerDisabled}
               model={health?.model ?? null}
               autoFocus={hero}
+              // The same test the transcript's indicator uses, so the button
+              // and the dots are never in disagreement about whether the
+              // screen is waiting for something.
+              running={status === "busy" || awaitingAck !== null}
+              onStop={() => void stop()}
               hint={
                 hero
                   ? "Ask anything about your SAP system…"

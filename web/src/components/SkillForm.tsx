@@ -1,0 +1,706 @@
+"use client";
+
+/**
+ * A skill's inputs, and what comes back when it runs.
+ *
+ * The catalog describes each field — a kind, a label, options, a placeholder —
+ * and this renders one control per description. A skill added to
+ * `lib/skills.ts` gets a working screen with no code written for it.
+ *
+ * Running opens a real backend session and sends a prompt built from the
+ * answers, which is the same thing the chat screen does with a typed message.
+ * That is deliberate and is the whole design: everything worth having here —
+ * approvals, stopping a turn, the transcript, the conversation surviving a
+ * reload — hangs off a session rather than off the chat screen, so a second
+ * way to open one inherits all of it instead of reimplementing any of it.
+ *
+ * The answer is rendered as a document, not as a conversation. What comes back
+ * from these skills is a report — headings, tables, findings with line numbers
+ * — and a transcript frames that as somebody's reply: a speaker label above it,
+ * a turn-sized gap under it, the shape of a thing to answer rather than to
+ * read. The chat screen is right to draw it that way; this screen asked one
+ * question with a form and gets one document back.
+ *
+ * It is still written to the account's conversations while that happens, so
+ * the run is not trapped on a screen with no history. "Continue in chat" is
+ * the door between the two: the same conversation, in the place built for
+ * following it up.
+ *
+ * `Select` rather than a native one, for the same reason the wizard and the
+ * settings screen use it: a native select hands its open list to the operating
+ * system to draw, and no CSS in this app reaches inside it.
+ */
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { api } from "@/lib/client";
+import { useSessionStream } from "@/hooks/useSessionStream";
+import { Icon } from "@/components/Icon";
+import { Select } from "@/components/Select";
+import { Markdown } from "@/components/Markdown";
+import { toRows, useSmoothText } from "@/components/Transcript";
+import { ApprovalModal } from "@/components/ApprovalModal";
+import { ConfirmModal } from "@/components/ConfirmModal";
+import type { PermissionResponse } from "@/lib/types";
+import type { SkillField } from "@/lib/skills";
+
+/**
+ * Where the chat screen looks for the conversation to open on load. Set on the
+ * way out of "Open in chat" so that screen lands on this run.
+ */
+const ACTIVE_KEY = "sc4sap.activeSession";
+
+/** A blank line between two blocks of an answer that came back in pieces. */
+const SEPARATOR = "\n\n";
+
+/** What one field holds. Toggles are the only non-text control here. */
+type Value = string | boolean;
+
+function initial(fields: readonly SkillField[]): Record<string, Value> {
+  const state: Record<string, Value> = {};
+  for (const field of fields) {
+    // A select opens on its first option rather than on nothing: every one of
+    // these lists starts with the answer most runs want.
+    state[field.label] =
+      field.kind === "toggle"
+        ? false
+        : field.kind === "select"
+          ? (field.options?.[0] ?? "")
+          : "";
+  }
+  return state;
+}
+
+/**
+ * The prompt the run actually sends.
+ *
+ * The slash command first, because that is what selects the skill; the answers
+ * after it as `Label: value` lines, which is the shape the skills' own intake
+ * steps read. Blank fields are dropped rather than sent empty — an optional
+ * package left alone should look like it was not given, not like it was given
+ * as nothing — and a toggle only appears when it is on, for the same reason.
+ */
+function composePrompt(
+  command: string,
+  fields: readonly SkillField[],
+  values: Record<string, Value>,
+): string {
+  const lines: string[] = [];
+  for (const field of fields) {
+    const value = values[field.label];
+    if (field.kind === "toggle") {
+      if (value === true) lines.push(`${field.label}: yes`);
+      continue;
+    }
+    if (typeof value === "string" && value.trim() !== "") {
+      lines.push(`${field.label}: ${value.trim()}`);
+    }
+  }
+  return lines.length > 0 ? `${command}\n\n${lines.join("\n")}` : command;
+}
+
+/**
+ * What the conversation is called in the chat rail.
+ *
+ * The skill's name and the thing it was pointed at, because a rail of six runs
+ * all called "Analyze Code" identifies nothing — which is what it looked like
+ * before. The last short text answer is the identifying one: for a code review
+ * that is the object, for a package walk it is the package, and a skill whose
+ * only free text is a paragraph-long question contributes nothing and falls
+ * back to its own name.
+ */
+function runTitle(
+  title: string,
+  fields: readonly SkillField[],
+  values: Record<string, Value>,
+): string {
+  let subject = "";
+  for (const field of fields) {
+    if (field.kind !== "text") continue;
+    const value = values[field.label];
+    if (typeof value === "string" && value.trim() !== "") subject = value.trim();
+  }
+  return subject ? `${title} · ${subject}` : title;
+}
+
+/**
+ * Where a run is remembered so leaving the page does not throw it away.
+ *
+ * Per skill, and in `sessionStorage` rather than `localStorage`: a run belongs
+ * to the sitting someone is in the middle of, not to the browser forever.
+ * What is stored is the session id — enough to re-attach to the live stream,
+ * which replays everything the backend still holds — plus the finished text as
+ * a fallback for when that session has since been evicted.
+ */
+const runKey = (slug: string): string => `sc4sap.skillRun.${slug}`;
+
+type StoredRun = { sessionId: string; answer: string };
+
+function readStoredRun(slug: string): StoredRun | null {
+  try {
+    const raw = sessionStorage.getItem(runKey(slug));
+    return raw ? (JSON.parse(raw) as StoredRun) : null;
+  } catch {
+    // Private mode, or a value from an older shape. Neither is worth an error
+    // on a screen that works perfectly well without it.
+    return null;
+  }
+}
+
+/**
+ * Hand the report to the browser as a file.
+ *
+ * A blob and an anchor rather than a route that re-renders it server-side: the
+ * text is already here, and asking the server for something the page is
+ * holding would mean a second copy that could disagree with what is on screen.
+ * The object URL is revoked on the next frame — the click has already been
+ * dispatched by then, and leaving it alive pins the whole document in memory
+ * for the life of the tab.
+ */
+function download(name: string, text: string): void {
+  const url = URL.createObjectURL(
+    new Blob([text], { type: "text/markdown;charset=utf-8" }),
+  );
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  requestAnimationFrame(() => URL.revokeObjectURL(url));
+}
+
+/**
+ * `Analyze Code` becomes `analyze-code-2026-09-06.md`.
+ *
+ * Dated rather than numbered: a second run of the same skill is a different
+ * report of the same shape, and a name that only differs by `(1)` is one the
+ * download folder assigns, not one that says which run it was.
+ */
+function filenameFor(title: string): string {
+  const slug =
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "report";
+  return `${slug}-${new Date().toISOString().slice(0, 10)}.md`;
+}
+
+export function SkillForm({
+  slug,
+  command,
+  title,
+  fields,
+  /** The skill cannot run here — see `blockedReason`. */
+  blocked,
+}: {
+  slug: string;
+  command: string;
+  title: string;
+  fields: readonly SkillField[];
+  blocked: boolean;
+}) {
+  const router = useRouter();
+  const [values, setValues] = useState<Record<string, Value>>(() =>
+    initial(fields),
+  );
+  /** The backend session this run is attached to, once it has one. */
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  /** Opening the session and sending — before the stream can say anything. */
+  const [starting, setStarting] = useState(false);
+  /**
+   * The text of a run this page is showing but did not stream.
+   *
+   * Set when a remembered session is gone from the backend — evicted, or the
+   * server restarted — and the stored copy of what it said is all that is
+   * left. Cleared the moment a live stream has anything of its own.
+   */
+  const [restored, setRestored] = useState<string | null>(null);
+  /** "Done" pressed, and the dialog asking whether that is really meant. */
+  const [confirmDone, setConfirmDone] = useState(false);
+  /** What `persist` last wrote — see the signature it builds. */
+  const written = useRef<string | null>(null);
+  const [settling, setSettling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const stream = useSessionStream(sessionId);
+  const approval = stream.pending[0] ?? null;
+
+  /**
+   * Pick a previous run back up.
+   *
+   * Re-attaching to the session is what actually restores it: the backend
+   * replays everything it still holds for that id, including a turn that is
+   * still going — so walking to the chat screen and back during a review lands
+   * on the review still running rather than on an empty form. The stored text
+   * only covers the case where that session no longer exists.
+   */
+  useEffect(() => {
+    const stored = readStoredRun(slug);
+    if (!stored) return;
+    setSessionId(stored.sessionId);
+    setRestored(stored.answer || null);
+  }, [slug]);
+
+  /**
+   * The turn is running. `starting` covers the gap before the backend has said
+   * anything at all, which is otherwise a stretch with no session, no status
+   * and nothing on screen.
+   */
+  const running = starting || stream.status === "busy";
+  /**
+   * A run is on this page — going, or finished and still showing.
+   *
+   * The form is frozen for both. While it runs, because changing an answer
+   * under a request already sent is a lie about what produced the result;
+   * after it, because the answers on screen are the caption on the report
+   * below them. "New run" is what unfreezes it.
+   */
+  const started = sessionId !== null;
+  const settled = started && !running;
+
+  const set = (label: string, value: Value): void =>
+    setValues((current) => ({ ...current, [label]: value }));
+
+  const rows = toRows(stream.items);
+
+  /**
+   * The run, as one document.
+   *
+   * Every agent row joined, and only those: the prompt is upstairs in the form
+   * that composed it, and repeating it at the top of its own answer is the
+   * transcript's convention, not a document's. `toRows` has already folded the
+   * assistant messages of one turn together, so this is usually a single
+   * entry — the join is for a run that came back in more than one.
+   */
+  const streamed = rows
+    .filter((row) => row.kind === "agent")
+    .map((row) => row.text)
+    .join(SEPARATOR);
+  // The live stream wins the moment it has anything; the stored copy is only
+  // for a session the backend no longer has.
+  const answer = streamed || restored || "";
+
+  const lastAgent = [...rows].reverse().find((row) => row.kind === "agent");
+  /**
+   * Paced the same way the transcript paces its own, so a report does not
+   * arrive as a series of slabs. Keyed on the row that is still open; a run
+   * that has finished is shown whole.
+   */
+  const paced = useSmoothText(
+    answer,
+    lastAgent?.id ?? null,
+    lastAgent?.kind === "agent" ? lastAgent.streaming : false,
+  );
+
+  // Anything the run said that was not the answer — "Stopped.", a disconnect.
+  const notices = rows.filter((row) => row.kind === "notice");
+
+  /**
+   * Everything that arrived is also on screen.
+   *
+   * The turn ending is not the same moment as the report finishing: the
+   * document is paced out a character at a time, so for a few seconds after
+   * the backend goes idle there is still text being written. Clearing the page
+   * then would take the last paragraph away as it was being read.
+   */
+  const drawn = answer.trim() !== "" && paced.length >= answer.length;
+
+  /**
+   * Write the run to the account's conversations when it settles.
+   *
+   * The same rows the transcript draws, keyed by position and upserted, so
+   * running this repeatedly is safe: a turn whose text grew as it streamed is
+   * corrected rather than duplicated. The chat id is the backend session id,
+   * which is what the chat screen uses for a conversation it opened itself.
+   */
+  const persist = useCallback(async (): Promise<void> => {
+    if (!sessionId) return;
+    const saved = toRows(stream.items).filter(
+      (row) => row.kind !== "notice" && row.text.trim() !== "",
+    );
+    if (saved.length === 0) return;
+
+    // The same guard the chat screen needs, for the same reason: this callback
+    // is rebuilt whenever the stream moves, and the effect that runs it lists
+    // it as a dependency. Without a record of what was last written, a settled
+    // run re-saves itself for as long as the page is open.
+    const signature = `${sessionId}|${saved.length}|${saved.reduce(
+      (total, row) => total + row.text.length,
+      0,
+    )}`;
+    if (signature === written.current) return;
+    written.current = signature;
+
+    try {
+      await api.saveTurns(sessionId, {
+        // Named for the skill *and* what it was pointed at. The prompt's first
+        // line is a slash command, which makes a poor label in a rail — and so
+        // does the skill's name on its own once there are six of them.
+        title: runTitle(title, fields, values),
+        sdkSessionId: null,
+        messages: saved.map((row, index) => ({
+          seq: index,
+          role: row.kind === "user" ? ("user" as const) : ("agent" as const),
+          text: row.text,
+        })),
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }, [sessionId, stream.items, title, fields, values]);
+
+  /**
+   * On the transition into idle, not on every render that finds it there —
+   * `persist` is rebuilt whenever the stream moves, and an effect that lists
+   * it re-runs each time. See the same guard on the chat screen.
+   */
+  const wasIdle = useRef(false);
+  useEffect(() => {
+    const settled = stream.status === "idle";
+    const arrived = settled && !wasIdle.current;
+    wasIdle.current = settled;
+    if (arrived) void persist();
+  }, [stream.status, persist]);
+
+  /**
+   * Remember the run so leaving this page and coming back does not lose it.
+   *
+   * Written as it goes rather than only when it settles: the reason to leave
+   * mid-run is usually to look at something else while it works, and that is
+   * exactly the moment there would be nothing stored yet.
+   */
+  useEffect(() => {
+    if (!sessionId) return;
+    try {
+      sessionStorage.setItem(
+        runKey(slug),
+        JSON.stringify({ sessionId, answer: streamed } satisfies StoredRun),
+      );
+    } catch {
+      // Storage refused. The run still works; only the return trip is poorer.
+    }
+  }, [slug, sessionId, streamed]);
+
+  // The backend has taken the prompt, so its own status carries the screen.
+  useEffect(() => {
+    if (stream.status !== null) setStarting(false);
+  }, [stream.status]);
+
+  const result = useRef<HTMLDivElement>(null);
+
+  /**
+   * Put the page back to a blank form.
+   *
+   * The session is left alone rather than closed: it is stored as a
+   * conversation by now, and the chat screen can pick it up. What is being
+   * ended is this page's involvement, not the run.
+   */
+  /** What this run was pointed at, for the dialog to name. */
+  const subject = runTitle(title, fields, values);
+
+  function reset(): void {
+    setConfirmDone(false);
+    written.current = null;
+    setSessionId(null);
+    setRestored(null);
+    setError(null);
+    try {
+      sessionStorage.removeItem(runKey(slug));
+    } catch {
+      // Nothing to clear, or storage refused. Either way the page is clear.
+    }
+  }
+
+  async function run(): Promise<void> {
+    if (running || blocked) return;
+    setStarting(true);
+    setError(null);
+    try {
+      const session = await api.createSession();
+      setSessionId(session.id);
+      await api.sendMessage(
+        session.id,
+        composePrompt(command, fields, values),
+      );
+      // After the panel exists, so there is something to be carried to.
+      requestAnimationFrame(() =>
+        result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+      );
+    } catch (err) {
+      setError((err as Error).message);
+      setStarting(false);
+    }
+  }
+
+  async function stop(): Promise<void> {
+    if (!sessionId) return;
+    setStarting(false);
+    try {
+      await api.stopSession(sessionId);
+    } catch {
+      // The only way this fails on a run that was going a moment ago is that
+      // it finished first, which is not worth interrupting anyone with.
+    }
+  }
+
+  async function settle(response: PermissionResponse): Promise<void> {
+    if (!sessionId || !approval) return;
+    setSettling(true);
+    try {
+      await api.respondToPermission(sessionId, approval.reqId, response);
+      // The dialog closes on `permission_resolved`, not here — the backend
+      // deciding it was settled is what makes it settled.
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSettling(false);
+    }
+  }
+
+  /**
+   * Hand the conversation over to the chat screen.
+   *
+   * The run is already stored, so this only has to say which one to open. It
+   * is written before navigating rather than passed as a query parameter,
+   * because that screen already reads this key on load and adding a second
+   * route into the same decision would mean two of them to keep in step.
+   */
+  function openInChat(): void {
+    if (!sessionId) return;
+    void persist().then(() => {
+      try {
+        localStorage.setItem(ACTIVE_KEY, sessionId);
+      } catch {
+        // Private mode, or storage refused. The chat screen opens on whatever
+        // it was last on, which is worse than intended and not broken.
+      }
+      router.push("/chat");
+    });
+  }
+
+  return (
+    <>
+      <div className="fields">
+        {fields.map((field, index) => {
+          const value = values[field.label];
+          const id = `skill-field-${index}`;
+
+          /**
+           * A yes-or-no is one line, not two.
+           *
+           * Every other field is a label with an answer under it, and a toggle
+           * built that way ends up with the question in small caps above a box
+           * reading "Off" — the same thing said twice, in a frame as heavy as
+           * the inputs beside it. The label of a toggle already is the
+           * question, so the box goes and the tick sits against the words.
+           */
+          if (field.kind === "toggle") {
+            return (
+              <label className="field field-switch" key={field.label}>
+                <input
+                  type="checkbox"
+                  checked={value === true}
+                  disabled={started}
+                  onChange={(event) => set(field.label, event.target.checked)}
+                />
+                <span className="field-switch-main">
+                  <span className="field-switch-label">{field.label}</span>
+                  {field.hint && (
+                    <span className="field-hint">{field.hint}</span>
+                  )}
+                </span>
+              </label>
+            );
+          }
+
+          const control = (): React.ReactNode => {
+            switch (field.kind) {
+              case "textarea":
+                return (
+                  <textarea
+                    rows={4}
+                    placeholder={field.placeholder}
+                    value={typeof value === "string" ? value : ""}
+                    disabled={started}
+                    onChange={(event) => set(field.label, event.target.value)}
+                  />
+                );
+              case "select":
+                return (
+                  <Select
+                    labelledBy={id}
+                    value={typeof value === "string" ? value : ""}
+                    options={(field.options ?? []).map((option) => ({
+                      value: option,
+                      label: option,
+                    }))}
+                    disabled={started}
+                    onChange={(next) => set(field.label, next)}
+                  />
+                );
+              default:
+                return (
+                  <input
+                    type="text"
+                    placeholder={field.placeholder}
+                    value={typeof value === "string" ? value : ""}
+                    disabled={started}
+                    onChange={(event) => set(field.label, event.target.value)}
+                    spellCheck={false}
+                  />
+                );
+            }
+          };
+
+          // A `<label>` wraps its control, which is what a select built from
+          // buttons cannot be inside — clicking the label would open the list
+          // rather than focus it. Those get a plain element and an id the
+          // control points at instead.
+          const Tag = field.kind === "select" ? "div" : "label";
+
+          return (
+            <Tag className={`field field-${field.kind}`} key={field.label}>
+              <span className="field-label" id={id}>
+                {field.label}
+              </span>
+              {control()}
+              {field.hint && <span className="field-hint">{field.hint}</span>}
+            </Tag>
+          );
+        })}
+      </div>
+
+      <div className="panel-actions">
+        {error && <p className="field-error skill-error">{error}</p>}
+
+        {running ? (
+          <button className="primary" onClick={() => void stop()}>
+            <Icon name="stop" weight="fill" /> Stop
+          </button>
+        ) : (
+          <button
+            className="primary"
+            onClick={() => void run()}
+            disabled={blocked}
+            title={blocked ? "This skill cannot run from here" : undefined}
+          >
+            {settled ? "Run again" : "Run"}
+          </button>
+        )}
+
+        {/* After Run again, not before it: the two are the ends of the same
+            decision — go round once more, or put this away — and the one that
+            continues the work reads first.
+
+            Held shut until the report has finished drawing itself. Clearing
+            the page while the last paragraph is still appearing takes it away
+            from someone in the middle of reading it. */}
+        {settled && (
+          <button
+            className="ghost skill-done"
+            onClick={() => setConfirmDone(true)}
+            disabled={!drawn}
+            title={drawn ? undefined : "Wait for the report to finish"}
+          >
+            Done
+          </button>
+        )}
+      </div>
+
+      {started && (
+        <section className="panel skill-result rise" ref={result}>
+          <div className="panel-head panel-head-row">
+            <h2>Result</h2>
+            {/* Only once there is something to carry over. Before the first
+                answer there is no conversation to open, just an empty one. */}
+            {answer.trim() !== "" && (
+              <button className="ghost skill-continue" onClick={openInChat}>
+                <Icon name="chat-teardrop-text" /> Continue in chat
+              </button>
+            )}
+          </div>
+
+          {paced.trim() === "" ? (
+            // Nothing to read yet. The same mark the rest of the app turns
+            // while it waits, rather than a spinner of this screen's own.
+            <p className="skill-doc-wait">
+              <span className="dots" aria-label="Working">
+                <span />
+                <span />
+                <span />
+              </span>
+            </p>
+          ) : (
+            <div className="skill-doc-box">
+              {/* A bar over the document rather than a button floating beside
+                  it: the box is the artefact, and what can be done to it
+                  belongs on its own edge, not on the panel that happens to
+                  contain it. */}
+              <div className="skill-doc-bar">
+                <span className="skill-doc-kind">Markdown</span>
+                {/* Not while the run is going. A half-written report saved to
+                    disk is indistinguishable from a whole one afterwards, and
+                    the file is the thing people forward. */}
+                <button
+                  className="ghost skill-doc-save"
+                  onClick={() => download(filenameFor(title), answer)}
+                  disabled={running}
+                  // The full answer, not the paced one — what is saved is the
+                  // report, not how much of it has been typed out so far.
+                  title={
+                    running
+                      ? "Available when the run finishes"
+                      : "Save this report as a .md file"
+                  }
+                >
+                  <Icon name="download-simple" /> Download .md
+                </button>
+              </div>
+
+              <div className="skill-doc">
+                <Markdown>{paced}</Markdown>
+                {/* The turn is still going — a tool is running, or more of the
+                    report is on its way. Under the document rather than inside
+                    it, because it is not part of what was written. */}
+                {running && (
+                  <span className="dots skill-doc-more" aria-label="Working">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {notices.map((notice) => (
+            <p className="skill-doc-notice" key={notice.id}>
+              {notice.text}
+            </p>
+          ))}
+        </section>
+      )}
+
+      {confirmDone && (
+        <ConfirmModal
+          kind="Run"
+          heading={`Close the ${subject} analysis?`}
+          description="The report goes off this page. It is kept as a conversation, so it can still be opened in chat."
+          confirmLabel="Close it"
+          confirmIcon="check"
+          onConfirm={reset}
+          onCancel={() => setConfirmDone(false)}
+        />
+      )}
+
+      {approval && (
+        <ApprovalModal
+          // Remount per request, so a queued second approval starts with an
+          // empty form rather than the previous one's selections.
+          key={approval.reqId}
+          request={approval}
+          busy={settling}
+          onSettle={(response) => void settle(response)}
+        />
+      )}
+    </>
+  );
+}

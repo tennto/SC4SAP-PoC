@@ -66,6 +66,45 @@ export const NEVER_AUTO_ALLOW: ReadonlySet<string> = new Set([
 
 const READ_PREFIXES = ["Get", "Read", "Search", "List", "Describe"] as const;
 
+/**
+ * The agent's own tools that are auto-approved.
+ *
+ * Not SAP tools at all — these are the SDK's, and they are the reason a single
+ * skill run was raising dozens of prompts. `analyze-code` reads nine rule
+ * files, keeps a todo list and dispatches a reviewer sub-agent before it has
+ * touched the SAP system once, and every one of those was landing in the
+ * approval queue as an unclassified `other`. A prompt that fires that often
+ * stops being read, which makes the prompts that matter — a write, a table
+ * dump — cost nothing to wave through.
+ *
+ * What is on this list can look at things: the local filesystem the server
+ * already gave the session as its `cwd` and plugin path, the model's own
+ * bookkeeping, and dispatching work to a sub-agent — whose tool calls come
+ * back through this same policy rather than around it.
+ *
+ * What is deliberately NOT on it, and still prompts every time:
+ *
+ *   Bash, Write, Edit, NotebookEdit — change the machine the server runs on.
+ *   WebFetch, WebSearch           — leave the machine entirely.
+ *   Every SAP write tool          — not reachable at all; see
+ *                                   `disallowedTools` above.
+ */
+export const LOCAL_AUTO_ALLOW: readonly string[] = [
+  "Read",
+  "Glob",
+  "Grep",
+  "TodoWrite",
+  // Dispatching a sub-agent. `Agent`, not `Task` — the SDK names it that
+  // ("invoked via the Agent tool", `sdk.d.ts` under `agents`), and a name that
+  // matches nothing is not a permissive entry, it is an absent one. Its own
+  // calls are policed by this same callback, so allowing the dispatch is not
+  // allowing what it goes on to do.
+  "Agent",
+  "SlashCommand",
+  "BashOutput",
+  "ExitPlanMode",
+];
+
 export type ToolClass = "write" | "row-extraction" | "read" | "other";
 
 export function classifySapTool(bareName: string): ToolClass {
@@ -105,7 +144,10 @@ export function buildToolPolicy(bareToolNames: readonly string[]): ToolPolicy {
   }
 
   return {
-    allowedTools,
+    // The agent's own safe tools are added unconditionally: unlike the SAP
+    // list they are not discovered, so a discovery failure must not be able to
+    // take them away and bury the operator in prompts.
+    allowedTools: [...allowedTools, ...LOCAL_AUTO_ALLOW],
     disallowedTools: [...WRITE_CLASS_PATTERNS],
     summary,
   };

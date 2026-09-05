@@ -19,6 +19,33 @@
   --panel-3: #ebebeb;
 
   --ink: #383838;
+  /* Text and glyphs sitting *on* filled ink — a primary button, the active nav
+     icon, the reader's own speech chip.
+
+     A token rather than `#ffffff` at each of the thirteen places that needed
+     it. In the light theme the ink is near-black and white is the only
+     readable answer; in the dark one the ink is near-white, and white on white
+     is what the active menu item turned into. The rule at every call site is
+     the same either way — "the opposite of the ink" — and it is worth naming
+     once rather than being rediscovered one selector at a time. */
+  --on-ink: #ffffff;
+  /* The same thing at reading-secondary weight — a description under a picked
+     option, where full contrast would compete with the label above it. */
+  --on-ink-soft: rgba(255, 255, 255, 0.72);
+  /* Hovering a filled control moves the fill one step *away* from the page,
+     which is darker on a light ground and lighter on a dark one. Hardcoding
+     the darker value made every primary button invert on hover in dark mode. */
+  --ink-hover: #2b2b2b;
+  /* A pressed or hovered patch drawn on top of filled ink — same logic as
+     `--on-ink`, at the weight of a tint rather than of text. */
+  --on-ink-wash: rgba(255, 255, 255, 0.15);
+  /* What a modal dims the app with. Grey at 35% reads as a veil over white
+     and as nothing at all over near-black, so the dark theme takes black and
+     more of it. */
+  --scrim: rgba(56, 56, 56, 0.35);
+  /* Shadow channels, as bare numbers for `rgba()`. A grey shadow is invisible
+     on a dark ground; black is the only colour that reads as depth there. */
+  --shadow-rgb: 56, 56, 56;
   --ink-80: rgba(56, 56, 56, 0.8);
   --ink-55: rgba(56, 56, 56, 0.55);
   --ink-38: rgba(56, 56, 56, 0.38);
@@ -83,8 +110,15 @@
   --d-label-in: 380ms;
 
   /* The reading column on the chat screen: transcript and composer share it,
-     so an answer and the box you reply in sit on the same two edges. */
-  --measure: 900px;
+     so an answer and the box you reply in sit on the same two edges.
+
+     A range rather than a number. Fixed at 900px it was right on a laptop and
+     wrong on anything wider — the column stayed put while the window grew, so
+     a large monitor showed a narrow strip of text between two hands' width of
+     nothing, which reads as a margin somebody typed in. The floor keeps it
+     from collapsing on a small window, where 900 was already the whole of it;
+     the ceiling is where a line stops being comfortable to track back from. */
+  --measure: clamp(900px, 68vw, 1240px);
 
   /* The agent's answers, and only those — a second face is what separates the
      long half of the transcript from the reader's own short turns. Noto Sans
@@ -103,6 +137,109 @@
      11px label, which is the opposite of what tracking should do. The
      headings keep their own `em` tracking on top; see below. */
   letter-spacing: -0.03rem;
+}
+
+/* ---------- dark ----------
+
+   The same design, inverted, and only the surface tokens move. Everything the
+   app draws is either a surface or the ink at some opacity, so a palette swap
+   is the whole of it — no rule anywhere else names a colour, which is what
+   makes this eleven lines instead of a second stylesheet.
+
+   The ink is not white. #ededed on a near-black ground is the same contrast
+   relationship #383838 has on white, where pure white would be brighter than
+   the light theme ever gets and would bloom on a dark field.
+
+   The status three are lifted, not reused: #15803d on #171717 is under 3:1 and
+   they are set as 11px uppercase.
+
+   Written twice on purpose. `data-theme="dark"` is someone choosing it, and
+   the media query is the machine deciding — but only when nobody has chosen,
+   which is what `:root:not([data-theme])` says. Without that guard, a reader
+   on a dark machine who picks light gets a dark app back. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #121212;
+    --panel: #1a1a1a;
+    --panel-2: #232323;
+    --panel-3: #2c2c2c;
+
+    --ink: #ededed;
+    /* The ground, not black: something on filled ink should read as a hole
+       punched in it, showing the surface behind everything else. */
+    --on-ink: #121212;
+    --on-ink-soft: rgba(18, 18, 18, 0.72);
+    --ink-hover: #d8d8d8;
+    --on-ink-wash: rgba(18, 18, 18, 0.15);
+    --scrim: rgba(0, 0, 0, 0.62);
+    --shadow-rgb: 0, 0, 0;
+    --ink-80: rgba(237, 237, 237, 0.8);
+    --ink-55: rgba(237, 237, 237, 0.55);
+    --ink-38: rgba(237, 237, 237, 0.38);
+    --line: rgba(237, 237, 237, 0.16);
+    --line-soft: rgba(237, 237, 237, 0.09);
+
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #121212;
+  --panel: #1a1a1a;
+  --panel-2: #232323;
+  --panel-3: #2c2c2c;
+
+  --ink: #ededed;
+  --on-ink: #121212;
+  --on-ink-soft: rgba(18, 18, 18, 0.72);
+  --ink-hover: #d8d8d8;
+  --on-ink-wash: rgba(18, 18, 18, 0.15);
+  --scrim: rgba(0, 0, 0, 0.62);
+  --shadow-rgb: 0, 0, 0;
+  --ink-80: rgba(237, 237, 237, 0.8);
+  --ink-55: rgba(237, 237, 237, 0.55);
+  --ink-38: rgba(237, 237, 237, 0.38);
+  --line: rgba(237, 237, 237, 0.16);
+  --line-soft: rgba(237, 237, 237, 0.09);
+
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+}
+
+/* One of the two SC4 cuts is shown and the other is not — see `Sc4Mark`.
+   `display` rather than `opacity`, so the hidden one takes no space in a
+   layout that positions the visible one. */
+.sc4-mark-dark {
+  display: none;
+}
+
+:root[data-theme="dark"] .sc4-mark-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .sc4-mark-dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .sc4-mark-light {
+    display: none;
+  }
+
+  :root:not([data-theme="light"]) .sc4-mark-dark {
+    display: block;
+  }
 }
 
 * {
@@ -229,12 +366,12 @@ button:disabled {
 button.primary {
   background: var(--ink);
   border-color: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
   font-weight: 600;
 }
 
 button.primary:hover:not(:disabled) {
-  background: #2b2b2b;
+  background: var(--ink-hover);
 }
 
 /* ---------- app shell ---------- */
@@ -468,8 +605,20 @@ button.primary:hover:not(:disabled) {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(56, 56, 56, 0.14);
+  box-shadow: 0 8px 28px rgba(var(--shadow-rgb), 0.14);
   animation: menu-in 200ms var(--ease) both;
+}
+
+/* Hangs from its item's bottom edge instead of its top.
+   
+   The menu opens upward from a button in the bottom-left corner, so its own
+   last rows are already near the floor — and a submenu that grows downward
+   from one of those runs off the screen. Anchoring the bottom instead makes it
+   grow the same way the menu that opened it did. Six pixels of overhang either
+   way, so a row and the panel beside it read as level. */
+.account-submenu.up {
+  top: auto;
+  bottom: -6px;
 }
 
 @keyframes menu-in {
@@ -555,8 +704,20 @@ button.primary:hover:not(:disabled) {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(56, 56, 56, 0.14);
+  box-shadow: 0 8px 28px rgba(var(--shadow-rgb), 0.14);
   animation: menu-in 200ms var(--ease) both;
+}
+
+/* Hangs from its item's bottom edge instead of its top.
+   
+   The menu opens upward from a button in the bottom-left corner, so its own
+   last rows are already near the floor — and a submenu that grows downward
+   from one of those runs off the screen. Anchoring the bottom instead makes it
+   grow the same way the menu that opened it did. Six pixels of overhang either
+   way, so a row and the panel beside it read as level. */
+.account-submenu.up {
+  top: auto;
+  bottom: -6px;
 }
 
 /* Fixed gutter so the three labels line up whether or not they are ticked. */
@@ -759,7 +920,7 @@ button.primary:hover:not(:disabled) {
 .nav-item.active .nav-icon {
   background: var(--ink);
   border-color: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 .nav-label {
@@ -896,7 +1057,10 @@ button.primary:hover:not(:disabled) {
   border-radius: 7px;
   background: var(--panel);
   color: var(--ink-55);
-  font-size: 14px;
+  /* The glyph, not the button. The frame stays a comfortable target while the
+     mark inside it goes back to being a mark — a `+` filling its box reads as
+     a control shouting rather than one waiting. */
+  font-size: 11px;
 }
 
 .session-add:hover:not(:disabled) {
@@ -905,12 +1069,26 @@ button.primary:hover:not(:disabled) {
   background: var(--panel-2);
 }
 
+/* Smaller than a heading of its own, because it is a label on a list rather
+   than a title for a screen — the conversations under it are what the eye
+   should land on. The icon carries the weight the type gave up. */
 .session-rail-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin: 0;
-  font-size: 12px;
-  letter-spacing: 0.12em;
+  font-size: 10px;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--ink-55);
+}
+
+/* A step larger than the letters beside it: at the label's own size the glyph
+   read as a smudge, and uppercase tracking already makes the word wide enough
+   to carry itself. */
+.session-rail-head h2 .ph {
+  font-size: 14px;
+  color: var(--ink-38);
 }
 
 .session-list {
@@ -920,6 +1098,14 @@ button.primary:hover:not(:disabled) {
      overflow — a horizontal scrollbar appeared, and the height it took brought
      a vertical one with it on a list of two rows. */
   overflow-x: hidden;
+  /* The gutter is always there, whether or not a bar is in it.
+  
+     Adding or closing a row briefly overshoots the height it settles at — the
+     arriving row opens its gap and the leaving one has not closed its own yet
+     — so a list nowhere near full flashed a scrollbar for a few frames, and
+     every row in the column stepped sideways as it came and went. Reserving
+     the space costs the width of a thin bar and takes the movement out. */
+  scrollbar-gutter: stable;
   padding: 10px;
   display: flex;
   flex-direction: column;
@@ -992,7 +1178,10 @@ button.primary:hover:not(:disabled) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  /* One clipped line of someone's own prompt, in a 244px column — it is there
+     to be recognised, not read, and the smaller it is the more of it fits
+     before the ellipsis. */
+  font-size: 11.5px;
   line-height: 1.45;
   color: var(--ink);
 }
@@ -1024,11 +1213,35 @@ button.primary:hover:not(:disabled) {
 /* No header band. Session identity and status already live in the rail on the
    left, and a bar that said "No session" above an empty screen was the only
    thing on it. */
+/* The `1fr` column of the chat grid, and the one place the width of this
+   screen is actually decided.
+
+   `min-width: 0` is load-bearing. A grid track sized `1fr` has an automatic
+   minimum of its content's min-content width, so anything inside that cannot
+   be made narrow sets the width of the column — and `1fr` then hands that
+   width back as the column's size. An answer containing a wide table did
+   exactly that: the table's minimum was 3175px, so on a 1920px screen the
+   column became 3227px, the transcript centred itself inside that with almost
+   a thousand pixels of margin on each side, and the conversation sat off the
+   right-hand edge of the window.
+
+   The scroll containers further in — `.markdown-table`, `.markdown pre` — can
+   only do their job once something above them is allowed to be narrower than
+   what they hold. This is that something. */
 .main {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   background: var(--bg);
+}
+
+/* The same, down the chain that inherits `.main`'s width. Each is a flex item
+   in a column, where the automatic minimum applies to the cross axis too — so
+   one of them left at `auto` would put the floor straight back. */
+.stage,
+.stage-body {
+  min-width: 0;
 }
 
 /* ---------- stage ----------
@@ -1086,20 +1299,26 @@ button.primary:hover:not(:disabled) {
   text-align: center;
 }
 
+/* Room under the greeting. It is a hello and the box below it is the thing to
+   be used; close together they read as one block with a label on top, which is
+   what a form looks like — and this screen is trying not to be one. */
 .stage.is-hero .stage-greeting {
   max-height: 220px;
   opacity: 1;
   transform: none;
-  margin-bottom: 22px;
+  margin-bottom: 42px;
 }
 
 .stage-greeting h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(24px, 3.2vw, 34px);
+  /* Smaller than it was. At 34px it was the largest type in the app by a wide
+     margin, which made an empty screen shout — and the line under it, the
+     composer, is where the reader is actually going. */
+  font-size: clamp(19px, 2.2vw, 25px);
   font-weight: 500;
   letter-spacing: -0.02em;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--ink);
 }
 
@@ -1145,7 +1364,7 @@ button.primary:hover:not(:disabled) {
 .badge.starting {
   background: var(--ink);
   border-color: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 .badge.closed,
@@ -1156,15 +1375,42 @@ button.primary:hover:not(:disabled) {
   background: transparent;
 }
 
+/* Always in the tree, opened by a class rather than by existing — the closing
+   half of this cannot be animated on an element that unmounts the moment it
+   has nothing to say.
+
+   `max-height` rather than `height`, which has nothing to interpolate from
+   when the content is a line of text of unknown length. The ceiling is well
+   clear of the two lines a long message wraps to; overshooting it only means
+   the last part of the open runs against a height the bar has already
+   reached, which is not visible. The vertical padding animates with it, or a
+   closed bar keeps eight pixels of ink on the screen.
+
+   Smaller than it was, in both type and height: it interrupts the top of the
+   screen, so it should say its piece at the weight of a status line rather
+   than of a headline. */
 .error {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 14px;
-  padding: 10px 20px;
+  overflow: hidden;
+  max-height: 0;
+  padding: 0 20px;
+  opacity: 0;
   background: var(--ink);
-  color: #ffffff;
-  font-size: 13px;
+  color: var(--on-ink);
+  font-size: 12px;
+  transition:
+    max-height var(--t-slow) var(--ease),
+    padding var(--t-slow) var(--ease),
+    opacity var(--t-base) var(--ease);
+}
+
+.error.is-open {
+  max-height: 80px;
+  padding: 8px 20px;
+  opacity: 1;
 }
 
 .error button {
@@ -1175,13 +1421,18 @@ button.primary:hover:not(:disabled) {
 }
 
 .error button:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--on-ink-wash);
 }
 
 /* ---------- transcript ---------- */
 
 .transcript {
   overflow-y: auto;
+  /* Explicit, not inherited. `overflow-y: auto` computes the other axis to
+     `auto` as well, so anything that did get through the rules above would put
+     a horizontal scrollbar under the whole conversation rather than inside the
+     one block that overflowed. */
+  overflow-x: hidden;
   padding: 22px 20px;
   display: flex;
   flex-direction: column;
@@ -1208,6 +1459,13 @@ button.primary:hover:not(:disabled) {
    above the text, which is the only part that was ever load-bearing. */
 .msg {
   max-width: 100%;
+  /* A flex item's `min-width` defaults to `auto`, which is its content's
+     minimum — so one wide thing inside an answer sets the width of the row and
+     the row sets the width of the column. A code review comes back with tables
+     whose cells run to hundreds of characters, and that is exactly what
+     happened: the transcript stopped being the width it was told to be.
+     Zero here is what lets the scroll containers further in do their job. */
+  min-width: 0;
   padding: 0;
   border: 0;
   background: none;
@@ -1250,26 +1508,45 @@ button.primary:hover:not(:disabled) {
 /* A bordered chip, not a caption. With no bubble drawing the turn, this label
    is the only thing marking the handover, so it is given an edge of its own —
    and the two speakers are told apart by fill: the reader's own turns are
-   solid ink, the agent's are outlined. */
+   solid ink, the agent's are outlined.
+
+   Small and set back. It is a label on the answer, not part of it, and at full
+   strength a column of them ran down the transcript louder than the text they
+   were labelling — which is backwards for something nobody reads twice.
+   Transparency rather than lighter inks so the whole chip recedes together,
+   edge and fill and letters, instead of the border staying put while the word
+   inside it fades. */
 .msg .who {
   display: inline-block;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.09em;
   line-height: 1;
-  padding: 4px 9px;
+  padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
   color: var(--ink-55);
-  margin-bottom: 10px;
+  margin-bottom: 9px;
+  opacity: 0.66;
+  transition: opacity var(--t-base) var(--ease);
 }
 
+/* Full strength on the turn under the cursor. Nothing depends on reading it,
+   so this is not a disclosure — it is the label answering when it is looked
+   at, and settling back when it is not. */
+.msg:hover .who {
+  opacity: 1;
+}
+
+/* A step stronger than the outlined one: solid ink at the same transparency
+   goes grey and stops reading as the filled half of the pair. */
 .msg.user .who {
   background: var(--ink);
   border-color: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
+  opacity: 0.78;
 }
 
 .msg.assistant .who {
@@ -1284,8 +1561,17 @@ button.primary:hover:not(:disabled) {
 }
 
 .msg .text {
+  min-width: 0;
+  /* Long identifiers — a 60-character ABAP name, a path — have nowhere to
+     break, and without this they push the column rather than the column
+     clipping them. */
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.markdown {
+  min-width: 0;
 }
 
 /* Markdown's first block brings a top margin that stacked on the label's own
@@ -1310,45 +1596,94 @@ button.primary:hover:not(:disabled) {
   min-height: 22px;
 }
 
+/* Slower in than the messages around it, and slower than `--t-slow` — this is
+   the one arrival on the screen with nothing else moving under it. The others
+   come with something to read and want to be got out of the way; this one is
+   announcing a wait, and a wait that snaps into place reads as a jolt.
+
+   Stated in milliseconds rather than reaching for a token, because it is
+   longer than the longest of them on purpose. */
+.msg.waiting {
+  animation-duration: 900ms;
+}
+
+/* And the dots follow the label rather than landing with it. The label is the
+   news — the agent has the question — and the dots are the consequence; a beat
+   between them is the difference between two things appearing and one thing
+   happening. Delayed, not slowed, so the wait itself still starts at once. */
+.msg.waiting .dots {
+  animation: msg-in 900ms var(--ease) 240ms both;
+}
+
 /* The same dots, but under an answer that is already on screen: the turn has
    more to do and the reader should not have to guess that from a cursor that
    stopped moving. */
+/* Joins an answer that is already on screen, so it has no row entrance of its
+   own to ride in on — without this it appears in one frame under text that
+   was already there. Slower than the row animation for the same reason the
+   waiting row is: nothing else on screen is moving when this arrives. */
 .dots-row {
   margin-top: 14px;
+  animation: msg-in 900ms var(--ease) both;
 }
 
+/* Three dots, and each one is lifted rather than dimmed.
+   
+   Fading alone was the problem: opacity on a 5px dot is a change of about two
+   pixels' worth of ink, which at a glance reads as the row flickering rather
+   than as something working. Movement does not need to be large to be read as
+   movement, and a hop of four pixels across three dots on a stagger is enough
+   to be seen from the corner of the eye — which is where this indicator
+   actually lives while someone waits.
+
+   Smaller than they were, because the lift gives them presence that size used
+   to have to supply on its own. */
 .dots {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-end;
+  /* Room for the hop, so the row above does not shift when the animation
+     starts — the dots are laid out at the top of their travel. */
+  height: 9px;
   gap: 5px;
 }
 
 .dots span {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--ink-38);
-  animation: dot-pulse 1.25s var(--ease) infinite;
+  animation: dot-lift 2.1s var(--ease) infinite;
+}
+
+/* A wave passing along them rather than three things blinking near each other.
+   The first offset also clears the row's own entrance above, so the lift does
+   not start halfway through the dots fading in. */
+.dots span:nth-child(1) {
+  animation-delay: 180ms;
 }
 
 .dots span:nth-child(2) {
-  animation-delay: 160ms;
+  animation-delay: 400ms;
 }
 
 .dots span:nth-child(3) {
-  animation-delay: 320ms;
+  animation-delay: 620ms;
 }
 
-@keyframes dot-pulse {
+/* Up, and darker on the way — the ink carries the top of the arc so a dot at
+   its height is also the one being looked at. Down again by 55% of the cycle,
+   and then a beat of rest before the wave comes round: without the rest the
+   three run continuously and it reads as a machine rather than as a pulse. */
+@keyframes dot-lift {
   0%,
-  60%,
+  46%,
   100% {
-    opacity: 0.3;
     transform: translateY(0);
+    background: var(--ink-38);
   }
-  30% {
-    opacity: 1;
-    transform: translateY(-3px);
+  23% {
+    transform: translateY(-4px);
+    background: var(--ink);
   }
 }
 
@@ -1443,6 +1778,18 @@ button.primary:hover:not(:disabled) {
 }
 
 /* Inline code. The block case is overridden right below. */
+/* Inline code wraps.
+   
+   It was inheriting `nowrap` from the transcript's `white-space: pre-wrap`
+   chain, and an ABAP fragment is not a word: `go_alv = NEW #( ).
+   go_alv->display_initial( ).` is 334px that refused to break. Inside a table
+   cell it simply hung out of the column — the table measured a tidy 1188px
+   while its contents reached 2074 — which is why a review looked as though it
+   overflowed for no visible reason.
+
+   `break-word` rather than `anywhere`: a short fragment still keeps its line
+   and only breaks when it genuinely cannot fit, so `sy-subrc` is not split
+   down the middle to save four pixels. */
 .markdown code {
   font-family: ui-monospace, "Cascadia Mono", monospace;
   font-size: 12.5px;
@@ -1450,6 +1797,15 @@ button.primary:hover:not(:disabled) {
   border: 1px solid var(--line-soft);
   border-radius: 4px;
   padding: 1px 5px;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* Except inside a fence, where the line breaks are the content. Those scroll
+   in their own box — see `.markdown pre`. */
+.markdown pre code {
+  white-space: pre;
+  overflow-wrap: normal;
 }
 
 .markdown pre {
@@ -1473,23 +1829,70 @@ button.primary:hover:not(:disabled) {
 /* Wide tables scroll inside the bubble rather than stretching it. */
 .markdown-table {
   overflow-x: auto;
+  /* Both, and neither is redundant: `max-width` stops the box from being
+     stretched by the table inside it, `min-width` stops it from being handed a
+     minimum by the flex chain outside it. */
+  max-width: 100%;
+  min-width: 0;
   margin: 0 0 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
 }
 
+/* `width: 100%` fills the scroller when the table is narrow, and is ignored
+   when it is not — a table grows to its content whatever it is told. `auto`
+   layout is what lets a 500-character cell wrap instead of demanding a column
+   of its own width, which is what put a horizontal scrollbar under every
+   review. */
 .markdown-table table {
   border-collapse: collapse;
+  table-layout: auto;
   width: 100%;
   font-size: 13px;
 }
 
+/* The scrollbar for the ones that still overflow.
+   
+   Stated here rather than inherited: the app's thin bar is a faint thumb on a
+   transparent track, which is right down the side of a page and invisible
+   inside a white card — the table scrolled perfectly well and looked as though
+   it did not. A track the eye can find is the whole affordance, since a mouse
+   wheel does not scroll sideways without a modifier.
+
+   `contain`, so reaching the end of the table does not hand the gesture up and
+   start scrolling the conversation behind it. */
+.markdown-table {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-38) var(--panel-3);
+  overscroll-behavior-x: contain;
+}
+
+/* Cells wrap, and no single one decides how wide the table is.
+   
+   Both halves of that, in one rule, because they only work together. `nowrap`
+   used to be here on its own: a table kept every cell on one line and the
+   whole thing scrolled sideways, which is fine for a grid of short values and
+   wrong for a code review, where a finding is a sentence and the table came
+   out 3175px wide.
+
+   The cap alone was worse than either. `table-layout: auto` sizes a column to
+   its content's *max-content* width, so capping the cell while it still said
+   `nowrap` did not wrap the sentence — it clipped it, and the text ran under
+   the next column's border.
+
+   `44ch` is wide enough for a sentence and narrow enough that four columns of
+   them still fit the panel; short columns stay short beside it, which
+   `table-layout: fixed` would not allow. `break-word` rather than `anywhere`,
+   so an ABAP identifier is only split when it genuinely cannot fit. */
 .markdown-table th,
 .markdown-table td {
   text-align: left;
   padding: 7px 12px;
   border-bottom: 1px solid var(--line);
-  white-space: nowrap;
+  max-width: 44ch;
+  white-space: normal;
+  overflow-wrap: break-word;
+  vertical-align: top;
 }
 
 .markdown-table th {
@@ -1551,6 +1954,7 @@ button.primary:hover:not(:disabled) {
 
 @media (prefers-reduced-motion: reduce) {
   .caret,
+  .dots span,
   .chip.running .dot {
     animation: none;
   }
@@ -1636,13 +2040,24 @@ button.primary:hover:not(:disabled) {
   border: 0;
   border-radius: 999px;
   background: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
   font-size: 15px;
 }
 
 .composer-send:disabled {
   background: var(--panel-3);
   color: var(--ink-38);
+}
+
+/* The same button doing the other job. It keeps the filled circle — it is
+   still the one live control on the row — and says which job it is on with
+   the mark inside, a square rather than an arrow.
+
+   Smaller than the arrow: a filled square reads heavier than an arrow at the
+   same size, and matching them by number made the stop state look like the
+   button had swollen. */
+.composer-send.is-stop .ph {
+  font-size: 11px;
 }
 
 /* ---------- approval modal (3-3) ---------- */
@@ -1658,7 +2073,7 @@ button.primary:hover:not(:disabled) {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(56, 56, 56, 0.35);
+  background: var(--scrim);
   z-index: 10;
   animation: modal-dim-in var(--t-base) var(--ease) both;
 }
@@ -1734,7 +2149,7 @@ button.primary:hover:not(:disabled) {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #ffffff;
+  color: var(--on-ink);
   background: var(--ink);
   border-radius: 999px;
   padding: 3px 10px;
@@ -1887,7 +2302,7 @@ button.primary:hover:not(:disabled) {
 .rating-face.picked {
   background: var(--ink);
   border-color: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 /* Pushes the note left so the buttons stay grouped at the trailing edge. */
@@ -1972,7 +2387,7 @@ button.primary:hover:not(:disabled) {
 .option.picked {
   background: var(--ink);
   border-color: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
 }
 
 .option-label {
@@ -1985,7 +2400,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .option.picked .option-description {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--on-ink-soft);
 }
 
 .option-other {
@@ -2059,10 +2474,21 @@ button.primary:hover:not(:disabled) {
   text-transform: none;
 }
 
+/* A reading measure, because this is the one line of prose on most of these
+   screens and 62 characters is where a paragraph stops being comfortable to
+   track back from.
+
+   Not on the dashboard's own lede, which is a single sentence introducing the
+   panels under it rather than a paragraph. At 62ch it wrapped mid-thought with
+   half the header still empty beside it — a measure protecting nothing. */
 .page-lede {
   margin: 0;
   max-width: 62ch;
   color: var(--ink-55);
+}
+
+.dashboard .page-lede {
+  max-width: none;
 }
 
 .status-strip {
@@ -2329,16 +2755,7 @@ button.primary:hover:not(:disabled) {
   padding: 3px 9px;
   border-radius: 999px;
   background: var(--ink);
-  color: #ffffff;
-}
-
-/* Out of the height matching the other two do. Account and SAP system are the
-   same kind of card — rows of label and value — and lining their bottoms up
-   makes them read as a pair. Credits is not that: a figure, a bar and one
-   row, and stretching it to a height it has no content for only produced
-   space that had to be explained away. It takes the height it needs. */
-.panel-credits {
-  align-self: start;
+  color: var(--on-ink);
 }
 
 .figure {
@@ -2358,37 +2775,6 @@ button.primary:hover:not(:disabled) {
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ink-38);
-}
-
-.meter {
-  height: 7px;
-  border-radius: 999px;
-  background: var(--panel-3);
-  overflow: hidden;
-}
-
-.meter-fill {
-  display: block;
-  height: 100%;
-  background: var(--ink);
-  border-radius: inherit;
-  /* Grows from nothing on load, so the number and the bar arrive together. */
-  animation: meter-fill var(--t-enter) var(--ease) both;
-  /* Lands with the credits card it sits in — see that card's `--delay`. */
-  animation-delay: 520ms;
-  transform-origin: left center;
-}
-
-@keyframes meter-fill {
-  from {
-    transform: scaleX(0);
-  }
-}
-
-.meter-legend {
-  margin: 8px 0 16px;
-  font-size: 12px;
   color: var(--ink-38);
 }
 
@@ -2417,8 +2803,236 @@ button.primary:hover:not(:disabled) {
   height: 42px;
   border-radius: 10px;
   background: var(--ink);
-  color: #ffffff;
+  color: var(--on-ink);
   font-size: 21px;
+}
+
+/* ---------- skill screen ----------
+   A form, and set as one. The dashboard's scale is for panels that are
+   glanced at; a column of controls at that size reads as a wall, and the
+   labels end up shouting over the values they belong to. Everything here is a
+   step down, scoped to this screen so the settings form — which is rows of
+   text rather than a form to fill in — is not dragged with it. */
+
+.skill .skill-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  font-size: 17px;
+}
+
+.skill .page-head h1 {
+  font-size: 19px;
+}
+
+.skill .page-lede {
+  font-size: 12.5px;
+}
+
+.skill .panel {
+  padding: 18px;
+}
+
+.skill .panel-head h2 {
+  font-size: 10px;
+}
+
+.skill .fields {
+  gap: 13px;
+}
+
+.skill .field-label {
+  font-size: 10px;
+  letter-spacing: 0.07em;
+}
+
+.skill .field-switch-label {
+  font-size: 12px;
+}
+
+.skill .field input[type="text"],
+.skill .field textarea,
+.skill .field .select-button {
+  padding: 7px 10px;
+  font-size: 12.5px;
+}
+
+.skill .field-hint {
+  font-size: 10.5px;
+}
+
+.skill .panel-actions {
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding-top: 15px;
+}
+
+/* Sized to the form it belongs to. The base button is set against body text,
+   and against fields a step smaller it started to read as the biggest thing
+   on the panel — which is the wrong emphasis for a control you reach once,
+   after the answers are in.
+
+   Run again and Done are one rule, not two that happen to agree. They are the
+   ends of a single decision — round again, or put this away — and matching
+   them by hand had them the same on paper and different on screen: the weight
+   is part of the size, and only the filled one had it. */
+.skill .panel-actions .primary,
+.skill .panel-actions .skill-done {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* A yes-or-no on one line, with nothing drawn round it.
+   
+   Every other field in a form is a small-caps label with an answer under it.
+   A toggle built to match ended up asking its question twice — once in the
+   label, once in a bordered box below reading "Off" — in a frame as heavy as
+   the text inputs beside it. The label of a toggle already is the question, so
+   the frame goes and the tick sits against the words.
+
+   Full width, because it is a sentence and reads badly in a half-width cell
+   next to something that is not one. */
+.field-switch {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.field-switch input {
+  flex: none;
+  accent-color: var(--ink);
+  width: 15px;
+  height: 15px;
+  /* Sits on the first line of the label rather than centred against the whole
+     block, which drifts down as soon as there is a hint under it. */
+  margin: 1px 0 0;
+}
+
+.field-switch-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Sentence case at reading weight, not a small-caps label: it is a line to be
+   read and agreed with, and the uppercase treatment is for naming a value that
+   sits underneath. */
+.field-switch-label {
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+/* The answer, under the form that asked for it. Its own panel rather than a
+   region inside the input one: they are two things — a question being composed
+   and a run that happened — and a single card holding both made the form look
+   like a header on its output.
+
+   The document inside it is the same markdown the transcript renders, without
+   the frame a conversation puts round it. */
+.skill-result {
+  margin-top: 14px;
+}
+
+/* The report as an artefact, in a box of its own.
+   
+   Its own frame rather than loose inside the result panel: it is a document
+   that can be saved and sent on, and giving it an edge is what says so —
+   which is also where the control that saves it belongs. */
+.skill-doc-box {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+
+/* The document's own edge. Named for what the thing is on the left and what
+   can be done to it on the right, which is the arrangement of every file
+   header anyone has used. */
+.skill-doc-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.skill-doc-kind {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-38);
+}
+
+.skill-doc-save {
+  flex: none;
+  padding: 4px 11px;
+  font-size: 11.5px;
+}
+
+.skill-doc-save .ph {
+  font-size: 13px;
+}
+
+/* The answer itself. No speaker label over it and no turn-sized gap under it:
+   the question was the form above, and a report with a name tag on it reads as
+   somebody's reply rather than as the thing that was asked for.
+
+   No measure. One was tried and taken back out: a report is mostly headings,
+   tables and findings with line numbers in them, and a reading column that
+   suits paragraphs leaves those wrapping inside a card that had the width to
+   hold them. The panel's own padding is the margin. */
+.skill-doc {
+  padding: 16px 18px 18px;
+  background: var(--panel);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+/* Before the first line lands. Centred, because an empty panel with a mark in
+   one corner reads as something having gone wrong. Outside the document box,
+   which does not exist until there is a document to put in it. */
+.skill-doc-wait {
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 18px 0;
+}
+
+/* The turn is still going — a tool is running, or there is more of the report
+   to come. Under the document rather than in it: it is not part of what was
+   written. */
+.skill-doc-more {
+  margin-top: 18px;
+}
+
+/* What the run said that was not the answer — stopped, disconnected. Set apart
+   from the document above it so it is not read as its last paragraph. */
+.skill-doc-notice {
+  margin: 18px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-55);
+}
+
+.skill-continue {
+  flex: none;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+
+/* On the left of the button row, where a form's own message goes — see
+   `.field-actions`. */
+.skill-error {
+  margin: 0 auto 0 0;
 }
 
 .notice-block {
@@ -2650,10 +3264,22 @@ button.primary:hover:not(:disabled) {
   resize: none;
 }
 
+/* Locked. Written with the attribute selector rather than as `.field
+   :disabled`, which lost: the rule above it is `.field input[type="text"]` —
+   one more qualifier — so a disabled text box kept the live background while
+   the selects beside it greyed out, and a frozen form looked half frozen. */
+.field input:disabled,
+.field textarea:disabled,
+.field select:disabled,
 .field :disabled {
   background: var(--panel-2);
   color: var(--ink-55);
   cursor: not-allowed;
+}
+
+/* A placeholder in a locked box is the ghost of an answer nobody can give. */
+.field :disabled::placeholder {
+  color: color-mix(in srgb, var(--ink), transparent 82%);
 }
 
 .field ::placeholder {
@@ -2680,6 +3306,289 @@ button.primary:hover:not(:disabled) {
   font-size: 11px;
   line-height: 1.5;
   color: var(--ink-38);
+}
+
+/* ---------- settings ---------- */
+
+/* One centred column, against the no-measure-cap rule the rest of the app
+   follows. That rule is about panels and grids, which are read by scanning and
+   only lose by being narrowed. These rows are read by working down them, and
+   at full desktop width a label and the value it belongs to end up far enough
+   apart to read as two separate things.
+
+   The cap is on the column and on the heading above it, not on each panel, so
+   the cards line up with the title rather than floating under a full-width
+   one. */
+.settings .page-head,
+.settings-stack {
+  max-width: 660px;
+  margin-inline: auto;
+}
+
+.settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Who this is. Sits above the rows rather than being the first of them: a name
+   and an address are read as a person, and a row would file them as two more
+   settings. */
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 18px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Round, like the one in the account menu and for the same reason: this slot
+   stands for a person rather than a control. Larger than that one, because
+   there it identifies a button and here it is the subject of the card. */
+.identity-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--ink-38);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--ink-55);
+  font-size: 24px;
+}
+
+.identity-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.identity-name {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.identity-email {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-55);
+  overflow-wrap: anywhere;
+}
+
+/* The heading sits closer to its rows here than a panel head does elsewhere.
+   The base margin is sized for a panel whose body starts flush — a list, a
+   grid of facts — where the first `.setting-row` brings 14px of padding of its
+   own, and the two together left the heading floating.
+
+   The pencil is centred against the heading rather than aligned to its top:
+   at 32px it is more than twice the height of an 11px uppercase label, and
+   flex-start hung it below the line it belongs to. */
+.settings .panel-head {
+  margin-bottom: 2px;
+}
+
+.settings .panel-head-row {
+  align-items: center;
+}
+
+/* Back to the base spacing where the head carries a note under it — the note
+   is what separates the heading from the rows there, and it needs room to be
+   read as a sentence rather than as a third line of the title. */
+.settings .panel-head:has(.panel-note) {
+  margin-bottom: 12px;
+}
+
+/* The rows themselves. Separated by a rule rather than by space: at this
+   density space alone left it ambiguous which hint belonged to which row. */
+.setting-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.setting-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.setting-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 2px;
+}
+
+.setting-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.setting-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+}
+
+/* The value carries the row. Everything else on it is a label or a note, so
+   this is the only line at reading weight. */
+.setting-value {
+  font-size: 14px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.setting-value code {
+  font-size: 13px;
+}
+
+.setting-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-38);
+}
+
+/* Whose account this is, in the slot the pencil takes on the rows above.
+   Centred against the row rather than aligned to its top: it is a mark on the
+   value, not a control on the label, and the rows around it put a 32px button
+   in this column — matching that height keeps the right edge from stepping. */
+.setting-mark {
+  flex: none;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+}
+
+/* Ours, cut to the same optical weight as Google's four-colour mark beside it
+   — the SC4 mark is a solid black square where theirs is open, so matching the
+   box would make ours the louder of the two. */
+.setting-sc4 {
+  width: 15px;
+  height: 15px;
+  opacity: 0.62;
+}
+
+/* The pencil. Icon-only, so it is sized to the touch target rather than to the
+   glyph, and it holds its outline only on hover — a column of framed buttons
+   down the right of every row would read as the point of the screen. */
+.icon-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-38);
+  font-size: 16px;
+  cursor: pointer;
+  transition:
+    color var(--t-base) var(--ease),
+    border-color var(--t-base) var(--ease),
+    background-color var(--t-base) var(--ease);
+}
+
+.icon-button:hover:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--line);
+  background: var(--panel-2);
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+}
+
+/* The edit dialog. Narrower than the approval modal, which has to fit a
+   pretty-printed tool payload, and wider than the confirm one, which holds a
+   sentence — this holds a form and its hints. */
+.modal.edit {
+  width: min(520px, 100%);
+  padding: 26px 24px 24px;
+}
+
+/* The dialog's own fields sit in a single column at this width; two would put
+   a hint under one field beside a label of the next. */
+.modal.edit .fields {
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+/* Why the last save was refused, on the left of the button row. Kept to one
+   line's worth of weight so a long message does not push the buttons off the
+   bottom of a dialog that is already at its height. */
+.modal-error {
+  margin: 0 auto 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--bad);
+}
+
+.modal-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* A field that owns the whole row rather than sharing it. Full-width by
+   itself, and — in a grid that has fallen to one column — indistinguishable
+   from every other field, which is correct. */
+.field-wide {
+  grid-column: 1 / -1;
+}
+
+/* The row a form ends on: the button on the right, whatever the form has to
+   say about the last attempt to its left. One line, because a message that
+   pushed the button down would move it out from under the cursor that had
+   just pressed it. */
+.field-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+/* Both of the things that row can say, sharing its left end. `margin-right:
+   auto` rather than `justify-content: space-between` on the parent, so a row
+   with no message still has its button on the right. */
+.field-actions .field-error,
+.field-saved {
+  margin: 0 auto 0 0;
+}
+
+/* Confirmation, in the same green the connection rows spend on a live system
+   — this screen has no other use for colour, and reusing that one keeps
+   "it worked" saying the same thing everywhere. */
+.field-saved {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ok);
+}
+
+/* Prose where a field would be: the Google-account note, and the empty
+   connection panel. Sized as a hint rather than as body text, because it is
+   doing a hint's job — explaining the controls around it. */
+.field-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-55);
 }
 
 /* Invalid input. The border carries the state and the message underneath
@@ -2846,9 +3755,8 @@ button.link-button:disabled {
   .rise-soft,
   .fav-card,
   .msg-in,
+  .dots-row,
   .session-item,
-  .dots span,
-  .meter-fill,
   .account-menu,
   .account-submenu,
   .modal-backdrop,
@@ -2907,7 +3815,7 @@ button.link-button:disabled {
     inset: 0;
     z-index: 15;
     padding: 0;
-    background: rgba(56, 56, 56, 0.35);
+    background: var(--scrim);
     border: 0;
     border-radius: 0;
   }
@@ -2929,7 +3837,7 @@ button.link-button:disabled {
     border-radius: 50%;
     background: var(--panel);
     border: 1px solid var(--ink-38);
-    box-shadow: 0 2px 10px rgba(56, 56, 56, 0.14);
+    box-shadow: 0 2px 10px rgba(var(--shadow-rgb), 0.14);
     font-size: 18px;
   }
 
@@ -3531,7 +4439,7 @@ a.ghost.auth-submit {
   /* The second shadow in the app, and for the same reason as the account
      menu's: a layer floating over other content has to be separable from it,
      and a border alone does not do that against a white card. */
-  box-shadow: 0 10px 30px rgba(56, 56, 56, 0.16);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16);
   animation: select-list-in var(--t-base) var(--ease) both;
 }
 
@@ -4015,7 +4923,7 @@ a.ghost.auth-submit {
   width: max-content;
   max-width: 260px;
   padding: 9px 12px;
-  color: #ffffff;
+  color: var(--on-ink);
   background: var(--ink);
   border-radius: 8px;
   font-size: 11px;
@@ -4162,7 +5070,7 @@ a.ghost.auth-submit {
 
 .setup-dot.is-done .setup-dot-mark,
 .setup-dot.is-current .setup-dot-mark {
-  color: #ffffff;
+  color: var(--on-ink);
   background: var(--ink);
   border-color: var(--ink);
 }
@@ -4192,61 +5100,150 @@ a.ghost.auth-submit {
   text-align: center;
 }
 
-.setup-spinner {
-  width: 62px;
-  height: 62px;
+/* How much of the ring the tail covers. Declared rather than left a plain
+   custom property because a plain one is a string to the animation engine and
+   jumps between keyframes — typed as an angle it interpolates, which is the
+   whole trick behind the breathing below. */
+@property --tail {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 70deg;
 }
 
-.setup-spinner circle {
-  fill: none;
-  /* Rotate about the viewBox's centre, not each circle's own painted box —
-     the two arcs have different radii and would otherwise turn about two
-     different points. */
-  transform-box: view-box;
-  transform-origin: 32px 32px;
+/* The tail length is animated here rather than on the sweep itself, so that
+   anything else on the mark can read the same value without a second
+   animation to keep in step by hand.
+
+   Its period shares no factor with either rotation, so the tail is never the
+   same length twice at the same point in a turn and the mark does not settle
+   into a loop the eye can finish. `alternate`, so it eases back the way it
+   came instead of snapping at the end of each pass. */
+.work-mark {
+  --ring: 20.875px;
+  --band: 2.25px;
+  position: relative;
+  display: block;
+  width: 44px;
+  height: 44px;
+  animation: setup-tail 3800ms var(--ease) infinite alternate;
 }
 
-/* The ring both arcs travel, at the weight of every other hairline in the
-   app. Without it the arcs read as two loose strokes rather than as one
-   mechanism. */
-.setup-spinner-track {
-  stroke: var(--line);
-  stroke-width: 1.5;
+
+/* Everything that follows is a ring cut out of a full disc by the same kind of
+   mask: paint the whole circle, then keep only a band of it at the edge. The
+   band width is the only thing that differs, so it is the one number in each
+   rule. The inner edge is feathered across half a pixel; a hard stop there
+   aliases into a visible staircase on the diagonals. */
+.work-mark-track,
+.work-mark-comet {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  mask: radial-gradient(
+    closest-side,
+    transparent calc(100% - var(--band)),
+    #000 calc(100% - var(--band) + 0.5px)
+  );
 }
 
-/* Cut out of a full circle by the dash pattern: at r=26 the circumference is
-   163.4, so 41 on and 123 off leaves a single quarter-turn arc. Round caps,
-   which is most of why this reads as drawn rather than as clipped. */
-.setup-spinner-outer {
-  stroke: var(--ink);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-dasharray: 41 123;
-  animation: setup-spin 1900ms linear infinite;
+/* The sweep.
+
+   `color-mix` down to nothing rather than the `transparent` keyword, which
+   interpolates through transparent *black* and greys the fade on the way.
+
+   The gradient starts a tail-length early so that its last stop — the bright
+   end — always lands at twelve o'clock however long the tail currently is.
+   Without that the head would swing back and forth as the tail breathed. */
+.work-mark-comet {
+  background: conic-gradient(
+    from calc(0deg - var(--tail)),
+    color-mix(in srgb, var(--ink), transparent 100%) 0deg,
+    color-mix(in srgb, var(--ink), transparent 82%) calc(var(--tail) * 0.5),
+    color-mix(in srgb, var(--ink), transparent 40%) calc(var(--tail) * 0.84),
+    var(--ink) var(--tail),
+    color-mix(in srgb, var(--ink), transparent 100%) calc(var(--tail) + 0.5deg)
+  );
+  animation: setup-spin 2600ms linear infinite;
 }
 
-/* r=15, circumference 94.2 — 31 on and 63 off is a third of a turn. A step
-   lighter than the outer arc and faster, running the other way: two arcs
-   turning together would beat against each other, where counter-rotation reads
-   as one moving part. Not lighter than that — at `--ink-38` on white it was
-   close enough to invisible that the mark read as a single arc. */
-.setup-spinner-inner {
-  stroke: var(--ink-55);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-dasharray: 31 63;
-  animation: setup-spin-reverse 1250ms linear infinite;
+/* The course, at the weight of every other hairline in the app. Without it the
+   sweep reads as a loose stroke rather than as something running a ring. Inset
+   so it is centred in the sweep's band rather than sitting on its outer edge:
+   half the difference between the two widths, 2.25 and 1.5. */
+.work-mark-track {
+  --band: 1.5px;
+  inset: 0.375px;
+  background: var(--line);
+}
+
+/* A second, much wider sweep on a smaller ring, running the other way and
+   slower. Alone it would be a spinner in its own right; under the first one it
+   is depth — something further off, moving at a speed that says so. Faint
+   enough to be felt rather than counted: at anything darker there were two
+   spinners on the screen. */
+.work-mark-under {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in srgb, var(--ink), transparent 100%) 0deg,
+    color-mix(in srgb, var(--ink), transparent 86%) 150deg,
+    color-mix(in srgb, var(--ink), transparent 100%) 210deg
+  );
+  mask: radial-gradient(
+    closest-side,
+    transparent calc(100% - 1.5px),
+    #000 calc(100% - 1px)
+  );
+  animation: setup-spin-back 4300ms linear infinite;
+}
+
+/* The head. A shade wider than the band it rides so it reads as a point rather
+   than as the end of a stroke, and the one thing on the mark at full ink.
+
+   `rotate` then `translateX` puts it on the ring; `rotate(0)` lands at three
+   o'clock where the sweep's bright end is at twelve, hence the quarter turn.
+   Same duration as the sweep and also linear, so the two never drift. */
+.work-mark-head {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px;
+  border-radius: 50%;
+  background: var(--ink);
+  animation: setup-spin-head 2600ms linear infinite;
+}
+
+@keyframes setup-tail {
+  from {
+    --tail: 46deg;
+  }
+  to {
+    --tail: 132deg;
+  }
 }
 
 @keyframes setup-spin {
   to {
-    transform: rotate(360deg);
+    rotate: 360deg;
   }
 }
 
-@keyframes setup-spin-reverse {
+@keyframes setup-spin-back {
   to {
-    transform: rotate(-360deg);
+    rotate: -360deg;
+  }
+}
+
+@keyframes setup-spin-head {
+  from {
+    transform: rotate(-90deg) translateX(var(--ring));
+  }
+  to {
+    transform: rotate(270deg) translateX(var(--ring));
   }
 }
 
@@ -4283,14 +5280,23 @@ a.ghost.auth-submit {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* The two indefinite loops on this screen, which are the ones that actually
-     hurt. The arcs stay where they are — a still ring with two gaps in it is
+  /* The indefinite loops on this screen, which are the ones that actually
+     hurt. The mark stays where it is — a ring with a point parked on it is
      still legible as "not finished". */
-  .setup-spinner-outer,
-  .setup-spinner-inner,
+  .work-mark,
+  .work-mark-comet,
+  .work-mark-under,
+  .work-mark-head,
   .setup-connecting-line,
   .setup-check {
     animation: none;
+  }
+
+  /* Stopping the head's animation also drops the transform it carried, which
+     would leave it in the middle of the ring rather than on it. The tail keeps
+     the length its property was declared with. */
+  .work-mark-head {
+    transform: rotate(-90deg) translateX(var(--ring));
   }
 }
 
@@ -4343,14 +5349,14 @@ a.ghost.auth-submit {
   border-radius: 999px;
   font-size: 14px;
   box-shadow:
-    0 2px 4px rgba(56, 56, 56, 0.14),
-    0 8px 22px rgba(56, 56, 56, 0.18);
+    0 2px 4px rgba(var(--shadow-rgb), 0.14),
+    0 8px 22px rgba(var(--shadow-rgb), 0.18);
 }
 
 .setup-start:hover:not(:disabled) {
   box-shadow:
-    0 3px 6px rgba(56, 56, 56, 0.16),
-    0 12px 28px rgba(56, 56, 56, 0.22);
+    0 3px 6px rgba(var(--shadow-rgb), 0.16),
+    0 12px 28px rgba(var(--shadow-rgb), 0.22);
 }
 
 /* The base rule drops every button a pixel on press. The shadow tightens with
@@ -4358,8 +5364,8 @@ a.ghost.auth-submit {
    sliding down the face of it. */
 .setup-start:active:not(:disabled) {
   box-shadow:
-    0 1px 2px rgba(56, 56, 56, 0.16),
-    0 4px 12px rgba(56, 56, 56, 0.18);
+    0 1px 2px rgba(var(--shadow-rgb), 0.16),
+    0 4px 12px rgba(var(--shadow-rgb), 0.18);
 }
 
 /* And the contents behind it, in reading order rather than all at once. The

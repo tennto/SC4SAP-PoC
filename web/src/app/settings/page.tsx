@@ -1,180 +1,146 @@
 /**
  * Settings.
  *
- * Layout pass, like the skill pages: the groups below name the settings this
- * app will actually have, and every control is inert. Two of them are already
- * real state living somewhere else — language is held by the account menu, and
- * the SAP connection belongs to the profile the backend was started against —
- * so wiring this screen up means pointing those at one store rather than
- * inventing new ones here.
+ * A single centred column rather than a grid of cards. The dashboard is a
+ * grid because its panels are things to glance at and comparing them
+ * side-by-side is the point; these are things to change one at a time, and a
+ * form read across two columns has the eye jumping between two unrelated
+ * questions on every row.
+ *
+ * Everything on it is a row showing what a setting currently says, with a
+ * pencil where it can be changed — these are read far more often than they are
+ * changed, and a screen of open inputs answers "what is my client" while
+ * asking "is this a value, or one I am in the middle of typing".
+ *
+ * The name, the password and the SAP connection are real and save. The last
+ * group is the backend's own configuration, shown because it decides what
+ * every run costs and how it behaves, and read-only because it is a
+ * process-wide setting this app is a client of, not an owner of.
  */
 import type { Metadata } from "next";
 import { requireAccount } from "@/lib/auth/session";
+import { findById } from "@/lib/auth/users";
+import { readConnection } from "@/lib/setup-store";
+import { BACKEND } from "@/lib/backend";
+import type { Health } from "@/lib/types";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
-import { SAP_SYSTEM } from "@/lib/account";
+import { AccountSettings } from "@/components/settings/AccountSettings";
+import { ConnectionSettings } from "@/components/settings/ConnectionSettings";
+import { SettingRow } from "@/components/settings/EditModal";
 
 export const metadata: Metadata = { title: "Settings · SC4SAP" };
 
-type Row = {
-  label: string;
-  hint?: string;
-  control: React.ReactNode;
-};
+// The forms below write, so a cached render of this page would show someone
+// their own change not having happened.
+export const dynamic = "force-dynamic";
 
-function Group({
-  icon,
-  title,
-  rows,
-  delay,
-}: {
-  icon: string;
-  title: string;
-  rows: Row[];
-  delay: number;
-}) {
-  return (
-    <section
-      className="panel rise"
-      style={{ "--delay": `${delay}ms` } as React.CSSProperties}
-    >
-      <div className="panel-head">
-        <h2>
-          <Icon name={icon} /> {title}
-        </h2>
-      </div>
-      <div className="fields">
-        {rows.map((row) => (
-          <label className="field" key={row.label}>
-            <span className="field-label">{row.label}</span>
-            {row.control}
-            {row.hint && <span className="field-hint">{row.hint}</span>}
-          </label>
-        ))}
-      </div>
-    </section>
-  );
+/**
+ * The backend's model, or nothing.
+ *
+ * Failing quietly on purpose: the backend being down is a real state this page
+ * has to draw, and it is already said plainly on the dashboard. Repeating the
+ * whole diagnosis in a settings group would make the group about the outage
+ * rather than about the setting.
+ */
+async function loadModel(): Promise<string | null> {
+  try {
+    const response = await fetch(`${BACKEND}/health`, { cache: "no-store" });
+    if (!response.ok) return null;
+    return ((await response.json()) as Health).model;
+  } catch {
+    return null;
+  }
 }
 
 export default async function SettingsPage() {
-  // Same guard as the dashboard: `proxy.ts` checks that a cookie exists,
-  // this checks that it still resolves to a user before rendering.
-  await requireAccount();
+  // Same guard as the dashboard: `proxy.ts` checks that a cookie exists, this
+  // checks that it still resolves to a user before rendering.
+  const account = await requireAccount();
+
+  // The row itself, not the `Account` built from it: this screen needs the two
+  // name parts apart, which `Account` joins, and whether a password exists at
+  // all, which `Account` deliberately does not carry.
+  const [doc, connection, model] = await Promise.all([
+    findById(account.id),
+    readConnection(account.id),
+    loadModel(),
+  ]);
 
   return (
-    <div className="page">
+    <div className="page settings">
       <header className="page-head rise">
         <div>
           <p className="eyebrow">Account</p>
           <h1>Settings</h1>
           <p className="page-lede">
-            Preferences for this account and the system it is pointed at.
+            Your details, and the system this account is pointed at.
           </p>
         </div>
       </header>
 
-      <p
-        className="notice-block rise"
-        style={{ "--delay": "110ms" } as React.CSSProperties}
-        role="note"
-      >
-        <strong>Layout only.</strong> Nothing here saves yet. Per-account
-        settings need somewhere to live, which arrives with authentication in
-        Phase 5.
-      </p>
+      <div className="settings-stack">
+        <div className="rise" style={{ "--delay": "110ms" } as React.CSSProperties}>
+          <AccountSettings
+            lastName={doc?.lastName ?? ""}
+            firstName={doc?.firstName ?? ""}
+            email={account.email}
+            memberSince={account.memberSince}
+            hasPassword={doc?.passwordHash != null}
+            isGoogle={doc?.google != null}
+          />
+        </div>
 
-      <div className="card-grid">
-        <Group
-          icon="user-circle"
-          title="Profile"
-          delay={220}
-          rows={[
-            { label: "Display name", control: <input type="text" defaultValue="Kim Sihoon" disabled /> },
-            { label: "Email", control: <input type="text" defaultValue="s2hoon326@gmail.com" disabled /> },
-            {
-              label: "Language",
-              control: (
-                <select disabled defaultValue="EN">
-                  <option value="KR">한국어 (KR)</option>
-                  <option value="EN">English (EN)</option>
-                  <option value="JP">日本語 (JP)</option>
-                </select>
-              ),
-              hint: "Also switchable from the account menu.",
-            },
-          ]}
-        />
+        <div className="rise" style={{ "--delay": "180ms" } as React.CSSProperties}>
+          {connection ? (
+            <ConnectionSettings connection={connection} />
+          ) : (
+            // Reachable only by deleting the row from under a live session:
+            // every page behind the gate redirects an account with no
+            // connection to the wizard. Drawn anyway, because the alternative
+            // is a settings screen that crashes on a state the app can be in.
+            <section className="panel">
+              <div className="panel-head">
+                <h2>
+                  <Icon name="database" /> SAP connection
+                </h2>
+              </div>
+              <p className="field-note">
+                This account has no stored connection.{" "}
+                <Link className="link-button" href="/setup">
+                  Run setup
+                </Link>
+              </p>
+            </section>
+          )}
+        </div>
 
-        <Group
-          icon="database"
-          title="SAP connection"
-          delay={330}
-          rows={[
-            { label: "Profile alias", control: <input type="text" defaultValue={SAP_SYSTEM.alias} disabled /> },
-            { label: "Client", control: <input type="text" defaultValue={SAP_SYSTEM.client} disabled /> },
-            {
-              label: "Blocklist profile",
-              control: (
-                <select disabled defaultValue={SAP_SYSTEM.blocklistProfile}>
-                  <option value="strict">strict</option>
-                  <option value="standard">standard</option>
-                  <option value="relaxed">relaxed</option>
-                </select>
-              ),
-              hint: "Decides which tables are refused outright before a tool call is even offered.",
-            },
-          ]}
-        />
+        <div className="rise" style={{ "--delay": "250ms" } as React.CSSProperties}>
+          <section className="panel">
+            <div className="panel-head">
+              <h2>
+                <Icon name="sliders" /> Sessions
+              </h2>
+              <p className="panel-note">
+                The backend&rsquo;s own configuration, read from it.
+              </p>
+            </div>
 
-        <Group
-          icon="sliders"
-          title="Sessions"
-          delay={440}
-          rows={[
-            {
-              label: "Model",
-              control: (
-                <select disabled defaultValue="claude-sonnet-5">
-                  <option>claude-sonnet-5</option>
-                  <option>claude-opus-5</option>
-                </select>
-              ),
-            },
-            {
-              label: "Auto-approve read tools",
-              control: (
-                <span className="field-toggle">
-                  <input type="checkbox" defaultChecked disabled />
-                  <span>Enabled</span>
-                </span>
-              ),
-              hint: "Off means every SAP read raises an approval prompt. Row extraction is never auto-approved either way.",
-            },
-            {
-              label: "Approval timeout",
-              control: (
-                <select disabled defaultValue="5 minutes">
-                  <option>1 minute</option>
-                  <option>5 minutes</option>
-                  <option>15 minutes</option>
-                </select>
-              ),
-            },
-          ]}
-        />
+            {/* No pencil, and the hint says why. The SDK takes a model per
+                query, so this could become an account setting — it would mean
+                the backend accepting one on `POST /sessions` and holding it
+                per session, which is a change on that side and not a control
+                this screen can grow on its own. */}
+            <div className="setting-rows">
+              <SettingRow
+                label="Model"
+                value={model ?? "Backend not answering"}
+                hint="Set by SC4SAP_MODEL where the backend runs, and used by every session it opens. Changing it per account needs the backend to accept a model per session."
+              />
+            </div>
+          </section>
+        </div>
       </div>
-
-      <p
-        className="fixture-note rise"
-        style={{ "--delay": "550ms" } as React.CSSProperties}
-      >
-        <Icon name="info" /> Connection values shown here mirror the backend
-        profile. Editing them from the browser is Phase 5-2 —{" "}
-        <Link className="link-button" href="/skills/sap-option">
-          see SAP Options
-        </Link>
-        .
-      </p>
     </div>
   );
 }

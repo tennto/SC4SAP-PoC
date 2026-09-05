@@ -1,21 +1,28 @@
 /**
  * Home — the operator's dashboard.
  *
- * Who is signed in, what system they are pointed at, what the API key has left,
- * and whether anything is actually connected. The skill catalog moved to the
- * rail, which is where you go when you already know what you want; this screen
- * answers "am I set up, and can I afford to run something".
+ * Who is signed in, what system they are pointed at, and whether anything is
+ * actually connected. The skill catalog moved to the rail, which is where you
+ * go when you already know what you want; this screen answers "am I set up,
+ * and is it working".
  *
- * The backend row and the account panel are live: the first from the real
- * `/health` call below, the second from the signed-in user's row. SAP system
- * and credits are still fixtures from `lib/account.ts` until Phase 5-2/5-4
- * give each of them a real source; see that file for the mapping.
+ * The backend row, the account panel and the activity panel are live: the
+ * first from the real `/health` call below, the second from the signed-in
+ * user's row, the third aggregated from this account's stored conversations.
+ * The SAP system is still a fixture from `lib/account.ts` until Phase 5-2
+ * gives it a real source; see that file for the mapping.
+ *
+ * Activity is where a credit balance used to be. The balance was a fixture and
+ * could only ever have been one — the remaining amount is a number Anthropic
+ * holds and this app is never told — where what has been *spent* is already
+ * summed on every chat row. Same question, the half of it that is true.
  */
 import Link from "next/link";
 import { BACKEND } from "@/lib/backend";
 import type { Health } from "@/lib/types";
 import { CREDITS, SAP_SYSTEM } from "@/lib/account";
 import { requireAccount } from "@/lib/auth/session";
+import { readActivity } from "@/lib/chat-store";
 import { Icon } from "@/components/Icon";
 import { FavoriteSkills } from "@/components/FavoriteSkills";
 import { ReconnectButton } from "@/components/ReconnectButton";
@@ -35,6 +42,23 @@ const money = (value: number): string =>
   value
     .toLocaleString("en-US", { style: "currency", currency: "USD" })
     .replace("$", "$ ");
+
+/**
+ * How long ago, in the coarsest unit that still says something.
+ *
+ * Rendered on the server with `force-dynamic`, so it is right when the page is
+ * built and goes stale as the tab is left open — which is the same bargain
+ * every other figure on this screen makes, and cheaper than shipping a clock.
+ */
+function ago(iso: string): string {
+  const minutes = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
 
 async function loadHealth(): Promise<{ health: Health | null; error: string | null }> {
   try {
@@ -84,20 +108,25 @@ export default async function HomePage() {
   // requests with no cookie at all; this is the check that the cookie still
   // names a session, and it redirects rather than rendering an empty shell.
   const account = await requireAccount();
-  const { health, error } = await loadHealth();
+  // Independent of each other: one is an HTTP call to the backend, the other a
+  // Mongo aggregate, and waiting for them in turn would add the slower to the
+  // faster for nothing.
+  const [{ health, error }, activity] = await Promise.all([
+    loadHealth(),
+    readActivity(account.id),
+  ]);
   const online = health !== null;
   // Every row with a real source behind it, not just the backend — what the
   // reconnect control compares its own check against to tell "still fine"
   // apart from "it came back".
   const connected = health !== null && health.claudeApi.state === "up";
-  const usedShare = Math.min(1, CREDITS.usedUsd / CREDITS.limitUsd);
 
   return (
     <div className="page dashboard">
       <header className="page-head rise">
         <div>
           <p className="eyebrow">SC4SAP · Web PoC</p>
-          <h1>Welcome back, {account.name.split(" ")[0]}</h1>
+          <h1>Welcome back, {account.firstName}!</h1>
           <p className="page-lede">
             Everything this session is pointed at, in one place. Pick a skill
             from the rail when you are ready to run one.
@@ -267,39 +296,60 @@ export default async function HomePage() {
         </section>
 
         <section
-          className="panel panel-credits rise"
+          className="panel panel-activity rise"
           style={{ "--delay": "440ms" } as React.CSSProperties}
         >
           <div className="panel-head panel-head-row">
             <h2>
-              <Icon name="wallet" /> Credits
+              <Icon name="pulse" /> Activity
             </h2>
-            <span className="panel-note">{CREDITS.periodLabel}</span>
+            <span className="panel-note">Last 7 days</span>
           </div>
 
+          {/* Turns rather than conversations: it is the number that moves
+              during a working session, and the one the spend below tracks. */}
           <p className="figure">
-            {money(CREDITS.balanceUsd)}
-            <span className="figure-unit">remaining</span>
-          </p>
-
-          <div
-            className="meter"
-            role="img"
-            aria-label={`${money(CREDITS.usedUsd)} of ${money(CREDITS.limitUsd)} used`}
-          >
-            <span
-              className="meter-fill"
-              style={{ width: `${(usedShare * 100).toFixed(1)}%` }}
-            />
-          </div>
-          <p className="meter-legend">
-            {money(CREDITS.usedUsd)} used of {money(CREDITS.limitUsd)} limit
+            {activity.week.turns.toLocaleString("en-US")}
+            <span className="figure-unit">
+              turn{activity.week.turns === 1 ? "" : "s"}
+            </span>
           </p>
 
           <dl className="facts">
             <div>
-              <dt>Output tokens</dt>
-              <dd>{CREDITS.tokensUsed.toLocaleString("en-US")}</dd>
+              <dt>Conversations</dt>
+              {/* Both numbers, because one of them alone is unreadable: a
+                  week's count means nothing without the total behind it. */}
+              <dd>
+                {activity.week.chats} this week · {activity.all.chats} all time
+              </dd>
+            </div>
+            <div>
+              <dt>Spend</dt>
+              <dd>
+                {money(activity.week.costUsd)} this week ·{" "}
+                {money(activity.all.costUsd)} all time
+              </dd>
+            </div>
+            {/* The backend's count, which is every session it is holding open
+                and not only this account's. One backend to one operator for
+                now; when that stops being true this row needs its own
+                per-account source rather than a different label. */}
+            <div>
+              <dt>Live sessions</dt>
+              <dd>
+                {health
+                  ? `${health.sessions} open on the backend`
+                  : "backend not answering"}
+              </dd>
+            </div>
+            <div>
+              <dt>Last activity</dt>
+              <dd>
+                {activity.lastActiveAt
+                  ? ago(activity.lastActiveAt)
+                  : "Nothing run yet"}
+              </dd>
             </div>
           </dl>
         </section>
@@ -309,8 +359,8 @@ export default async function HomePage() {
         className="fixture-note rise"
         style={{ "--delay": "550ms" } as React.CSSProperties}
       >
-        <Icon name="info" /> Account, SAP system and credit figures are
-        placeholders. Sign-in and per-user credentials arrive in Phase 5.
+        <Icon name="info" /> Account and SAP system figures are placeholders.
+        Activity is real. Per-user credentials arrive in Phase 5.
       </p>
     </div>
   );

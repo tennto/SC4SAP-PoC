@@ -62,7 +62,7 @@ async function loadInitialState(): Promise<InitialState> {
 export default async function ChatPage() {
   // Same guard as the dashboard: `proxy.ts` checks that a cookie exists,
   // this checks that it still resolves to a user before rendering.
-  await requireAccount();
+  const account = await requireAccount();
   const initial = await loadInitialState();
 
   return (
@@ -70,6 +70,9 @@ export default async function ChatPage() {
       initialSessions={initial.sessions}
       initialHealth={initial.health}
       initialError={initial.error}
+      // The given name only. A hello that uses someone's full name is a
+      // summons.
+      firstName={account.firstName}
     />
   );
 }

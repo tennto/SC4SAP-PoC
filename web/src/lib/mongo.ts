@@ -101,6 +101,23 @@ export type UserDoc = {
    * account, never listed on its own.
    */
   connection?: ConnectionDoc;
+  /**
+   * What this account has run and then deleted.
+   *
+   * Activity is otherwise summed from the chat rows themselves, which is
+   * correct right up until someone clears a conversation out of the rail — and
+   * then a lifetime total goes *down*, which is the one thing a lifetime total
+   * must not do. Deleting a chat folds its numbers in here on the way out, so
+   * what is reported is "everything ever run" whether or not the transcript
+   * still exists.
+   *
+   * Absent on every row written before this existed, which reads as zero.
+   */
+  retired?: {
+    chats: number;
+    turns: number;
+    costUsd: number;
+  };
   createdAt: Date;
 };
 
