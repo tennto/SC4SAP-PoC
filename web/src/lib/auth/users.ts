@@ -30,6 +30,7 @@ export function toAccount(doc: UserDoc): Account {
     id: String(doc._id),
     // Family name first, matching the order the sign-up form asks for it in.
     name: `${doc.lastName} ${doc.firstName}`.trim(),
+    firstName: doc.firstName,
     email: doc.displayEmail,
     // Neither is collected at sign-up; both are settings-screen material.
     role: null,
@@ -173,4 +174,42 @@ export async function createGoogleUser(input: {
     }
     throw err;
   }
+}
+
+/**
+ * Rename an account.
+ *
+ * The two parts separately, not one display string: `toAccount` composes the
+ * name from them and the sign-up form asks for them apart, so storing a joined
+ * string here would make this the one place the split stops being true.
+ */
+export async function updateName(
+  userId: string,
+  input: { lastName: string; firstName: string },
+): Promise<boolean> {
+  if (!ObjectId.isValid(userId)) return false;
+  const result = await (await users()).updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: { lastName: input.lastName, firstName: input.firstName } },
+  );
+  return result.matchedCount === 1;
+}
+
+/**
+ * Write a new password hash.
+ *
+ * Takes the hash rather than the password, so the only file that has ever held
+ * a plaintext password on its way to storage is the route that received it —
+ * this one never sees one and cannot log one by accident.
+ */
+export async function setPasswordHash(
+  userId: string,
+  passwordHash: string,
+): Promise<boolean> {
+  if (!ObjectId.isValid(userId)) return false;
+  const result = await (await users()).updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: { passwordHash } },
+  );
+  return result.matchedCount === 1;
 }

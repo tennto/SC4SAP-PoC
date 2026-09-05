@@ -26,6 +26,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { WorkingMark } from "@/components/WorkingMark";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Select } from "@/components/Select";
 import {
@@ -446,7 +447,8 @@ export function SetupWizard({ firstName }: { firstName: string }) {
           aria-live="polite"
           aria-busy="true"
         >
-          <SetupSpinner />
+          {/* The app's one working mark — see `components/WorkingMark`. */}
+          <WorkingMark />
 
           {/* Keyed, so each line arrives rather than being swapped in place. */}
           <p className="setup-connecting-line" key={CONNECTING_LINES[line]}>
@@ -872,39 +874,6 @@ export function SetupWizard({ firstName }: { firstName: string }) {
   );
 }
 
-/**
- * The mark that turns while the checks run.
- *
- * Two arcs on a hairline track, counter-rotating at different speeds and
- * different radii. Three bouncing dots would have done the job, but they read
- * as a chat client's typing indicator, and this screen is holding someone
- * still for the better part of a minute — the thing they are watching should
- * be worth watching.
- *
- * Geometry only, and in the app's one ink: it has no more to say than "still
- * working", so it says it with movement rather than with colour. The arcs are
- * cut out of full circles by `stroke-dasharray` rather than drawn as paths, so
- * their length is one number to change and no coordinates have to be
- * recomputed to make one longer.
- *
- * `role="img"` with a label rather than `aria-hidden`: this is the one thing
- * on the screen saying work is in progress, and the section around it is
- * `aria-busy` but silent.
- */
-function SetupSpinner() {
-  return (
-    <svg
-      className="setup-spinner"
-      viewBox="0 0 64 64"
-      role="img"
-      aria-label="Working"
-    >
-      <circle className="setup-spinner-track" cx="32" cy="32" r="26" />
-      <circle className="setup-spinner-outer" cx="32" cy="32" r="26" />
-      <circle className="setup-spinner-inner" cx="32" cy="32" r="15" />
-    </svg>
-  );
-}
 
 /**
  * The `?` in the card's top right, and what it says.

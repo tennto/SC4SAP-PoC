@@ -29,7 +29,15 @@ type Props = {
   model: string | null;
   /** Focus on mount — true on the empty state, where the box is the screen. */
   autoFocus?: boolean;
+  /**
+   * A turn is running. The send button becomes a stop button for as long as
+   * it is, which is the only control this screen has over a turn already
+   * handed over.
+   */
+  running?: boolean;
   onSend: (text: string) => void;
+  /** Only called while `running`. */
+  onStop?: () => void;
 };
 
 export function Composer({
@@ -37,7 +45,9 @@ export function Composer({
   hint,
   model,
   autoFocus = false,
+  running = false,
   onSend,
+  onStop,
 }: Props) {
   const [text, setText] = useState("");
   const area = useRef<HTMLTextAreaElement>(null);
@@ -52,6 +62,13 @@ export function Composer({
   }, [text]);
 
   const submit = (): void => {
+    // The same key and the same button both stop a running turn — pressing
+    // Enter with a half-typed follow-up should not queue it behind an answer
+    // being abandoned.
+    if (running) {
+      onStop?.();
+      return;
+    }
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
     onSend(trimmed);
@@ -87,13 +104,21 @@ export function Composer({
         <span className="composer-model" title={model ?? undefined}>
           {model ? modelLabel(model) : "—"}
         </span>
+        {/* One button, two jobs. A separate stop control beside the send one
+            would sit dead for the whole time it is not needed, and the two are
+            never both available: there is nothing to send while a turn is
+            running, and nothing to stop while one is not.
+
+            Not disabled by an empty box while running — what it acts on then
+            is the turn, not the text. */}
         <button
-          className="composer-send"
+          className={`composer-send${running ? " is-stop" : ""}`}
           type="submit"
-          disabled={disabled || !text.trim()}
-          aria-label="Send"
+          disabled={running ? false : disabled || !text.trim()}
+          aria-label={running ? "Stop" : "Send"}
+          title={running ? "Stop this answer" : undefined}
         >
-          <Icon name="arrow-up" />
+          <Icon name={running ? "stop" : "arrow-up"} weight={running ? "fill" : "regular"} />
         </button>
       </div>
     </form>

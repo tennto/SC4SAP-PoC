@@ -34,6 +34,15 @@ type State = {
   /** Approvals blocking the turn. 3-3 renders these; 3-2 only tracks them. */
   pending: PendingApproval[];
   error: string | null;
+  /**
+   * How many errors have arrived.
+   *
+   * The message alone is not enough to notice one: stopping a turn twice
+   * reports the same sentence both times, and a screen watching the string
+   * sees no change and says nothing the second time. This changes on every
+   * one, whatever it says.
+   */
+  errorSeq: number;
   connected: boolean;
   /** `tool_end` carries only a content-block index, so the id is looked up here. */
   toolIdByIndex: Record<number, string>;
@@ -46,6 +55,7 @@ const EMPTY: State = {
   status: null,
   pending: [],
   error: null,
+  errorSeq: 0,
   connected: false,
   toolIdByIndex: {},
   serial: 0,
@@ -96,6 +106,13 @@ function appendDelta(
   kind: "assistant" | "thinking",
   text: string,
 ): State {
+  // The API opens a content block with an empty delta, and relaying it raw
+  // meant a bubble existed — and counted as an answer in progress — before a
+  // single character of the answer did. The transcript stood its "working"
+  // indicator down against that bubble, so the screen went blank for as long
+  // as the model took to produce its first real token.
+  if (text === "") return state;
+
   const last = state.items[state.items.length - 1];
   if (last && last.kind === kind && last.streaming) {
     const items = state.items.slice(0, -1);
@@ -255,7 +272,7 @@ function reduce(state: State, action: Action): State {
       };
 
     case "error":
-      return { ...state, error: event.error };
+      return { ...state, error: event.error, errorSeq: state.errorSeq + 1 };
 
     default:
       return state;
@@ -282,6 +299,8 @@ export type SessionStream = {
   status: SessionStatus | null;
   pending: PendingApproval[];
   error: string | null;
+  /** Changes on every error, so two identical ones are still two. */
+  errorSeq: number;
   connected: boolean;
   /** True while the model is producing output — drives the composer's state. */
   streaming: boolean;
@@ -330,6 +349,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
     status: state.status,
     pending: state.pending,
     error: state.error,
+    errorSeq: state.errorSeq,
     connected: state.connected,
     streaming,
   };

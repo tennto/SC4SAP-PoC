@@ -1,5 +1,6 @@
 import "server-only";
-import { chatMessages, chats, type ChatDoc } from "@/lib/mongo";
+import { ObjectId } from "mongodb";
+import { chatMessages, chats, users, type ChatDoc } from "@/lib/mongo";
 
 /**
  * Persisting the conversation the reader can see.
@@ -161,8 +162,37 @@ export async function deleteChat(
   userId: string,
   chatId: string,
 ): Promise<void> {
+  /**
+   * Read the totals before the row goes, and fold them into the account's
+   * retired counters.
+   *
+   * Read-then-write rather than one atomic step, and that is a real if small
+   * race: two tabs deleting the same chat at once could both read it and both
+   * add it. The alternative is keeping the row and marking it deleted, which
+   * means every read in the app grows a filter it must not forget — a worse
+   * trade for a number that is reported to one person about their own use.
+   */
+  const doc = await (await chats()).findOne(
+    { _id: chatId, userId },
+    { projection: { turns: 1, totalCostUsd: 1 } },
+  );
+
   await (await chats()).deleteOne({ _id: chatId, userId });
   await (await chatMessages()).deleteMany({ chatId, userId });
+
+  // Nothing found means nothing to retire — someone else deleted it first.
+  if (!doc || !ObjectId.isValid(userId)) return;
+
+  await (await users()).updateOne(
+    { _id: new ObjectId(userId) },
+    {
+      $inc: {
+        "retired.chats": 1,
+        "retired.turns": doc.turns,
+        "retired.costUsd": doc.totalCostUsd,
+      },
+    },
+  );
 }
 
 /**
@@ -209,4 +239,120 @@ export function contextPreamble(messages: ChatMessage[]): string | null {
     "</prior_conversation>",
     "",
   ].join("\n");
+}
+
+/** One period's worth of what this account has run. */
+export type UsageTotals = {
+  chats: number;
+  turns: number;
+  costUsd: number;
+};
+
+/**
+ * What the dashboard reports instead of a balance.
+ *
+ * A credit balance needs a number only Anthropic holds; what was *spent* is
+ * already on every chat row, so this is the half of the same question that can
+ * be answered honestly.
+ */
+export type Activity = {
+  /** The last seven days. */
+  week: UsageTotals;
+  /** Everything this account has ever run. */
+  all: UsageTotals;
+  /** When the most recent conversation was last touched. */
+  lastActiveAt: string | null;
+};
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * One account's totals, in one round trip.
+ *
+ * Aggregated in Mongo rather than by reading the rows back and summing here:
+ * the rail already caps its own read at 200 chats, and a total that quietly
+ * stopped counting past some limit would be worse than no total at all.
+ *
+ * The week figures are per *chat*, not per turn — a conversation touched
+ * inside the window contributes all of its turns and all of its cost, even the
+ * ones from before it. Turn-level dating would mean summing `chat_messages`,
+ * which does not carry a cost, so the honest fix is a wider label: this is
+ * "conversations active in the last seven days", and that is what the panel
+ * says.
+ *
+ * The all-time figures add the account's retired counters — what deleted
+ * conversations ran before they were deleted. Without them a lifetime total
+ * falls every time the rail is tidied, which makes it a count of what is
+ * currently kept rather than of what has been done. The week figures do not
+ * add them, and cannot: a retired chat took its dates with it.
+ */
+export async function readActivity(userId: string): Promise<Activity> {
+  const since = new Date(Date.now() - WEEK_MS);
+
+  const user = ObjectId.isValid(userId)
+    ? await (await users()).findOne(
+        { _id: new ObjectId(userId) },
+        { projection: { retired: 1 } },
+      )
+    : null;
+  // Absent on every row written before retiring existed.
+  const retired = user?.retired ?? { chats: 0, turns: 0, costUsd: 0 };
+
+  const [row] = await (await chats())
+    .aggregate<{
+      allChats: number;
+      allTurns: number;
+      allCost: number;
+      weekChats: number;
+      weekTurns: number;
+      weekCost: number;
+      lastActiveAt: Date | null;
+    }>([
+      { $match: { userId } },
+      {
+        $group: {
+          _id: null,
+          allChats: { $sum: 1 },
+          allTurns: { $sum: "$turns" },
+          allCost: { $sum: "$totalCostUsd" },
+          // `$cond` rather than a second pipeline: one pass over the same
+          // index the rail already sorts on.
+          weekChats: {
+            $sum: { $cond: [{ $gte: ["$updatedAt", since] }, 1, 0] },
+          },
+          weekTurns: {
+            $sum: { $cond: [{ $gte: ["$updatedAt", since] }, "$turns", 0] },
+          },
+          weekCost: {
+            $sum: {
+              $cond: [{ $gte: ["$updatedAt", since] }, "$totalCostUsd", 0],
+            },
+          },
+          lastActiveAt: { $max: "$updatedAt" },
+        },
+      },
+    ])
+    .toArray();
+
+  // No chats yet is no group, not a group of zeroes — an account that has
+  // never run anything still has a panel to fill.
+  if (!row) {
+    return {
+      week: { chats: 0, turns: 0, costUsd: 0 },
+      // Still the retired ones: an account that has deleted everything it ever
+      // ran has no chat rows left and has certainly run something.
+      all: retired,
+      lastActiveAt: null,
+    };
+  }
+
+  return {
+    week: { chats: row.weekChats, turns: row.weekTurns, costUsd: row.weekCost },
+    all: {
+      chats: row.allChats + retired.chats,
+      turns: row.allTurns + retired.turns,
+      costUsd: row.allCost + retired.costUsd,
+    },
+    lastActiveAt: row.lastActiveAt?.toISOString() ?? null,
+  };
 }

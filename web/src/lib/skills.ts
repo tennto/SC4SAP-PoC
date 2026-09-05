@@ -19,7 +19,7 @@
 
 export type SkillStatus = "ready" | "blocked";
 
-export type SkillGroupId = "analyze" | "document" | "build" | "system";
+export type SkillGroupId = "analyze" | "build" | "system";
 
 export type SkillFieldKind = "text" | "textarea" | "select" | "toggle";
 
@@ -59,8 +59,11 @@ export type SkillGroup = {
 };
 
 export const SKILL_GROUPS: SkillGroup[] = [
+  // The three that were under Document — turning source into a spec, a
+  // process or an interview — live here too. They are all reading the system
+  // and answering a question about it; what differs is the length of the
+  // answer, which is not a reason for a menu of its own.
   { id: "analyze", label: "Analyze", hint: "Read the system, answer questions" },
-  { id: "document", label: "Document", hint: "Turn source into deliverables" },
   { id: "build", label: "Build", hint: "Create and transport objects" },
   { id: "system", label: "System", hint: "Connection, profile, diagnostics" },
 ];
@@ -115,9 +118,12 @@ export const SKILLS: Skill[] = [
     status: "ready",
     fields: [
       { label: "Object type", kind: "select", options: ["Program", "Class", "Function Module", "Include", "Interface"] },
+      // Optional, and narrowing rather than required: an object name is unique
+      // on the system, so this is worth giving when the name is ambiguous or
+      // the review should read the neighbours around it.
+      { label: "Package", kind: "text", placeholder: "ZMM_CBO", hint: "Optional. Narrows the search and gives the review the surrounding objects." },
       { label: "Object name", kind: "text", placeholder: "ZMM_PO_REPORT" },
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
-      { label: "Render a written briefing", kind: "toggle", hint: "Adds a sap-writer pass on top of the raw findings." },
     ],
   },
   {
@@ -175,7 +181,7 @@ export const SKILLS: Skill[] = [
     icon: "file-text",
     summary:
       "Reverse-engineers a program into a functional or technical specification, with selection-screen and ALV mockups.",
-    group: "document",
+    group: "analyze",
     status: "ready",
     fields: [
       { label: "Program name", kind: "text", placeholder: "ZPP0050" },
@@ -191,27 +197,13 @@ export const SKILLS: Skill[] = [
     icon: "flow-arrow",
     summary:
       "Turns a CBO package into an end-to-end business process document with flowcharts, sequence diagrams and step tables.",
-    group: "document",
+    group: "analyze",
     status: "ready",
     fields: [
       { label: "Package", kind: "text", placeholder: "ZMM_CBO" },
       { label: "Module", kind: "select", options: MODULES.slice(1) },
       { label: "Deliverable", kind: "select", options: ["Markdown", "BPML workbook (xlsx)"] },
       { label: "Language", kind: "select", options: ["Korean", "English", "Japanese", "German"] },
-    ],
-  },
-  {
-    slug: "deep-interview",
-    command: "/sc4sap:deep-interview",
-    title: "Deep Interview",
-    icon: "question",
-    summary:
-      "A Socratic interview that crystallizes a vague requirement into a spec before any code is generated.",
-    group: "document",
-    status: "ready",
-    fields: [
-      { label: "Topic", kind: "textarea", placeholder: "The requirement as you have it today — rough is fine, that is the point." },
-      { label: "Depth", kind: "select", options: ["Quick pass", "Standard", "Exhaustive"] },
     ],
   },
 
@@ -250,21 +242,6 @@ export const SKILLS: Skill[] = [
       { label: "Object name", kind: "text", placeholder: "ZCL_MM_PO_HANDLER" },
       { label: "Package", kind: "text", placeholder: "ZMM_CBO" },
       { label: "Transport", kind: "text", placeholder: "Existing request, or blank to create one" },
-    ],
-  },
-  {
-    slug: "release",
-    command: "/sc4sap:release",
-    title: "Release a Transport",
-    icon: "truck",
-    summary: "CTS workflow — list, validate, release, confirm the import.",
-    group: "build",
-    status: "blocked",
-    blockedReason:
-      "Transport release mutates the landscape. Opening it needs the approval policy from the Post-PoC backlog.",
-    fields: [
-      { label: "Transport", kind: "select", options: ["Pick from the open request list"] },
-      { label: "Validate before releasing", kind: "toggle", hint: "Syntax check plus an inactive-object sweep." },
     ],
   },
   {
@@ -310,25 +287,6 @@ export const SKILLS: Skill[] = [
     fields: [
       { label: "Profile alias", kind: "text", placeholder: "KR-DEV" },
       { label: "Blocklist profile", kind: "select", options: ["Strict", "Standard", "Relaxed"] },
-    ],
-  },
-  {
-    slug: "setup",
-    command: "/sc4sap:setup",
-    title: "Connection Setup",
-    icon: "plugs-connected",
-    summary:
-      "Registers a SAP connection profile, installs the MCP server and the two PreToolUse guards.",
-    group: "system",
-    status: "blocked",
-    blockedReason:
-      "Writes a profile under the backend host's home directory. Per-user credential intake is Phase 5-2.",
-    fields: [
-      { label: "Profile alias", kind: "text", placeholder: "KR-DEV" },
-      { label: "Application server host", kind: "text", placeholder: "sap-dev.example.com" },
-      { label: "Client", kind: "text", placeholder: "100" },
-      { label: "User", kind: "text" },
-      { label: "Password", kind: "text", hint: "Stored server-side today. See Phase 5-6 before this ships." },
     ],
   },
   {

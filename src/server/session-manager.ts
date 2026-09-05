@@ -139,8 +139,59 @@ type Subscriber = (event: SequencedEvent) => void;
 /** First line of the prompt, clipped at a word boundary near 40 characters —
  * about what a 244px rail shows before it ellipsises anyway, so the clip
  * happens on a word here rather than mid-word in CSS. */
+/**
+ * Answers that name the thing a run was about, rather than describing it.
+ *
+ * Matched on the label the form used, because the value alone cannot be told
+ * apart: `Program` is a choice from a list and `ZMMR1001` is a name, and both
+ * are just words by the time they reach here.
+ */
+const SUBJECT_FIELD = /^(object name|program|package|class|object|table|transport|symptom|question)$/i;
+
 function titleFrom(text: string): string {
-  const line = text.trim().split(/\r?\n/, 1)[0]?.trim() ?? "";
+  const parts = text
+    .trim()
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  /**
+   * A prompt that opens with a slash command is named after the command, and
+   * after the first answer that is a value rather than a setting.
+   *
+   * The skill screens compose their prompts as the command and then `Label:
+   * value` lines. Taking the first line named every run `/sc4sap:analyze-code`
+   * — a rail of identical labels. Taking the *second* was worse in a quieter
+   * way: it named them after whichever field the form happens to ask first,
+   * so a rail of code reviews all read `Object type: Program`.
+   *
+   * So: the command becomes words, and the first answer that looks like a
+   * name — an object, a package — is appended. Fields whose value is a choice
+   * from a list are skipped; they describe the run, they do not identify it.
+   *
+   * This is the fallback. A screen that knows what it ran overrides it when
+   * the conversation is stored — see `runTitle` in the web app.
+   */
+  const command = parts[0]?.startsWith("/") ? parts[0] : null;
+  if (command) {
+    const words = (command.split(":").pop() ?? "")
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map((word) => word[0]!.toUpperCase() + word.slice(1))
+      .join(" ");
+    const subject = parts
+      .slice(1)
+      .map((entry) => entry.split(/:\s*/))
+      .filter(
+        (pair): pair is [string, string] =>
+          pair.length === 2 && SUBJECT_FIELD.test(pair[0]!) && pair[1] !== "",
+      )
+      .map((pair) => pair[1])
+      .at(-1);
+    const named = subject ? `${words} · ${subject}` : words;
+    return named || "Untitled";
+  }
+
+  const line = parts[0] ?? "";
   if (line.length <= 40) return line || "Untitled";
   const clipped = line.slice(0, 40);
   const lastSpace = clipped.lastIndexOf(" ");
@@ -235,6 +286,24 @@ type LiveSession = {
   priorCostUsd: number;
   /** Counting down to abandoning a turn nobody is watching. See `#orphan`. */
   orphanTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * Background sub-agents this session has running.
+   *
+   * The plugin's heavier skills do their real work in one: `analyze-code`
+   * dispatches `sap-code-reviewer` and the SDK launches it detached, returning
+   * "Async agent launched successfully" immediately. The parent turn then ends
+   * normally — `result subtype=success` — while the reviewer is still reading
+   * the program.
+   *
+   * Nothing was wrong with either half of that; what was missing was anyone
+   * holding the two together. Without this the session went idle the moment
+   * the dispatch returned, the screen said the run was over, and the findings
+   * arrived to a conversation that had stopped listening.
+   *
+   * Kept as a set with replace semantics, which is how the SDK reports it —
+   * see `background_tasks_changed`.
+   */
+  backgroundTasks: Set<string>;
 };
 
 type PendingEntry = {
@@ -391,6 +460,7 @@ export class SessionManager {
       seq: 0,
       openToolBlocks: new Set(),
       pending: new Map(),
+      backgroundTasks: new Set(),
       priorCostUsd,
     };
     this.#sessions.set(id, live);
@@ -632,6 +702,43 @@ ${text}` : text);
     });
   }
 
+  /**
+   * Abandon the turn in flight, on purpose, because someone asked.
+   *
+   * The same machinery the orphan timer uses, with two differences. It is not
+   * on a timer — the reader is looking at the screen and pressed a button — and
+   * the session survives: what is being stopped is one answer, not the
+   * conversation, and the next prompt goes to the same session with everything
+   * it has already been told still in it.
+   *
+   * `interrupt()` is awaited here where `close()` fires and forgets it. There
+   * the entry is already gone and nothing can observe the subprocess; here the
+   * session stays, and a caller that got its answer before the SDK had
+   * actually stopped could send the next prompt into a run still winding down.
+   */
+  async stop(id: string): Promise<"stopped" | "unknown" | "not-busy"> {
+    const live = this.#sessions.get(id);
+    if (!live) return "unknown";
+    if (live.record.status !== "busy") return "not-busy";
+
+    // Anything blocking the turn on a human is answered for them, or
+    // `interrupt()` waits on an approval that is never coming.
+    for (const entry of [...live.pending.values()]) {
+      entry.settle({ behavior: "deny", message: "Stopped." }, "deny");
+    }
+
+    // Into the replay buffer, so the transcript says why it ends where it
+    // does — to this reader now, and to whoever opens the conversation later.
+    this.#emit(live, {
+      type: "error",
+      error: "Stopped.",
+    });
+
+    await live.session.interrupt().catch(() => {});
+    this.#setStatus(live, "idle");
+    return "stopped";
+  }
+
   async close(id: string): Promise<boolean> {
     const live = this.#sessions.get(id);
     if (!live) return false;
@@ -676,7 +783,18 @@ ${text}` : text);
         for await (const message of live.session) {
           if (message.type === "system" && message.subtype === "init") {
             live.record.sdkSessionId = message.session_id;
-            this.#setStatus(live, "idle");
+            // Only out of `starting`. The SDK emits `init` at the top of every
+            // run it makes, not just the first — so a turn that goes back to
+            // the model after a tool gets another one mid-flight, and reading
+            // that as "idle" told every subscriber the turn was over while it
+            // was still going. The transcript hung its whole working indicator
+            // off this, so the dots vanished seconds before the answer.
+            //
+            // What actually ends a turn is `result`, below. This one only ever
+            // means the session has finished booting.
+            if (live.record.status === "starting") {
+              this.#setStatus(live, "idle");
+            }
           }
           if (message.type === "result") {
             // `num_turns` is per-turn in streaming-input mode, not cumulative,
@@ -689,8 +807,82 @@ ${text}` : text);
               live.record.totalCostUsd =
                 live.priorCostUsd + message.total_cost_usd;
             }
-            this.#setStatus(live, "idle");
+            // Only if nothing is still running underneath. A skill that
+            // dispatches a background reviewer ends its own turn seconds after
+            // it starts, and calling that idle told every screen the run was
+            // over while the work had barely begun. See `backgroundTasks`.
+            if (live.backgroundTasks.size === 0) {
+              this.#setStatus(live, "idle");
+            }
           }
+          /**
+           * A level signal with replace semantics: every background task this
+           * session still has running, whenever that membership changes. Used
+           * rather than pairing start and finish events, because a missed
+           * bookend would wedge the session `busy` forever.
+           *
+           * A session with work outstanding is not idle, whatever its own turn
+           * did. This is what keeps the working indicator up while a reviewer
+           * reads a program for two minutes.
+           */
+          if (
+            message.type === "system" &&
+            message.subtype === "background_tasks_changed"
+          ) {
+            const tasks = (message as { tasks?: { task_id: string }[] }).tasks;
+            live.backgroundTasks = new Set(
+              (tasks ?? []).map((task) => task.task_id),
+            );
+            if (live.backgroundTasks.size > 0) {
+              this.#setStatus(live, "busy");
+            }
+          }
+
+          /**
+           * A background sub-agent has settled. Nudge the parent to go and
+           * collect it.
+           *
+           * The prompt goes straight into the pump rather than through
+           * `send()`, so it never appears in the transcript: the reader did not
+           * type it, and a conversation that shows the app talking to itself
+           * reads as a bug even when the answer that follows is right.
+           *
+           * Only on `completed`. A failed or stopped task is reported to the
+           * reader as a notice — asking the model to fetch findings that do not
+           * exist would produce an apology and another turn's cost.
+           */
+          if (
+            message.type === "system" &&
+            message.subtype === "task_notification"
+          ) {
+            const note = message as {
+              status: "completed" | "failed" | "stopped";
+              task_id: string;
+              summary?: string;
+            };
+            live.backgroundTasks.delete(note.task_id);
+
+            if (note.status === "completed") {
+              this.#setStatus(live, "busy");
+              live.pump.push(
+                [
+                  `The background agent you dispatched (task ${note.task_id}) has finished.`,
+                  note.summary ? `Its summary: ${note.summary}` : "",
+                  "Collect its findings and continue the skill from where you",
+                  "left off — produce the report you said you would. Do not",
+                  "mention task or agent ids.",
+                ]
+                  .filter(Boolean)
+                  .join(" "),
+              );
+            } else {
+              this.#emit(live, {
+                type: "error",
+                error: `The background review ${note.status === "failed" ? "failed" : "was stopped"} before it reported.`,
+              });
+            }
+          }
+
           if (message.type === "stream_event") {
             this.#relayStreamEvent(live, message.event);
             continue;

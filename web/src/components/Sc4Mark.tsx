@@ -14,19 +14,40 @@ import Image from "next/image";
 
 export function Sc4Mark({ className }: { className?: string }) {
   return (
-    <Image
-      className={className}
-      src="/assets/sc4_b_logo.png"
-      alt="SC4"
-      // Intrinsic size of the file. CSS sets what is actually rendered; these
-      // are here so the aspect ratio is known before the bytes land.
-      width={512}
-      height={512}
-      // Without this the optimizer would ship a variant sized for a hero.
-      sizes="46px"
-      // Top of the setup screen, so Next flags it as the LCP element and asks
-      // for it eagerly rather than lazily.
-      priority
-    />
+    // Both cuts, and CSS picks. The mark is flat black, so on the dark theme
+    // the black one is a hole in the page — it was there and invisible. A
+    // filter would have inverted it, but the white cut already exists and an
+    // inverted black is not the same drawing as the one that was made white.
+    //
+    // Two elements rather than a `src` chosen in JavaScript, so the choice
+    // survives the first paint: the theme is an attribute the browser has
+    // before React runs, and a component that reads it would flash the wrong
+    // one on every load. Only one is ever rendered — see `.sc4-mark-*`.
+    <>
+      <Image
+        className={`sc4-mark-light${className ? ` ${className}` : ""}`}
+        src="/assets/sc4_b_logo.png"
+        alt="SC4"
+        // Intrinsic size of the file. CSS sets what is actually rendered;
+        // these are here so the aspect ratio is known before the bytes land.
+        width={512}
+        height={512}
+        // Without this the optimizer would ship a variant sized for a hero.
+        sizes="46px"
+        // Top of the setup screen, so Next flags it as the LCP element and
+        // asks for it eagerly rather than lazily.
+        priority
+      />
+      <Image
+        className={`sc4-mark-dark${className ? ` ${className}` : ""}`}
+        src="/assets/sc4_w_logo.png"
+        alt=""
+        aria-hidden="true"
+        width={512}
+        height={512}
+        sizes="46px"
+        priority
+      />
+    </>
   );
 }

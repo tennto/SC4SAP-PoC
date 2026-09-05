@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TranscriptItem } from "@/lib/types";
 import { Markdown } from "@/components/Markdown";
 
@@ -10,6 +10,13 @@ type Props = {
   idle: boolean;
   /** The session is mid-turn: `status === "busy"`. */
   busy: boolean;
+  /**
+   * This turn's own prompt is not on screen yet — the backend has not echoed
+   * it back. Distinct from `busy`, which stays true for the whole turn: this
+   * is only the gap at the front of one, and it is the gap in which the last
+   * row on screen still belongs to the *previous* answer.
+   */
+  pending: boolean;
 };
 
 /**
@@ -59,13 +66,146 @@ export function toRows(items: TranscriptItem[]): Row[] {
 }
 
 /**
+ * Releases streamed text at a steady rate instead of in the bursts it arrives
+ * in.
+ *
+ * The API does not send one token at a time and the network does not deliver
+ * what it does send evenly, so a transcript rendered straight off the stream
+ * lurches: nothing for 200ms, then a paragraph, then nothing. Every character
+ * is on screen at the right time on average and the reading experience is
+ * still bad, because what the eye follows is the *rate*.
+ *
+ * So the stream fills a buffer and this drains it on animation frames. The
+ * amount taken each frame is a fraction of what is outstanding, which makes it
+ * self-correcting rather than a fixed speed to be tuned: a burst drains fast, a
+ * trickle draws down slowly, and the text never falls more than about a tenth
+ * of a second behind whatever the model is producing. A fixed characters-per-
+ * second would have to be either slower than the model — falling further behind
+ * all answer — or faster, which is the stutter again.
+ *
+ * `null` means nothing is streaming, and the caller renders the finished text
+ * itself: an answer that has arrived in full should be on screen in full, not
+ * typed out.
+ *
+ * Exported because the skill screen renders the same stream as a document
+ * rather than as a conversation, and an answer that lands there in bursts is
+ * the same to read as one that lands here in bursts.
+ */
+export function useSmoothText(
+  text: string,
+  /** The row being paced. A change means a different answer, not more of one. */
+  id: string | null,
+  /** Whether that row was still arriving when it first appeared. */
+  streaming: boolean,
+): string {
+  const [shown, setShown] = useState("");
+  // The loop reads these rather than closing over the render's values, so it
+  // does not have to be torn down and restarted on every delta.
+  const shownRef = useRef("");
+  const targetRef = useRef("");
+  targetRef.current = text;
+
+  /**
+   * Someone who has asked the OS for stillness gets the text, not a
+   * performance of it arriving. Read once: the loop below is keyed on whether
+   * there is a row at all, and a media query that flipped mid-answer would
+   * restart it.
+   */
+  const [still] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+
+  /**
+   * A new row starts from nothing if it is arriving, and whole if it is not.
+   *
+   * The second half is what keeps a reopened conversation from typing its
+   * stored answers out again: those are finished text, and finished text
+   * belongs on screen.
+   */
+  const [pacedId, setPacedId] = useState<string | null>(null);
+  if (id !== pacedId) {
+    setPacedId(id);
+    const seed = streaming && !still ? "" : text;
+    shownRef.current = seed;
+    setShown(seed);
+  }
+
+  const active = id !== null && !still;
+
+  useEffect(() => {
+    if (!active) return;
+
+    /**
+     * A hidden tab does not get animation frames, so the loop stops and the
+     * answer stops with it — and comes back to a row that has the label, the
+     * caret and no words in it. Anyone who is not looking has no use for a
+     * paced reveal anyway, so it hands over everything it is holding and
+     * starts pacing again when they come back.
+     */
+    const onHidden = (): void => {
+      if (!document.hidden) return;
+      shownRef.current = targetRef.current;
+      setShown(shownRef.current);
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    onHidden();
+
+    let frame = requestAnimationFrame(function step(): void {
+      const full = targetRef.current;
+
+      // Rewritten rather than extended — the assistant `message` event
+      // replaces what the deltas built. Catch up rather than retyping.
+      if (!full.startsWith(shownRef.current)) {
+        shownRef.current = full;
+        setShown(full);
+      } else if (shownRef.current.length < full.length) {
+        const behind = full.length - shownRef.current.length;
+        /**
+         * Two limits, and the answer moves at whichever is lower.
+         *
+         * The flat one is what makes it readable: one character a frame, about
+         * sixty a second, which is a hand writing rather than a buffer
+         * emptying. Proportional pacing alone cannot be slower than the model —
+         * the further behind it falls the faster it draws, so it converges on
+         * the rate the tokens arrive at, which is the rate that was too fast to
+         * read in the first place.
+         *
+         * The proportional one is the bound on the lag that buys. Past four
+         * hundred characters outstanding — a long answer, or a tool that
+         * dumped a block at once — it takes over and closes the gap instead of
+         * trailing minutes behind for the rest of the turn.
+         */
+        const take = behind > 400 ? Math.ceil(behind / 20) : 1;
+        shownRef.current = full.slice(0, shownRef.current.length + take);
+        setShown(shownRef.current);
+      }
+
+      // Kept running even when caught up: `streaming` going false does not
+      // mean the reveal is finished, only that nothing more is coming. Ending
+      // the loop there dumped whatever was still held — most of the answer,
+      // for anything the model wrote quickly.
+      frame = requestAnimationFrame(step);
+    });
+
+    return () => {
+      document.removeEventListener("visibilitychange", onHidden);
+      cancelAnimationFrame(frame);
+    };
+  }, [active]);
+
+  return active ? shown : text;
+}
+
+/**
  * Two speakers, one column, no bubbles. The transcript is mostly the agent's
  * long-form answers, and a chat bubble around a page of markdown fights it —
  * it narrows the measure, boxes the tables, and adds a border the reader has
  * to look past. What actually needs marking is who is talking, which is one
  * small label above the text.
  */
-export function Transcript({ items, idle, busy }: Props) {
+export function Transcript({ items, idle, busy, pending }: Props) {
   const bottom = useRef<HTMLDivElement>(null);
   const rows = toRows(items);
   const last = rows[rows.length - 1];
@@ -75,15 +215,67 @@ export function Transcript({ items, idle, busy }: Props) {
    * their own progress, so the dots stand down while text is streaming and
    * come back the moment it stops — which is exactly the gap where a tool is
    * running and the screen used to look finished when it was not.
+   *
+   * "Streaming" is not enough on its own: a bubble can be open with nothing
+   * in it yet — the first content block arrives before the first token, and a
+   * block can open on whitespace. Standing the dots down against an empty
+   * bubble left the screen with a heading and no answer under it, which is
+   * the one thing this indicator exists to prevent. Visible text is the test,
+   * because visible text is what makes the dots redundant.
    */
-  const waiting = busy && !(last?.kind === "agent" && last.streaming);
-  // Inside the answer it already belongs to, rather than under a second label.
-  const waitingInline = waiting && last?.kind === "agent";
+  const lastAgent = last?.kind === "agent" ? last : null;
+  const smoothed = useSmoothText(
+    lastAgent?.text ?? "",
+    lastAgent?.id ?? null,
+    lastAgent?.streaming ?? false,
+  );
 
-  // Follow the tail as tokens arrive — and as the waiting row appears.
+  // Measured on what is actually painted, not on what has arrived: the buffer
+  // above can be holding a paragraph the reader cannot see yet, and standing
+  // the mark down against text nobody is looking at is the same bug as
+  // standing it down against an empty bubble.
+  const answering = lastAgent !== null && smoothed.trim() !== "";
+  const waiting = busy && !answering;
+  /**
+   * Inside the answer it already belongs to, rather than under a second label.
+   *
+   * Not while a prompt is outstanding, though. Until the backend echoes it
+   * back there is no row for it, so the last row is still the *previous*
+   * answer — and hanging the dots off that says the old answer has more to
+   * come, under a label that has already finished speaking.
+   *
+   * That window is also where the flash came from, and it is why `pending` is
+   * about the echo rather than about the status. The session reports `busy`
+   * before it echoes the prompt, so a `pending` that ended at the status left
+   * three renders in a row: the standalone row appears, the status arrives and
+   * the dots jump inside the old answer — taking the label with them — and
+   * then the echo lands and the standalone row comes back. Two mounts, two
+   * entrances, and one indicator that looked like it could not make up its
+   * mind.
+   */
+  const waitingInline = waiting && !pending && last?.kind === "agent";
+
+  /**
+   * Follow the tail as tokens arrive — and as the waiting row appears.
+   *
+   * Smoothly only when the number of rows changes, which is a message landing
+   * and worth being carried to. Tokens are not: they change the scroll height
+   * on nearly every frame, and a smooth scroll restarted that often never
+   * finishes one — the browser re-aims mid-flight, over and over, and the
+   * column visibly judders. Jumping is correct there because the distance is
+   * a line at a time and there is nothing to follow.
+   */
+  const rowCount = useRef(0);
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [items, waiting]);
+    const arrived = rows.length !== rowCount.current;
+    rowCount.current = rows.length;
+    bottom.current?.scrollIntoView({
+      block: "end",
+      behavior: arrived ? "smooth" : "auto",
+    });
+    // `rows` is rebuilt every render; its length is what actually decides.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, waiting, rows.length]);
 
   if (idle) {
     return (
@@ -133,7 +325,7 @@ export function Transcript({ items, idle, busy }: Props) {
           <article key={row.id} className="msg assistant msg-in">
             <span className="who">Agent</span>
             <div className="text">
-              <Markdown>{row.text}</Markdown>
+              <Markdown>{isLast ? smoothed : row.text}</Markdown>
               {row.streaming && <span className="caret" aria-hidden />}
               {isLast && waitingInline && (
                 <div className="dots-row">{dots}</div>

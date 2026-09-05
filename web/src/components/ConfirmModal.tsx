@@ -8,12 +8,21 @@
  * connection profile are the same question with different words, and three
  * near-identical modals would drift apart.
  *
+ * It renders into `document.body`. A dialog covers the window, and
+ * `position: fixed` only means the window while no ancestor has a transform —
+ * and this is raised from inside panels that animate on arrival. Declared
+ * where it is written, it laid itself out against the card instead: a dialog
+ * the size of a form row, sitting in the middle of a panel. The chat screen
+ * never showed that because nothing between it and the body is transformed,
+ * which was luck rather than design.
+ *
  * A backdrop click does NOT dismiss it. The dialog is asking a question, and a
  * stray click on the way to it is not an answer — cancelling has its own
  * button, and Escape is the keyboard equivalent. The confirm button takes
  * focus on mount so the keyboard path is Enter to agree, Escape to back out.
  */
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 
 export function ConfirmModal({
@@ -61,7 +70,12 @@ export function ConfirmModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [onCancel, busy]);
 
-  return (
+  // Portals need a DOM, and this is rendered on the server first.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="modal-backdrop">
       <div
         className="modal confirm"
@@ -100,6 +114,7 @@ export function ConfirmModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { FavoritesProvider } from "@/lib/favorites";
@@ -52,8 +53,20 @@ export default async function RootLayout({
   const account = await getAccount();
 
   return (
-    <html lang="en">
+    // `suppressHydrationWarning` because the script below writes an attribute
+    // on this element before React sees it, which is exactly the mismatch the
+    // warning is for — and exactly what has to happen for a dark-mode reader
+    // not to be flashed a white screen.
+    <html lang="en" suppressHydrationWarning>
       <head>
+        {/* First thing in the head, ahead of the stylesheets: it decides which
+            palette those rules resolve to, and anything after the first paint
+            is too late to prevent a flash. */}
+        <script
+          // The string is ours, built in `lib/theme.ts` — no user input reaches
+          // it, which is the only reason this is allowed to exist.
+          dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
+        />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"

@@ -119,6 +119,27 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     },
   );
 
+  /**
+   * Abandon the turn in flight. The session stays; only this answer stops.
+   *
+   * 409 rather than 200 for a session that is not busy: "there was nothing to
+   * stop" is a different outcome from "stopped", and a client that pressed the
+   * button on a turn which had just finished should be able to tell.
+   */
+  app.post<{ Params: IdParams }>(
+    "/sessions/:id/stop",
+    async (request, reply) => {
+      const outcome = await manager.stop(request.params.id);
+      if (outcome === "unknown") {
+        return reply.code(404).send({ error: "unknown session" });
+      }
+      if (outcome === "not-busy") {
+        return reply.code(409).send({ error: "session is not running a turn" });
+      }
+      return { ok: true };
+    },
+  );
+
   app.get<{ Params: IdParams }>(
     "/sessions/:id/permissions",
     async (request, reply) => {

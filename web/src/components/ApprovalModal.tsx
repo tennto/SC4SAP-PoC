@@ -11,12 +11,20 @@
  *     *choose*. There is nothing to deny; the answer is the payload, carried
  *     back through `answers` and echoed to the model.
  *
+ * It renders into `document.body`. A dialog covers the window, and
+ * `position: fixed` only means the window while no ancestor has a transform —
+ * and the skill screen raises this from inside a panel that animates on
+ * arrival, which turned the overlay into a box sitting in the middle of that
+ * panel. The chat screen never showed it because nothing between it and the
+ * body is transformed; a portal makes that stop being luck.
+ *
  * Note what this dialog cannot do: the L1 blocklist hook runs at PreToolUse,
  * before `canUseTool`, so a forbidden row extraction is denied without ever
  * raising a request here. Allowing something in this dialog can never override
  * the guardrail — it only ever grants what the guardrail already permitted.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PendingApproval, PermissionResponse, Question } from "@/lib/types";
 
 /** Free-text escape hatch, mirroring the "Other" option the CLI offers. */
@@ -76,7 +84,12 @@ export function ApprovalModal({ request, busy, onSettle }: Props) {
     });
   };
 
-  return (
+  // Portals need a DOM, and this is rendered on the server first.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="modal-backdrop" role="dialog" aria-modal="true">
       <div className="modal">
         <header className="modal-head">
@@ -197,6 +210,7 @@ export function ApprovalModal({ request, busy, onSettle }: Props) {
           cannot wedge the session.
         </p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

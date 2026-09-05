@@ -26,6 +26,18 @@ import type { Account } from "@/lib/account";
 import { Icon } from "@/components/Icon";
 import { FeedbackModal } from "@/components/FeedbackModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { applyTheme, readTheme, type Theme } from "@/lib/theme";
+
+/**
+ * `system` first, because it is the default and the one most people should
+ * stay on — the app following the machine is not a compromise between the
+ * other two, it is the answer for anyone whose machine already knows.
+ */
+const APPEARANCES: { value: Theme; label: string; icon: string }[] = [
+  { value: "system", label: "System", icon: "circle-half" },
+  { value: "light", label: "Light", icon: "sun" },
+  { value: "dark", label: "Dark", icon: "moon" },
+];
 
 const LANGUAGES = [
   { code: "KR", label: "한국어" },
@@ -56,10 +68,23 @@ export function AccountMenu({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   /** Which nested submenu is showing, if any. */
-  const [nested, setNested] = useState<"language" | "legal" | null>(null);
+  const [nested, setNested] = useState<
+    "language" | "legal" | "appearance" | null
+  >(null);
   const [feedback, setFeedback] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [language, setLanguage] = useState<Language>("EN");
+  /**
+   * Mirrors what is already on the document — the boot script in `app/layout`
+   * put it there before React existed. Read after mount rather than during
+   * render, because the server has no `localStorage` and a differing first
+   * render is a hydration mismatch.
+   */
+  const [theme, setTheme] = useState<Theme>("system");
+
+  useEffect(() => {
+    setTheme(readTheme());
+  }, []);
   const [loggingOut, setLoggingOut] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -233,6 +258,57 @@ export function AccountMenu({
                     <Icon name={page.icon} />
                     {page.label}
                   </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="account-nest">
+            <button
+              className={`account-item${nested === "appearance" ? " open" : ""}`}
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={nested === "appearance"}
+              onClick={() =>
+                setNested((current) =>
+                  current === "appearance" ? null : "appearance",
+                )
+              }
+            >
+              <Icon name="circle-half" />
+              Appearance
+              <span className="account-value">
+                {APPEARANCES.find((option) => option.value === theme)?.label}
+              </span>
+              <Icon name="caret-right" />
+            </button>
+
+            {nested === "appearance" && (
+              // Upward: this is the last row of a menu that already opens from
+              // the bottom-left corner, and a panel growing down from here
+              // leaves the screen.
+              <div className="account-submenu up" role="menu">
+                {APPEARANCES.map((option) => (
+                  <button
+                    key={option.value}
+                    className="account-item"
+                    role="menuitemradio"
+                    aria-checked={theme === option.value}
+                    onClick={() => {
+                      // The document first, then the state that reflects it.
+                      // The attribute is what actually changes the screen; this
+                      // component only draws the tick beside it.
+                      applyTheme(option.value);
+                      setTheme(option.value);
+                      setNested(null);
+                    }}
+                  >
+                    <span className="account-check">
+                      {theme === option.value && <Icon name="check" />}
+                    </span>
+                    <Icon name={option.icon} />
+                    {option.label}
+                  </button>
                 ))}
               </div>
             )}

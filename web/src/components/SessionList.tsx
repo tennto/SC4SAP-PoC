@@ -115,15 +115,37 @@ export function SessionList({
     };
   }, []);
 
+  /**
+   * Live rows, then the ones still playing their exit.
+   *
+   * The leaving set is filtered against the live ids *here*, during the
+   * render, and not only by the effect that maintains it — because the effect
+   * runs after. Closing a session removes its row optimistically and the
+   * `refresh()` behind it can hand the same id straight back; for the one
+   * render between that arriving and the effect tidying up, the id was in both
+   * halves and React saw two children with the same key.
+   *
+   * A row that is live again is live: it belongs in the first half and has no
+   * business also playing an exit.
+   */
+  const liveIds = new Set(items.map((item) => item.id));
   const rows = [
     ...items.map((item) => ({ session: item, isLeaving: false })),
-    ...[...leaving.values()].map((item) => ({ session: item, isLeaving: true })),
+    ...[...leaving.values()]
+      .filter((item) => !liveIds.has(item.id))
+      .map((item) => ({ session: item, isLeaving: true })),
   ];
 
   return (
     <aside className="session-rail">
       <div className="session-rail-head">
-        <h2>Sessions</h2>
+        <h2>
+          {/* A stack, not a speech bubble. What is listed under this is
+              sessions — runs against the backend, live or revived from
+              storage — and a bubble would name the thing inside one rather
+              than the several the rail is holding. */}
+          <Icon name="stack" /> Sessions
+        </h2>
         <button
           className="session-add"
           onClick={onCreate}

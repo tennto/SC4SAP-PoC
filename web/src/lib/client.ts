@@ -125,6 +125,15 @@ export const api = {
       body: JSON.stringify(context ? { text, context } : { text }),
     }),
 
+  /**
+   * Abandon the turn in flight. The session stays open for the next prompt.
+   *
+   * 409 when there was no turn to stop — the answer landed between the press
+   * and the request — which is not worth surfacing as a failure.
+   */
+  stopSession: (id: string): Promise<{ ok: boolean }> =>
+    request<{ ok: boolean }>(`/sessions/${id}/stop`, { method: "POST" }),
+
   pendingApprovals: async (id: string): Promise<PendingApproval[]> =>
     (await request<{ pending: PendingApproval[] }>(`/sessions/${id}/permissions`))
       .pending,
