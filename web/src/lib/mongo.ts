@@ -224,6 +224,12 @@ export type ChatMessageDoc = {
   text: string;
   /** True if `text` was cut at the ceiling in `chat-store.ts`. */
   truncated?: boolean;
+  /**
+   * Files that went with a user turn — names and sizes only. The bytes went
+   * to the model once and are not kept: a reopened chat shows that a file
+   * was sent, not the file.
+   */
+  attachments?: { name: string; mediaType: string; size: number }[];
   at: Date;
 };
 

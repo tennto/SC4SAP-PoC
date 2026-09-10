@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { TranscriptItem } from "@/lib/types";
+import type { AttachmentMeta, TranscriptItem } from "@/lib/types";
 import { Markdown } from "@/components/Markdown";
+import { FileChip } from "@/components/FileChip";
 
 type Props = {
   items: TranscriptItem[];
@@ -27,7 +28,7 @@ type Props = {
  * than one answer that took a detour.
  */
 export type Row =
-  | { kind: "user"; id: string; text: string }
+  | { kind: "user"; id: string; text: string; attachments?: AttachmentMeta[] }
   | { kind: "notice"; id: string; text: string }
   | { kind: "agent"; id: string; text: string; streaming: boolean };
 
@@ -41,8 +42,19 @@ export function toRows(items: TranscriptItem[]): Row[] {
   for (const item of items) {
     if (item.kind === "tool" || item.kind === "thinking") continue;
 
-    if (item.kind === "user" || item.kind === "notice") {
-      rows.push({ kind: item.kind, id: item.id, text: item.text });
+    if (item.kind === "user") {
+      rows.push({
+        kind: "user",
+        id: item.id,
+        text: item.text,
+        ...(item.attachments && item.attachments.length > 0
+          ? { attachments: item.attachments }
+          : {}),
+      });
+      continue;
+    }
+    if (item.kind === "notice") {
+      rows.push({ kind: "notice", id: item.id, text: item.text });
       continue;
     }
 
@@ -314,9 +326,18 @@ export function Transcript({ items, idle, busy, pending }: Props) {
           return (
             <article key={row.id} className="msg user msg-in">
               <span className="who">You</span>
+              {/* What went with the prompt, above it: the material first and
+                  the question about it second, the order it was sent in. */}
+              {row.attachments && row.attachments.length > 0 && (
+                <div className="files">
+                  {row.attachments.map((file, at) => (
+                    <FileChip key={`${row.id}-${at}`} file={file} />
+                  ))}
+                </div>
+              )}
               {/* Shown as typed — rendering it as markdown would silently eat
                   characters they meant literally. */}
-              <div className="text">{row.text}</div>
+              {row.text.trim() !== "" && <div className="text">{row.text}</div>}
             </article>
           );
         }

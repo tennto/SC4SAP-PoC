@@ -42,6 +42,16 @@ import { ApprovalModal } from "@/components/ApprovalModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import type { PermissionResponse } from "@/lib/types";
 import type { SkillField } from "@/lib/skills";
+import { FileChip } from "@/components/FileChip";
+import {
+  IMAGE_TYPES,
+  LIMITS,
+  isImageType,
+  prepare,
+  toAttachment,
+  toMeta,
+  type Draft,
+} from "@/lib/attachments";
 
 /**
  * Where the chat screen looks for the conversation to open on load. Set on the
@@ -215,6 +225,15 @@ export function SkillForm({
   const [restored, setRestored] = useState<string | null>(null);
   /** "Done" pressed, and the dialog asking whether that is really meant. */
   const [confirmDone, setConfirmDone] = useState(false);
+  /**
+   * Screenshots attached to the field that takes them. One list for the
+   * form: no skill has two such fields, and the prompt is one message.
+   */
+  const [images, setImages] = useState<Draft[]>([]);
+  const [readingImages, setReadingImages] = useState(0);
+  /** A file is being dragged over the image field. */
+  const [dragOver, setDragOver] = useState(false);
+  const imagePicker = useRef<HTMLInputElement>(null);
   /** What `persist` last wrote — see the signature it builds. */
   const written = useRef<string | null>(null);
   const [settling, setSettling] = useState(false);
@@ -258,6 +277,57 @@ export function SkillForm({
 
   const set = (label: string, value: Value): void =>
     setValues((current) => ({ ...current, [label]: value }));
+
+  /**
+   * Reads chosen files into image chips — images only, whatever the source.
+   * The chat composer takes any file the model reads; this field is for a
+   * picture of an error, and a PDF dropped on it is refused with the reason.
+   */
+  const imagesRef = useRef<Draft[]>([]);
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  const addImages = async (chosen: Iterable<File>): Promise<void> => {
+    const list = [...chosen];
+    if (list.length === 0) return;
+    setReadingImages(list.length);
+    try {
+      for (const file of list) {
+        if (!isImageType(file.type)) {
+          setError(`${file.name}: only images (PNG, JPEG, GIF, WebP) can be attached here.`);
+          continue;
+        }
+        const result = await prepare(file, imagesRef.current);
+        if (!result.ok) {
+          setError(result.error);
+          continue;
+        }
+        const next = [...imagesRef.current, result.draft];
+        imagesRef.current = next;
+        setImages(next);
+      }
+    } finally {
+      setReadingImages(0);
+    }
+  };
+
+  const removeImage = (id: string): void => {
+    setImages((current) => {
+      const gone = current.find((file) => file.id === id);
+      if (gone?.preview) URL.revokeObjectURL(gone.preview);
+      return current.filter((file) => file.id !== id);
+    });
+  };
+
+  /** Files from a paste or a drop, or nothing if there were none. */
+  const filesFrom = (transfer: DataTransfer | null): File[] =>
+    transfer
+      ? [...transfer.items]
+          .filter((item) => item.kind === "file")
+          .map((item) => item.getAsFile())
+          .filter((file): file is File => file !== null)
+      : [];
 
   const rows = toRows(stream.items);
 
@@ -340,6 +410,9 @@ export function SkillForm({
           seq: index,
           role: row.kind === "user" ? ("user" as const) : ("agent" as const),
           text: row.text,
+          ...(row.kind === "user" && row.attachments
+            ? { attachments: row.attachments }
+            : {}),
         })),
       });
     } catch (err) {
@@ -399,6 +472,10 @@ export function SkillForm({
   function reset(): void {
     setConfirmDone(false);
     written.current = null;
+    for (const file of imagesRef.current) {
+      if (file.preview) URL.revokeObjectURL(file.preview);
+    }
+    setImages([]);
     setSessionId(null);
     setRestored(null);
     setError(null);
@@ -419,6 +496,8 @@ export function SkillForm({
       await api.sendMessage(
         session.id,
         composePrompt(command, fields, values),
+        null,
+        images.map(toAttachment),
       );
       // After the panel exists, so there is something to be carried to.
       requestAnimationFrame(() =>
@@ -513,16 +592,119 @@ export function SkillForm({
 
           const control = (): React.ReactNode => {
             switch (field.kind) {
-              case "textarea":
-                return (
+              case "textarea": {
+                const area = (
                   <textarea
                     rows={4}
                     placeholder={field.placeholder}
                     value={typeof value === "string" ? value : ""}
                     disabled={started}
                     onChange={(event) => set(field.label, event.target.value)}
+                    // A screenshot on the clipboard lands as an image; text
+                    // pastes as text, untouched.
+                    onPaste={
+                      field.images && !started
+                        ? (event) => {
+                            const pasted = filesFrom(event.clipboardData);
+                            if (pasted.length === 0) return;
+                            event.preventDefault();
+                            void addImages(pasted);
+                          }
+                        : undefined
+                    }
                   />
                 );
+                if (!field.images) return area;
+
+                /**
+                 * The textarea in a frame that takes drops, with the chips
+                 * and an add button under it. The frame is the drop target
+                 * rather than the whole window: this page is a form, and a
+                 * screenshot belongs to this one question on it.
+                 */
+                const full = images.length >= LIMITS.maxFiles;
+                return (
+                  <div
+                    className={`field-images${dragOver ? " is-over" : ""}${started ? " is-locked" : ""}`}
+                    onDragOver={(event) => {
+                      if (started) return;
+                      if (![...event.dataTransfer.types].includes("Files")) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      event.dataTransfer.dropEffect = "copy";
+                      setDragOver(true);
+                    }}
+                    onDragLeave={(event) => {
+                      if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                      setDragOver(false);
+                    }}
+                    onDrop={(event) => {
+                      setDragOver(false);
+                      if (started) return;
+                      const dropped = filesFrom(event.dataTransfer);
+                      if (dropped.length === 0) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void addImages(dropped);
+                    }}
+                  >
+                    {area}
+                    <div className="field-images-foot">
+                      {images.map((file) => (
+                        <FileChip
+                          key={file.id}
+                          file={toMeta(file)}
+                          preview={file.preview}
+                          onRemove={started ? undefined : () => removeImage(file.id)}
+                        />
+                      ))}
+                      {Array.from({ length: readingImages }, (_, at) => (
+                        <span key={`reading-${at}`} className="file-chip is-reading">
+                          <span className="file-chip-glyph">
+                            <Icon name="circle-notch" />
+                          </span>
+                          <span className="file-chip-name">Reading…</span>
+                        </span>
+                      ))}
+                      {!started && (
+                        <>
+                          <input
+                            ref={imagePicker}
+                            type="file"
+                            multiple
+                            accept={IMAGE_TYPES.join(",")}
+                            hidden
+                            onChange={(event) => {
+                              const chosen = event.target.files;
+                              if (chosen) void addImages(chosen);
+                              event.target.value = "";
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="field-images-add"
+                            disabled={full}
+                            onClick={() => imagePicker.current?.click()}
+                            title={
+                              full
+                                ? `At most ${LIMITS.maxFiles} images`
+                                : "Add a screenshot — or paste one, or drop it here"
+                            }
+                          >
+                            <Icon name="image" />
+                            {images.length === 0 ? "Add screenshot" : "Add another"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    {dragOver && (
+                      <div className="field-images-veil" aria-hidden>
+                        <Icon name="upload-simple" /> Drop the screenshot here
+                      </div>
+                    )}
+                  </div>
+                );
+              }
               case "select":
                 return (
                   <Select

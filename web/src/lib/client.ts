@@ -5,6 +5,7 @@
  * backend directly — the browser is not supposed to know where it lives.
  */
 import type {
+  AttachmentMeta,
   Chat,
   ChatMessage,
   Health,
@@ -12,6 +13,7 @@ import type {
   PermissionResponse,
   Session,
 } from "./types";
+import type { Attachment } from "./attachments";
 
 /** Backend errors arrive as `{error: "..."}`; surface that text, not "500". */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -65,7 +67,12 @@ export const api = {
       sdkSessionId?: string | null;
       turns?: number;
       totalCostUsd?: number;
-      messages: { seq: number; role: "user" | "agent"; text: string }[];
+      messages: {
+        seq: number;
+        role: "user" | "agent";
+        text: string;
+        attachments?: AttachmentMeta[];
+      }[];
     },
   ): Promise<{ ok: boolean }> =>
     request(`/chats/${id}`, { method: "POST", body: JSON.stringify(body) }),
@@ -114,15 +121,24 @@ export const api = {
    * `context` is prior conversation for a revived chat. The backend feeds it
    * to the model and keeps it off the stream, so the transcript still shows
    * only what was typed.
+   *
+   * `attachments` are files sent with the prompt, base64 in the body. The
+   * backend checks type and size again; the ceilings are in
+   * `lib/attachments.ts`.
    */
   sendMessage: (
     id: string,
     text: string,
     context?: string | null,
+    attachments?: Attachment[],
   ): Promise<{ accepted: boolean }> =>
     request<{ accepted: boolean }>(`/sessions/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify(context ? { text, context } : { text }),
+      body: JSON.stringify({
+        text,
+        ...(context ? { context } : {}),
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      }),
     }),
 
   /**

@@ -21,6 +21,7 @@
 import { useEffect, useMemo, useReducer } from "react";
 import { api } from "@/lib/client";
 import type {
+  AttachmentMeta,
   PendingApproval,
   SdkMessage,
   SessionEvent,
@@ -95,6 +96,22 @@ function textOf(message: SdkMessage): string {
  */
 function isHumanPrompt(message: SdkMessage): boolean {
   return typeof message.message?.content === "string";
+}
+
+/**
+ * The files that went with the reader's prompt — names and sizes, put on the
+ * echo by `session-manager.send()`. The bytes went to the model and are not
+ * on the stream.
+ */
+function attachmentsOf(message: SdkMessage): AttachmentMeta[] {
+  const list = message.attachments;
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (file): file is AttachmentMeta =>
+      typeof file === "object" &&
+      file !== null &&
+      typeof (file as AttachmentMeta).name === "string",
+  );
 }
 
 /**
@@ -214,12 +231,20 @@ function reduce(state: State, action: Action): State {
         // Tool results and injected skill files arrive as user messages too.
         if (!isHumanPrompt(message)) return state;
         const text = textOf(message);
-        if (!text) return state;
+        const attachments = attachmentsOf(message);
+        // A prompt can be a file with nothing typed; a turn with neither is
+        // nothing to draw.
+        if (!text && attachments.length === 0) return state;
         return {
           ...state,
           items: [
             ...state.items,
-            { kind: "user", id: `user-${state.serial}-${state.items.length}`, text },
+            {
+              kind: "user",
+              id: `user-${state.serial}-${state.items.length}`,
+              text,
+              ...(attachments.length > 0 ? { attachments } : {}),
+            },
           ],
         };
       }

@@ -2060,6 +2060,376 @@ button.primary:hover:not(:disabled) {
   font-size: 11px;
 }
 
+/* A file in the air. The card's border goes dashed, and a veil over the
+   whole window says the file may land anywhere — the card is where it ends
+   up, not where it has to be aimed. */
+.composer.is-over {
+  border-color: var(--ink);
+  border-style: dashed;
+}
+
+.drop-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(var(--shadow-rgb), 0.28);
+  backdrop-filter: blur(2px);
+  /* The pointer, and the drop, go through to the window. */
+  pointer-events: none;
+  animation: veil-in 160ms var(--ease) both;
+}
+
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.drop-veil-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 40px;
+  border: 2px dashed var(--ink-55);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(var(--shadow-rgb), 0.2);
+}
+
+.drop-veil-card .ph {
+  font-size: 30px;
+  color: var(--ink-55);
+  margin-bottom: 4px;
+}
+
+.drop-veil-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.drop-veil-hint {
+  font-size: 12.5px;
+  color: var(--ink-55);
+}
+
+.composer-tools {
+  /* The attach menu is positioned against this row. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Opens upward from the paperclip: the composer sits at the foot of the
+   screen, so down is off it. Same card, shadow and entrance as the account
+   menu — two menus in one product should arrive the same way. */
+.composer-menu {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  z-index: 30;
+  width: 250px;
+  margin-bottom: 8px;
+  padding: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(var(--shadow-rgb), 0.14);
+  animation: menu-up 180ms var(--ease) both;
+}
+
+@keyframes menu-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.composer-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-80);
+  text-align: left;
+  cursor: pointer;
+}
+
+.composer-menu-item:hover {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+.composer-menu-item .ph {
+  font-size: 17px;
+  color: var(--ink-55);
+  flex: none;
+}
+
+.composer-menu-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.composer-menu-label {
+  font-size: 13px;
+}
+
+.composer-menu-hint {
+  font-size: 11.5px;
+  color: var(--ink-55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-attach.open {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+/* The paperclip: a hollow control beside the filled send one, so the row has
+   one thing that reads as the action and one that reads as an option. */
+.composer-attach {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 17px;
+  transition:
+    background var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease);
+}
+
+.composer-attach:hover:not(:disabled) {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+.composer-attach:disabled {
+  color: var(--ink-38);
+}
+
+/* Chips above the field, wrapping. Above rather than below: what is
+   attached is part of what is being written, so it sits with the text and
+   not with the controls. */
+.composer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+/* ---------- file chips ----------
+
+   One shape in two places: the composer, where a chip has a preview and a
+   remove button, and the transcript, where it is the record of what was
+   sent. Sized to the line, not to the file: a thumbnail the height of a
+   text row is enough to say "this screenshot" without becoming the message. */
+
+.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 260px;
+  height: 30px;
+  padding: 0 8px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2, var(--panel));
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.file-chip.is-reading {
+  color: var(--ink-55);
+}
+
+.file-chip.is-reading .ph {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.file-chip-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex: none;
+}
+
+.file-chip-glyph {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: var(--panel-3);
+  color: var(--ink-55);
+  font-size: 14px;
+  flex: none;
+}
+
+.file-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip-size {
+  color: var(--ink-38);
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.file-chip-remove {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: -2px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 12px;
+  flex: none;
+}
+
+.file-chip-remove:hover {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+/* ---------- a form field that takes screenshots ----------
+
+   The textarea inside a frame that is also the drop target, with the chips
+   and the add button in a strip under it. The frame carries the border so
+   the textarea and the strip read as one control. */
+
+.field-images {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  transition: border-color var(--t-fast) var(--ease);
+}
+
+.field-images:focus-within {
+  border-color: var(--ink-38);
+}
+
+.field-images.is-over {
+  border-color: var(--ink);
+  border-style: dashed;
+}
+
+/* The frame has the border now; the textarea inside it goes bare. */
+.field .field-images textarea {
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+}
+
+.field .field-images textarea:focus {
+  outline: none;
+}
+
+.field-images-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.field-images.is-locked .field-images-foot {
+  color: var(--ink-55);
+}
+
+.field-images-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px dashed var(--ink-38);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-80);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.field-images-add:hover:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.field-images-add:disabled {
+  color: var(--ink-38);
+  cursor: default;
+}
+
+.field-images-add .ph {
+  font-size: 15px;
+}
+
+/* Over the field while a file is in the air: the frame says where. */
+.field-images-veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.field-images-veil .ph {
+  font-size: 20px;
+  color: var(--ink-55);
+}
+
+/* In the transcript: above the reader's box, hugging the same right edge. */
+.msg.user .files {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
 /* ---------- approval modal (3-3) ---------- */
 
 /* On the shared classes rather than on one dialog: every modal in the app

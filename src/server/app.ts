@@ -20,6 +20,7 @@ import {
   type SequencedEvent,
 } from "./session-manager.ts";
 import { claudeApiHealth } from "./claude-api.ts";
+import { BODY_LIMIT, validateAttachments } from "./attachments.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
 const HEARTBEAT_MS = 15_000;
@@ -27,7 +28,9 @@ const HEARTBEAT_MS = 15_000;
 type IdParams = { id: string };
 
 export function buildApp(manager: SessionManager): FastifyInstance {
-  const app = Fastify({ logger: true });
+  // The default 1 MB body ceiling is smaller than one attached screenshot.
+  // See `attachments.ts` for how the figure is arrived at.
+  const app = Fastify({ logger: true, bodyLimit: BODY_LIMIT });
 
   app.get<{ Querystring: { fresh?: string } }>("/health", async (request) => ({
     ok: true,
@@ -94,11 +97,24 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     return reply.code(204).send();
   });
 
-  app.post<{ Params: IdParams; Body: { text?: string; context?: string } }>(
+  app.post<{
+    Params: IdParams;
+    Body: { text?: string; context?: string; attachments?: unknown };
+  }>(
     "/sessions/:id/messages",
     async (request, reply) => {
-      const text = request.body?.text;
-      if (typeof text !== "string" || text.trim() === "") {
+      const text = request.body?.text ?? "";
+      if (typeof text !== "string") {
+        return reply.code(400).send({ error: "body.text must be a string" });
+      }
+      // Files the reader sent with the prompt — checked for type and size
+      // here, so an unreadable one is refused before it costs a model call.
+      const checked = validateAttachments(request.body?.attachments);
+      if (!checked.ok) {
+        return reply.code(400).send({ error: checked.error });
+      }
+      // A prompt can be a file on its own, but it cannot be nothing.
+      if (text.trim() === "" && checked.attachments.length === 0) {
         return reply.code(400).send({ error: "body.text is required" });
       }
       // Optional prior-conversation preamble, sent by the web app when it
@@ -111,7 +127,9 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       if (!manager.get(request.params.id)) {
         return reply.code(404).send({ error: "unknown session" });
       }
-      if (!manager.send(request.params.id, text, context)) {
+      if (
+        !manager.send(request.params.id, text, context, checked.attachments)
+      ) {
         return reply.code(409).send({ error: "session is closed" });
       }
       // Accepted, not answered — the reply streams over SSE.
