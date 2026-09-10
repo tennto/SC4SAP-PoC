@@ -37,7 +37,18 @@ export type Chat = {
   sdkSessionId: string | null;
   turns: number;
   totalCostUsd: number;
+  createdAt: string;
   updatedAt: string;
+};
+
+/**
+ * A file that went with a prompt — what is kept once the bytes have gone to
+ * the model. Same shape on the wire and in Mongo; see `lib/attachments.ts`.
+ */
+export type AttachmentMeta = {
+  name: string;
+  mediaType: string;
+  size: number;
 };
 
 /** One stored turn, already folded to what the transcript draws. */
@@ -46,6 +57,7 @@ export type ChatMessage = {
   role: "user" | "agent";
   text: string;
   at: string;
+  attachments?: AttachmentMeta[];
 };
 
 /** One approval blocking a turn (`permission_request`). Rendered in 3-3. */
@@ -143,7 +155,7 @@ export type Health = {
  * authoritative version.
  */
 export type TranscriptItem =
-  | { kind: "user"; id: string; text: string }
+  | { kind: "user"; id: string; text: string; attachments?: AttachmentMeta[] }
   | { kind: "assistant"; id: string; text: string; streaming: boolean }
   | { kind: "thinking"; id: string; text: string; streaming: boolean }
   /**

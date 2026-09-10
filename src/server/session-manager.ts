@@ -26,12 +26,19 @@ import {
   type SDKMessage,
   type SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
 import {
   buildToolPolicy,
   SAP_TOOL_PREFIX,
   type ToolPolicy,
 } from "./tool-policy.ts";
+import {
+  toContentBlocks,
+  toMeta,
+  type Attachment,
+  type AttachmentMeta,
+} from "./attachments.ts";
 
 /** How long discovery waits for the MCP server to leave `pending`. */
 const MCP_DISCOVERY_TIMEOUT_MS = 60_000;
@@ -207,10 +214,10 @@ class InputPump implements AsyncIterable<SDKUserMessage> {
   #waiting: ((r: IteratorResult<SDKUserMessage>) => void) | null = null;
   #closed = false;
 
-  push(text: string): void {
+  push(content: string | ContentBlockParam[]): void {
     const message: SDKUserMessage = {
       type: "user",
-      message: { role: "user", content: text },
+      message: { role: "user", content },
       parent_tool_use_id: null,
     };
     const waiting = this.#waiting;
@@ -487,8 +494,18 @@ export class SessionManager {
    * session did not survive the last restart. It goes to the SDK and *not* to
    * the stream: the transcript shows what the reader typed, not the history
    * the client re-attached behind it.
+   *
+   * `attachments` are files the reader sent with the prompt. The bytes go to
+   * the model as content blocks; the echo on the stream carries only their
+   * names and sizes, which is all the transcript draws — and all the replay
+   * buffer should be asked to hold.
    */
-  send(id: string, text: string, context?: string): boolean {
+  send(
+    id: string,
+    text: string,
+    context?: string,
+    attachments: Attachment[] = [],
+  ): boolean {
     const live = this.#sessions.get(id);
     if (!live) return false;
     if (live.record.status === "closed" || live.record.status === "error") {
@@ -496,8 +513,13 @@ export class SessionManager {
     }
     // First prompt names the session, and nothing renames it afterwards: a
     // list whose labels move under the reader is worse than one whose labels
-    // are only approximate.
-    if (live.record.title === null) live.record.title = titleFrom(text);
+    // are only approximate. A prompt that is only a file is named after it.
+    if (live.record.title === null) {
+      live.record.title = titleFrom(
+        text.trim() !== "" ? text : (attachments[0]?.name ?? ""),
+      );
+    }
+    const meta: AttachmentMeta[] = attachments.map(toMeta);
     this.#setStatus(live, "busy");
     // A tab that sends and closes in the same breath unsubscribes while the
     // session is still idle, so the countdown has to be armed here too.
@@ -505,7 +527,9 @@ export class SessionManager {
     // The SDK does not echo the prompt back on the output stream, so without
     // this the human half of the conversation is missing from the replay
     // buffer entirely and a reconnecting client rebuilds a transcript of
-    // answers with no questions. Emitted in the SDK's own user-message shape.
+    // answers with no questions. Emitted in the SDK's own user-message shape,
+    // with the content kept as a plain string: that is how the frontend tells
+    // the reader's own prompt from the block arrays the SDK generates.
     this.#emit(live, {
       type: "message",
       message: {
@@ -513,10 +537,13 @@ export class SessionManager {
         message: { role: "user", content: text },
         parent_tool_use_id: null,
         session_id: live.record.sdkSessionId ?? "",
+        ...(meta.length > 0 ? { attachments: meta } : {}),
       } as SDKMessage,
     });
-    live.pump.push(context ? `${context}
-${text}` : text);
+    const prompt = context ? `${context}\n${text}` : text;
+    live.pump.push(
+      attachments.length > 0 ? toContentBlocks(prompt, attachments) : prompt,
+    );
     return true;
   }
 

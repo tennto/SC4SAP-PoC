@@ -27,14 +27,18 @@ export type ChatSummary = {
   sdkSessionId: string | null;
   turns: number;
   totalCostUsd: number;
+  createdAt: string;
   updatedAt: string;
 };
+
+export type AttachmentMeta = { name: string; mediaType: string; size: number };
 
 export type ChatMessage = {
   seq: number;
   role: "user" | "agent";
   text: string;
   at: string;
+  attachments?: AttachmentMeta[];
 };
 
 function summarize(doc: ChatDoc): ChatSummary {
@@ -44,15 +48,25 @@ function summarize(doc: ChatDoc): ChatSummary {
     sdkSessionId: doc.sdkSessionId,
     turns: doc.turns,
     totalCostUsd: doc.totalCostUsd,
+    // Rows written before `createdAt` existed fall back to their last write.
+    createdAt: (doc.createdAt ?? doc.updatedAt).toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };
 }
 
-/** The rail, for one account. Most recently used first. */
+/**
+ * The rail, for one account. Newest conversation first — by when it was
+ * started, not last touched.
+ *
+ * It used to be most-recently-used, and that moved rows under the reader's
+ * hand: opening a conversation writes it, so the one just clicked jumped to
+ * the top and the one they meant to open next was somewhere else. A list
+ * whose order is fixed at creation is one the eye can learn.
+ */
 export async function listChats(userId: string): Promise<ChatSummary[]> {
   const rows = await (await chats())
     .find({ userId })
-    .sort({ updatedAt: -1 })
+    .sort({ createdAt: -1, updatedAt: -1 })
     .limit(200)
     .toArray();
   return rows.map(summarize);
@@ -77,6 +91,9 @@ export async function readChat(
       role: row.role,
       text: row.text,
       at: row.at.toISOString(),
+      ...(row.attachments && row.attachments.length > 0
+        ? { attachments: row.attachments }
+        : {}),
     })),
   };
 }
@@ -96,7 +113,12 @@ export async function appendTurns(
     sdkSessionId?: string | null;
     turns?: number;
     totalCostUsd?: number;
-    messages: { seq: number; role: "user" | "agent"; text: string }[];
+    messages: {
+      seq: number;
+      role: "user" | "agent";
+      text: string;
+      attachments?: AttachmentMeta[];
+    }[];
   },
 ): Promise<void> {
   const now = new Date();
@@ -147,6 +169,9 @@ export async function appendTurns(
               at: now,
               ...(text.length < message.text.length
                 ? { truncated: true }
+                : {}),
+              ...(message.attachments && message.attachments.length > 0
+                ? { attachments: message.attachments }
                 : {}),
             },
           },
@@ -215,7 +240,13 @@ export function contextPreamble(messages: ChatMessage[]): string | null {
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
-    const line = `${message.role === "user" ? "User" : "Assistant"}: ${message.text}`;
+    // The file itself is gone; the model is told it was there so it does not
+    // treat a question about "the screenshot" as coming from nowhere.
+    const attached =
+      message.attachments && message.attachments.length > 0
+        ? ` [attached: ${message.attachments.map((file) => file.name).join(", ")}]`
+        : "";
+    const line = `${message.role === "user" ? "User" : "Assistant"}: ${message.text}${attached}`;
     if (size + line.length > CONTEXT_BUDGET) break;
     kept.unshift(line);
     size += line.length;

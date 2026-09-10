@@ -62,15 +62,45 @@ export async function POST(
     sdkSessionId?: string | null;
     turns?: number;
     totalCostUsd?: number;
-    messages?: { seq: number; role: "user" | "agent"; text: string }[];
+    messages?: {
+      seq: number;
+      role: "user" | "agent";
+      text: string;
+      attachments?: unknown;
+    }[];
   };
 
-  const messages = (body.messages ?? []).filter(
-    (message) =>
-      Number.isInteger(message.seq) &&
-      (message.role === "user" || message.role === "agent") &&
-      typeof message.text === "string",
-  );
+  const messages = (body.messages ?? [])
+    .filter(
+      (message) =>
+        Number.isInteger(message.seq) &&
+        (message.role === "user" || message.role === "agent") &&
+        typeof message.text === "string",
+    )
+    .map((message) => ({
+      seq: message.seq,
+      role: message.role,
+      text: message.text,
+      // Names and sizes only, and only the well-formed ones: this is the
+      // client's word for what it sent, kept for display.
+      attachments: Array.isArray(message.attachments)
+        ? message.attachments
+            .filter(
+              (file): file is { name: string; mediaType: string; size: number } =>
+                typeof file === "object" &&
+                file !== null &&
+                typeof (file as { name?: unknown }).name === "string" &&
+                typeof (file as { mediaType?: unknown }).mediaType === "string" &&
+                typeof (file as { size?: unknown }).size === "number",
+            )
+            .slice(0, 5)
+            .map((file) => ({
+              name: file.name.slice(0, 200),
+              mediaType: file.mediaType,
+              size: file.size,
+            }))
+        : undefined,
+    }));
 
   try {
     await appendTurns(account.id, id, { ...body, messages });

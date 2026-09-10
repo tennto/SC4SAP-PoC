@@ -35,9 +35,12 @@ import { SessionList, type RailItem } from "@/components/SessionList";
 import { Transcript, toRows } from "@/components/Transcript";
 import { Composer } from "@/components/Composer";
 import { ApprovalModal } from "@/components/ApprovalModal";
+import { toAttachment, type Draft } from "@/lib/attachments";
 
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
+/** Which backend session is running which stored chat — see `attached`. */
+const ATTACHED_KEY = "sc4sap.attached";
 
 type Props = {
   initialSessions: Session[];
@@ -64,7 +67,55 @@ export function Chat({
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [chats, setChats] = useState<StoredChat[]>([]);
   /** chat id → the backend session currently running it. */
-  const [attached, setAttached] = useState<Record<string, string>>({});
+  const [attachedState, setAttached] = useState<Record<string, string>>({});
+  /**
+   * The mapping survives a reload, two ways.
+   *
+   * It is remembered in `localStorage`, because it is decided here and nowhere
+   * else: the backend does not know a session was opened *for* a stored chat.
+   * Losing it on a refresh was not cosmetic — the revived session came back as
+   * a row of its own, and the next write went under the session's id, so the
+   * conversation was stored twice.
+   *
+   * And it is re-derived from what is stored, for a tab that never had it:
+   * the chat keeps the SDK conversation id its last session ran, and a live
+   * session with that same id is that chat's session under a different name.
+   */
+  const attached = useMemo<Record<string, string>>(() => {
+    const derived: Record<string, string> = {};
+    for (const session of sessions) {
+      if (!session.sdkSessionId) continue;
+      const chat = chats.find(
+        (entry) =>
+          entry.id !== session.id && entry.sdkSessionId === session.sdkSessionId,
+      );
+      if (chat) derived[chat.id] = session.id;
+    }
+    // A remembered link to a session the backend no longer has is worse than
+    // none: it would point the transcript at a stream that 404s, where no link
+    // at all reads the stored history and revives on the next prompt.
+    const kept = Object.fromEntries(
+      Object.entries(attachedState).filter(([, sessionId]) =>
+        sessions.some((session) => session.id === sessionId),
+      ),
+    );
+    return { ...derived, ...kept };
+  }, [sessions, chats, attachedState]);
+
+  /**
+   * Not before the stored copy has been read. Effects run in the order they
+   * are declared, and this one is declared first: writing the empty initial
+   * state here would wipe what the mount effect below is about to read.
+   */
+  const attachedLoaded = useRef(false);
+  useEffect(() => {
+    if (!attachedLoaded.current) return;
+    try {
+      localStorage.setItem(ATTACHED_KEY, JSON.stringify(attachedState));
+    } catch {
+      // Storage full or blocked — the derivation above still covers a reload.
+    }
+  }, [attachedState]);
   const [history, setHistory] = useState<History | null>(null);
   // Read from localStorage after mount, not during render: the server has no
   // localStorage and a differing first render is a hydration mismatch.
@@ -175,9 +226,48 @@ export function Chat({
   /** Stored turns, shaped like stream items so the transcript needs no branch. */
   const historyItems = useMemo<TranscriptItem[]>(() => {
     if (!history || history.chatId !== activeId) return [];
-    return history.messages.map((message) =>
+    let messages = history.messages;
+
+    /**
+     * A revived chat has two copies of its newest turns: the stored rows, and
+     * the live session's replay of the same turns. Whichever stored rows the
+     * stream's opening rows repeat are dropped, and the stream draws them.
+     *
+     * Matched from the end of the stored list against the start of the live
+     * one, longest match first. A turn still in flight is not stored yet, so
+     * it fails to match and the search shortens by one until the completed
+     * turns line up — which also keeps `persist` numbering them as it did:
+     * what is left of the stored list is the base its rows count from.
+     */
+    if (backendId && backendId !== activeId) {
+      const live = toRows(stream.items).filter(
+        (row) => row.kind !== "notice" && row.text.trim() !== "",
+      );
+      const same = (
+        stored: (typeof messages)[number],
+        row: (typeof live)[number],
+      ): boolean =>
+        stored.text === row.text &&
+        (stored.role === "user") === (row.kind === "user");
+      for (let k = Math.min(messages.length, live.length); k > 0; k -= 1) {
+        const tail = messages.slice(messages.length - k);
+        if (tail.every((stored, index) => same(stored, live[index]!))) {
+          messages = messages.slice(0, messages.length - k);
+          break;
+        }
+      }
+    }
+
+    return messages.map((message) =>
       message.role === "user"
-        ? { kind: "user", id: `stored-${message.seq}`, text: message.text }
+        ? {
+            kind: "user",
+            id: `stored-${message.seq}`,
+            text: message.text,
+            ...(message.attachments && message.attachments.length > 0
+              ? { attachments: message.attachments }
+              : {}),
+          }
         : {
             kind: "assistant",
             id: `stored-${message.seq}`,
@@ -185,7 +275,7 @@ export function Chat({
             streaming: false,
           },
     );
-  }, [history, activeId]);
+  }, [history, activeId, backendId, stream.items]);
 
   const items = useMemo(
     () => [...historyItems, ...stream.items],
@@ -244,6 +334,22 @@ export function Chat({
   useEffect(() => {
     const stored = localStorage.getItem(ACTIVE_KEY);
     if (stored) setActiveId(stored);
+    try {
+      const links = JSON.parse(
+        localStorage.getItem(ATTACHED_KEY) ?? "{}",
+      ) as Record<string, string>;
+      // Only pairs of ids; anything else is a stale or hand-edited entry.
+      const clean = Object.fromEntries(
+        Object.entries(links).filter(
+          ([chat, session]) =>
+            typeof chat === "string" && typeof session === "string",
+        ),
+      );
+      if (Object.keys(clean).length > 0) setAttached(clean);
+    } catch {
+      // Unreadable — start from nothing, as before.
+    }
+    attachedLoaded.current = true;
     void refreshChats();
   }, [refreshChats]);
 
@@ -257,13 +363,16 @@ export function Chat({
    * draws as the greeting. The conversation was there the whole time; nothing
    * had asked for it.
    *
-   * Skipped while the chat has a live backend session, which rebuilds itself
-   * from that session's replay buffer — reading the stored copy as well would
-   * show every turn twice. `sessions` arrives with the server render, so this
-   * is settled on the first pass rather than racing it.
+   * Skipped only when the chat *is* the live backend session — one that has
+   * never been stored and revived — which rebuilds itself from that session's
+   * replay buffer alone. A revived chat has a session under another id and
+   * older turns that session never saw, so its stored copy is read too;
+   * `historyItems` drops whatever the two have in common. `sessions` arrives
+   * with the server render, so this is settled on the first pass rather than
+   * racing it.
    */
   useEffect(() => {
-    if (!activeId || backendId) return;
+    if (!activeId || backendId === activeId) return;
     if (history?.chatId === activeId) return;
 
     let cancelled = false;
@@ -391,10 +500,31 @@ export function Chat({
    * is safe to run repeatedly: the same turn lands in the same row, and a turn
    * whose text grew as it streamed is corrected rather than duplicated.
    */
+  /**
+   * A revived chat is written only once its stored copy has been read.
+   *
+   * The rows are numbered from how many stored turns come before them, and
+   * a reload races that number: the live session replays its turns off the
+   * stream in a moment, the stored copy takes a round trip to Mongo, and the
+   * turn going idle between the two counted from zero — so the newest turn
+   * was written over the oldest. The write is held instead, and released by
+   * the effect below when the history arrives.
+   */
+  const pendingPersist = useRef(false);
+
   const persist = useCallback(async () => {
     if (!activeId) return;
+    const revived = backendId !== null && backendId !== activeId;
+    if (revived && history?.chatId !== activeId) {
+      pendingPersist.current = true;
+      return;
+    }
     const rows = toRows(stream.items).filter(
-      (row) => row.kind !== "notice" && row.text.trim() !== "",
+      (row) =>
+        row.kind !== "notice" &&
+        // A prompt that was only a file has no text and is still a turn.
+        (row.text.trim() !== "" ||
+          (row.kind === "user" && (row.attachments?.length ?? 0) > 0)),
     );
     if (rows.length === 0) return;
 
@@ -425,7 +555,10 @@ export function Chat({
         // The stored title wins: a revived chat gets a fresh backend session
         // whose own title is the *latest* prompt, and letting that through
         // would rename the conversation on every visit.
-        title: storedChat?.title ?? live?.title ?? null,
+        // A revived chat already has its name; the live session's would be
+        // the *latest* prompt, and sending that before the chat list has
+        // loaded renamed the conversation after every reload.
+        title: revived ? undefined : (storedChat?.title ?? live?.title ?? null),
         sdkSessionId: live?.sdkSessionId ?? null,
         turns: live?.turns,
         totalCostUsd: live?.totalCostUsd,
@@ -433,12 +566,23 @@ export function Chat({
           seq: base + index,
           role: row.kind === "user" ? ("user" as const) : ("agent" as const),
           text: row.text,
+          ...(row.kind === "user" && row.attachments
+            ? { attachments: row.attachments }
+            : {}),
         })),
       });
     } catch (err) {
       fail((err as Error).message);
     }
-  }, [activeId, stream.items, historyItems.length, storedChat, live]);
+  }, [activeId, backendId, history?.chatId, stream.items, historyItems.length, storedChat, live]);
+
+  // The held write, once the stored copy it was waiting on has been read.
+  useEffect(() => {
+    if (!pendingPersist.current) return;
+    if (!activeId || history?.chatId !== activeId) return;
+    pendingPersist.current = false;
+    void persist().then(() => refreshChats());
+  }, [activeId, history?.chatId, persist, refreshChats]);
 
   /**
    * A finished turn is when turns, cost and the answer all stop changing, so
@@ -470,10 +614,10 @@ export function Chat({
   const selectChat = async (id: string): Promise<void> => {
     setActiveId(id);
     setHistory(null);
-    // A chat with a live backend session rebuilds itself from that session's
-    // replay buffer; reading the stored copy as well would show every turn
-    // twice.
-    if (attached[id] || sessions.some((session) => session.id === id)) return;
+    // A chat that *is* a live backend session rebuilds itself from that
+    // session's replay buffer. A revived one is read as well, and the turns
+    // both copies hold are folded together in `historyItems`.
+    if (sessions.some((session) => session.id === id)) return;
 
     try {
       const found = await api.readChat(id);
@@ -566,7 +710,7 @@ export function Chat({
    * rendering it twice — once locally, once on replay — is worse than the few
    * milliseconds it takes to come back.
    */
-  const send = async (text: string): Promise<void> => {
+  const send = async (text: string, files: Draft[] = []): Promise<void> => {
     if (!activeId) return;
     setSubmitted(true);
     setAwaitingAck(stream.items.length);
@@ -597,7 +741,7 @@ export function Chat({
         context = history?.chatId === activeId ? history.context : null;
       }
 
-      await api.sendMessage(target, text, context);
+      await api.sendMessage(target, text, context, files.map(toAttachment));
       // The first prompt is what names the conversation in the rail, so pull
       // the list now rather than waiting for the turn to finish.
       void refresh();
@@ -644,7 +788,10 @@ export function Chat({
    * The empty state has no chat behind it, so the first prompt creates one and
    * sends in the same gesture — the reader never presses the plus.
    */
-  const startAndSend = async (text: string): Promise<void> => {
+  const startAndSend = async (
+    text: string,
+    files: Draft[] = [],
+  ): Promise<void> => {
     setSubmitted(true);
     // A new session, so its stream starts empty whatever this one holds.
     setAwaitingAck(0);
@@ -655,7 +802,7 @@ export function Chat({
       setSessions((current) => [...current, session]);
       setHistory(null);
       setActiveId(session.id);
-      await api.sendMessage(session.id, text);
+      await api.sendMessage(session.id, text, null, files.map(toAttachment));
       void refresh();
     } catch (err) {
       fail((err as Error).message);
@@ -692,8 +839,16 @@ export function Chat({
   const railItems = useMemo<RailItem[]>(() => {
     const attachedIds = new Set(Object.values(attached));
     const rows = new Map<string, RailItem>();
+    /**
+     * When each conversation began, for the order. Fixed at creation, so a
+     * row never moves once it is on screen: the list used to be sorted by
+     * last write, and opening a conversation is a write, so the row just
+     * clicked jumped to the top and the reader's next target moved with it.
+     */
+    const since = new Map<string, number>();
 
     for (const chat of chats) {
+      since.set(chat.id, Date.parse(chat.createdAt));
       rows.set(chat.id, {
         id: chat.id,
         title: chat.title,
@@ -705,6 +860,9 @@ export function Chat({
     for (const session of sessions) {
       if (attachedIds.has(session.id)) continue;
       const stored = rows.get(session.id);
+      if (!since.has(session.id)) {
+        since.set(session.id, Date.parse(session.createdAt));
+      }
       rows.set(session.id, {
         id: session.id,
         // The stored title wins. It is the one the app chose deliberately —
@@ -730,7 +888,12 @@ export function Chat({
       });
     }
 
-    return [...rows.values()];
+    // Newest first. A row with no known start — which should not happen —
+    // sorts to the bottom rather than the top, where it would push everything
+    // else down.
+    return [...rows.values()].sort(
+      (a, b) => (since.get(b.id) ?? 0) - (since.get(a.id) ?? 0),
+    );
   }, [chats, sessions, attached]);
 
   /**
@@ -836,9 +999,12 @@ export function Chat({
               // The empty state can be a selected-but-unasked chat as well as
               // no chat at all, so the branch is on whether one exists — not
               // on which screen is showing.
-              onSend={(text) =>
-                void (activeId ? send(text) : startAndSend(text))
+              onSend={(text, files) =>
+                void (activeId ? send(text, files) : startAndSend(text, files))
               }
+              // A refused file is a failure the reader did not ask for, so it
+              // goes in the bar and stays until dismissed, like the rest.
+              onReject={fail}
             />
           </div>
 
