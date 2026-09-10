@@ -29,6 +29,12 @@ export type SkillField = {
   placeholder?: string;
   options?: string[];
   hint?: string;
+  /**
+   * The field also takes screenshots — dropped, pasted or picked — which go
+   * to the model as images alongside the text. A dump or a job log is a
+   * screen far more often than it is a string someone can retype.
+   */
+  images?: boolean;
 };
 
 export type Skill = {
@@ -136,10 +142,21 @@ export const SKILLS: Skill[] = [
     group: "analyze",
     status: "ready",
     fields: [
-      { label: "Symptom type", kind: "select", options: ["Short dump", "Error message", "Wrong result", "Performance", "Transport failure"] },
-      { label: "Dump ID / message / transport", kind: "text", placeholder: "CX_SY_OPEN_SQL_DB, or SAPKB75… " },
-      { label: "Where it happened", kind: "text", placeholder: "TCode, program or job name" },
-      { label: "What you observed", kind: "textarea", placeholder: "When it started, who hit it, what changed recently." },
+      {
+        label: "Symptom type",
+        kind: "select",
+        // "Unknown" last: for a fault that is none of the named shapes — no
+        // dump, no message, no failed job — and the run has to find the shape
+        // before it can find the cause.
+        options: ["Short dump", "Error message", "Wrong result", "Performance", "Transport failure", "Unknown"],
+      },
+      {
+        label: "What you observed",
+        kind: "textarea",
+        placeholder: "The dump or message, where it happened, when it started, what changed recently.",
+        hint: "Paste or drop a screenshot of the dump or job log — the image goes to the analysis with your notes.",
+        images: true,
+      },
     ],
   },
   {

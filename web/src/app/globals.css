@@ -2323,6 +2323,104 @@ button.primary:hover:not(:disabled) {
   color: var(--ink);
 }
 
+/* ---------- a form field that takes screenshots ----------
+
+   The textarea inside a frame that is also the drop target, with the chips
+   and the add button in a strip under it. The frame carries the border so
+   the textarea and the strip read as one control. */
+
+.field-images {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  transition: border-color var(--t-fast) var(--ease);
+}
+
+.field-images:focus-within {
+  border-color: var(--ink-38);
+}
+
+.field-images.is-over {
+  border-color: var(--ink);
+  border-style: dashed;
+}
+
+/* The frame has the border now; the textarea inside it goes bare. */
+.field .field-images textarea {
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+}
+
+.field .field-images textarea:focus {
+  outline: none;
+}
+
+.field-images-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.field-images.is-locked .field-images-foot {
+  color: var(--ink-55);
+}
+
+.field-images-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px dashed var(--ink-38);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-80);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.field-images-add:hover:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.field-images-add:disabled {
+  color: var(--ink-38);
+  cursor: default;
+}
+
+.field-images-add .ph {
+  font-size: 15px;
+}
+
+/* Over the field while a file is in the air: the frame says where. */
+.field-images-veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.field-images-veil .ph {
+  font-size: 20px;
+  color: var(--ink-55);
+}
+
 /* In the transcript: above the reader's box, hugging the same right edge. */
 .msg.user .files {
   display: flex;
