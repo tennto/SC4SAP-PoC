@@ -4,10 +4,11 @@
  * One tool call, opened from the monitor's list.
  *
  * Everything the row holds, laid out to be read rather than scanned: the
- * facts as a list, the input as a highlighted JSON block. And one way onward
- * — "Ask in chat" — which is the point of opening a call at all. A reader
- * looking at a failed `GetTypeInfo` wants to ask why, and the conversation
- * the call happened in is where the agent still remembers the answer.
+ * facts as a list, the input as a highlighted JSON block. And, on a call that
+ * failed or was refused, one way onward — "Ask in chat". A reader looking at
+ * a failed `GetTypeInfo` wants to ask why, and the conversation the call
+ * happened in is where the agent still remembers the answer. A call that
+ * succeeded raises no question, so it gets no button.
  *
  * That hand-off works the way a skill run's "Continue in chat" does: the
  * session id goes into `localStorage` under the key the chat screen reads on
@@ -82,7 +83,11 @@ function inputBlock(preview: string): { text: string; truncated: boolean } {
   return { text: preview, truncated };
 }
 
-/** What the composer opens with. A question, not a report — the reader edits it. */
+/**
+ * What the composer opens with. A question, not a report — the reader edits
+ * it. Only failed and refused calls get the button, so those are the two
+ * questions there are.
+ */
 function questionFor(call: ToolCall): string {
   const when = stamp(call.startedAt);
   const about = `the ${call.tool} call at ${when}`;
@@ -90,10 +95,7 @@ function questionFor(call: ToolCall): string {
   if (call.decision === "denied" || call.decision === "expired") {
     return `About ${about}${input}: it was not approved. What would it have read, and is it safe to allow?`;
   }
-  if (call.ok === false) {
-    return `About ${about}${input}: it failed. Why, and what should I check?`;
-  }
-  return `About ${about}${input}: what did it return, and what does that tell us?`;
+  return `About ${about}${input}: it failed. Why, and what should I check?`;
 }
 
 export function ToolCallModal({
@@ -106,10 +108,18 @@ export function ToolCallModal({
   const router = useRouter();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [leaving, setLeaving] = useState(false);
+  /** The copy button just worked, and says so for a moment. */
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     closeRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
 
   const dismiss = useCallback((): void => {
     if (leaving) return;
@@ -118,6 +128,17 @@ export function ToolCallModal({
       return;
     }
     setLeaving(true);
+  }, [leaving, onClose]);
+
+  // The exit waits for `animationend`, and a background tab does not run CSS
+  // animations — so a dialog dismissed while the tab was hidden stayed
+  // mounted, invisible, over the whole page, eating every click until the
+  // tab was looked at again. A deadline a little past the animation's length
+  // closes it either way.
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(onClose, 400);
+    return () => clearTimeout(timer);
   }, [leaving, onClose]);
 
   useEffect(() => {
@@ -151,6 +172,10 @@ export function ToolCallModal({
           ? "succeeded"
           : "failed";
   const input = inputBlock(call.inputPreview);
+  // The way onward is offered only when there is something to ask about. A
+  // call that succeeded has nothing to explain, and a button on every dialog
+  // teaches the reader to stop seeing it on the one where it matters.
+  const troubled = state === "failed" || state === "refused";
 
   return createPortal(
     <div
@@ -212,7 +237,26 @@ export function ToolCallModal({
           </div>
         </dl>
 
-        <p className="modal-label">Input</p>
+        <div className="toolcall-input-head">
+          <p className="modal-label">Input</p>
+          <button
+            type="button"
+            className="icon-button toolcall-copy"
+            aria-label={copied ? "Copied" : "Copy input"}
+            title={copied ? "Copied" : "Copy input"}
+            onClick={() => {
+              void navigator.clipboard
+                .writeText(input.text)
+                .then(() => setCopied(true))
+                .catch(() => {
+                  // No clipboard access (an insecure origin, or refused).
+                  // The text is on screen to select; nothing else to do.
+                });
+            }}
+          >
+            <Icon name={copied ? "check" : "copy"} />
+          </button>
+        </div>
         <div className="toolcall-json">
           <Markdown>{`\`\`\`json\n${input.text}\n\`\`\``}</Markdown>
         </div>
@@ -228,12 +272,19 @@ export function ToolCallModal({
         </p>
 
         <div className="modal-actions">
-          <button type="button" className="ghost" ref={closeRef} onClick={dismiss}>
+          <button
+            type="button"
+            className={troubled ? "ghost" : "primary"}
+            ref={closeRef}
+            onClick={dismiss}
+          >
             Close
           </button>
-          <button type="button" className="primary" onClick={askInChat}>
-            <Icon name="chat-teardrop-text" /> Ask in chat
-          </button>
+          {troubled ? (
+            <button type="button" className="primary" onClick={askInChat}>
+              <Icon name="chat-teardrop-text" /> Ask in chat
+            </button>
+          ) : null}
         </div>
       </div>
     </div>,

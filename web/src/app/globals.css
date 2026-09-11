@@ -6921,7 +6921,7 @@ button.mon-switch.is-on {
 
 .toolcall-facts > div {
   grid-template-columns: 96px 1fr;
-  padding: 6px 0;
+  padding: 10px 0;
 }
 
 .toolcall-facts dd code {
@@ -6939,6 +6939,28 @@ button.mon-switch.is-on {
 .toolcall-json .markdown > :last-child,
 .toolcall-json .markdown pre {
   margin-bottom: 0;
+}
+
+/* The Input label and its copy button on one line. The button is smaller
+   than the app's usual 32px square because it sits against a 10px caption,
+   not a heading. */
+.toolcall-input-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.toolcall-copy {
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+}
+
+/* A step down from the app's usual modal buttons: this dialog is read, not
+   answered, and Close should not weigh as much as a Confirm. */
+.modal.toolcall .modal-actions button {
+  padding: 7px 14px;
+  font-size: 12.5px;
 }
 
 .toolcall-note {
