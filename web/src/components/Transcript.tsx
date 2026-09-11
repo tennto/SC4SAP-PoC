@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AttachmentMeta, TranscriptItem } from "@/lib/types";
+import type { Activity } from "@/lib/activity";
+import { describeActivity } from "@/lib/activity";
 import { Markdown } from "@/components/Markdown";
 import { FileChip } from "@/components/FileChip";
 
@@ -18,7 +20,33 @@ type Props = {
    * row on screen still belongs to the *previous* answer.
    */
   pending: boolean;
+  /**
+   * What the turn is doing, for the line beside the dots.
+   *
+   * The dots say "something is happening"; they cannot say whether it has
+   * been happening for two seconds or two minutes, and that is the difference
+   * between waiting and reloading the page.
+   */
+  activity: Activity | null;
 };
+
+/**
+ * Re-renders once a second while an activity is live, so the clock beside the
+ * label counts. Stops itself the moment there is nothing to count — a timer
+ * left running behind a finished turn is a wakeup per second for nothing.
+ */
+function useElapsed(since: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (since === null) return;
+    setNow(Date.now());
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, [since]);
+
+  return since === null ? 0 : Math.max(0, now - since);
+}
 
 /**
  * What actually gets drawn. One agent row per answer, not per SDK message: a
@@ -217,7 +245,7 @@ export function useSmoothText(
  * to look past. What actually needs marking is who is talking, which is one
  * small label above the text.
  */
-export function Transcript({ items, idle, busy, pending }: Props) {
+export function Transcript({ items, idle, busy, pending, activity }: Props) {
   const bottom = useRef<HTMLDivElement>(null);
   const rows = toRows(items);
   const last = rows[rows.length - 1];
@@ -297,11 +325,38 @@ export function Transcript({ items, idle, busy, pending }: Props) {
     );
   }
 
+  /*
+   * The dots, and beside them what is happening and for how long.
+   *
+   * The label is a fold over signals that arrived; the clock is the part that
+   * answers the actual question. A reader who can see "Looking up SAP (4s)"
+   * knows to wait, and a reader who sees "(2m 10s · still running)" knows to
+   * decide — neither of which three hopping dots can tell them.
+   *
+   * `aria-live="polite"` rather than `assertive`: it updates every second, and
+   * a screen reader interrupting itself once a second is worse than silence.
+   */
+  const elapsed = useElapsed(activity?.since ?? null);
+  const said = activity ? describeActivity(activity, elapsed) : null;
+
   const dots = (
-    <span className="dots" aria-label="Working">
-      <span />
-      <span />
-      <span />
+    <span className="activity">
+      <span className="dots" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+      {said ? (
+        <span className="activity-said" aria-live="polite">
+          <span className="activity-label">{said.label}</span>
+          {said.detail && (
+            <span className="activity-detail">{said.detail}</span>
+          )}
+          <span className="activity-meta">{said.meta}</span>
+        </span>
+      ) : (
+        <span className="sr-only">Working</span>
+      )}
     </span>
   );
 

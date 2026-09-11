@@ -996,6 +996,7 @@ export function Chat({
                 idle={false}
                 busy={status === "busy" || awaitingAck !== null}
                 pending={awaitingAck !== null || stream.items.length === sendMark}
+                activity={stream.activity}
               />
             )}
           </div>
