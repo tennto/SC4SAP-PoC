@@ -265,6 +265,32 @@ export type ChatMessageDoc = {
 };
 
 /**
+ * One tool call, written by the backend — see `src/server/tool-log.ts`.
+ *
+ * This app never writes these; it reads them for the monitor page. The
+ * indexes are the backend's too, created where the rows are written, which
+ * is why they are not in `ensureIndexes` below. Kept in step by hand: the
+ * backend's `ToolCallDoc` is the same fields with `Date`s.
+ */
+export type ToolCallDoc = {
+  /** The SDK's `tool_use` id. */
+  _id: string;
+  userId: string;
+  sessionId: string;
+  name: string;
+  kind: "mcp" | "builtin";
+  server: string | null;
+  tool: string;
+  inputPreview: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  durationMs: number | null;
+  ok: boolean | null;
+  resultBytes: number | null;
+  decision: "auto" | "allowed" | "denied" | "expired" | null;
+};
+
+/**
  * Indexes the auth code depends on for *correctness*, not just speed:
  *
  *   users.email      unique — the only thing standing between two sign-ups
@@ -356,6 +382,10 @@ export async function resets(): Promise<Collection<ResetDoc>> {
 
 export async function chats(): Promise<Collection<ChatDoc>> {
   return (await database()).collection<ChatDoc>("chat_sessions");
+}
+
+export async function toolCalls(): Promise<Collection<ToolCallDoc>> {
+  return (await database()).collection<ToolCallDoc>("tool_calls");
 }
 
 export async function chatMessages(): Promise<Collection<ChatMessageDoc>> {

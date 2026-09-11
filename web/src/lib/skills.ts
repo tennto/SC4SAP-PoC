@@ -295,19 +295,10 @@ export const SKILLS: Skill[] = [
   // `/settings` holds for this account; the CLI-only parts (profile aliases,
   // HUD usage limits) have no meaning in an app that has an account per
   // person. The status snapshot it also drew belongs to the dashboard.
-  {
-    slug: "mcp-setup",
-    command: "/sc4sap:mcp-setup",
-    title: "MCP Setup Guide",
-    icon: "terminal-window",
-    summary:
-      "How to install and configure the abap-mcp-adt-powerup server for ADT connectivity.",
-    group: "system",
-    status: "blocked",
-    blockedReason:
-      "A local install guide. Under the web PoC the MCP server is already running on the backend, so there is nothing to configure from here.",
-    fields: [],
-  },
+  // No `mcp-setup` either. It was an install guide for the MCP server on a
+  // developer's own machine; under the web app the server is already running
+  // on the backend. What replaced it is the Monitor page, which is not a
+  // skill and lives in `SkillNav`'s `PAGES`.
 ];
 
 export const SKILLS_BY_GROUP: { group: SkillGroup; skills: Skill[] }[] =

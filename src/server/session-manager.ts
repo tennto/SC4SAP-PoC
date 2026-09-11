@@ -28,6 +28,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
+import { ToolLog } from "./tool-log.ts";
 import {
   buildToolPolicy,
   isSapReadTool,
@@ -284,6 +285,12 @@ function isHookNoise(message: SDKMessage): boolean {
 
 type LiveSession = {
   record: SessionRecord;
+  /**
+   * Whose session this is — the web app's account id, forwarded by its proxy
+   * in `x-sc4sap-user`. The tool log keys on it; nothing else here does. A
+   * session opened without one (a curl, a smoke test) is logged as such.
+   */
+  userId: string;
   pump: InputPump;
   session: Query;
   subscribers: Set<Subscriber>;
@@ -335,10 +342,13 @@ export class SessionManager {
   readonly #config: PocConfig;
   /** Deny half applies from the start; the auto-allow half fills in at discover(). */
   #policy: ToolPolicy = buildToolPolicy([]);
+  /** Every tool call, as it happens. See `tool-log.ts`. */
+  readonly toolLog: ToolLog;
 
-  constructor(config?: PocConfig) {
+  constructor(config?: PocConfig, options: { toolLog?: ToolLog } = {}) {
     this.#config = config ?? loadConfig();
     requireApiKey();
+    this.toolLog = options.toolLog ?? new ToolLog();
   }
 
   get config(): PocConfig {
@@ -423,6 +433,7 @@ export class SessionManager {
       resume?: string;
       priorTurns?: number;
       priorCostUsd?: number;
+      userId?: string;
     } = {},
   ): SessionRecord {
     const id = randomUUID();
@@ -515,6 +526,7 @@ export class SessionManager {
     const priorCostUsd = Math.max(0, options.priorCostUsd ?? 0);
 
     const live: LiveSession = {
+      userId: options.userId ?? "anonymous",
       record: {
         id,
         sdkSessionId: null,
@@ -776,6 +788,7 @@ export class SessionManager {
       toolName !== QUESTION_TOOL &&
       isSapReadTool(toolName)
     ) {
+      this.toolLog.decide(context.toolUseID, "auto");
       return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
 
@@ -803,6 +816,10 @@ export class SessionManager {
         if (!live.pending.delete(reqId)) return;
         clearTimeout(timer);
         context.signal.removeEventListener("abort", onAbort);
+        this.toolLog.decide(
+          context.toolUseID,
+          decision === "allow" ? "allowed" : decision === "deny" ? "denied" : "expired",
+        );
         this.#emit(live, { type: "permission_resolved", reqId, decision });
         resolve(result);
       };
@@ -877,6 +894,7 @@ export class SessionManager {
     }
     this.#cancelOrphanTimer(live);
     live.pump.close();
+    this.toolLog.abandon(id);
     // Tell subscribers before dropping the entry — after this the id 404s.
     this.#setStatus(live, "closed");
     live.subscribers.clear();
@@ -1013,14 +1031,59 @@ export class SessionManager {
             continue;
           }
           if (isHookNoise(message)) continue;
+          this.#logToolBlocks(live, message);
           this.#emit(live, { type: "message", message });
         }
+        this.toolLog.abandon(live.record.id);
         this.#setStatus(live, "closed");
       } catch (err) {
         this.#emit(live, { type: "error", error: (err as Error).message });
         this.#setStatus(live, "error");
       }
     })();
+  }
+
+  /**
+   * Feed the tool log from the complete messages.
+   *
+   * The assistant message is where a tool call's input is whole — the stream
+   * events only carry it as JSON fragments — and the user message that follows
+   * is where its result lands. Both are on the same loop the transcript is
+   * relayed from, so nothing is observed that a client could not; this only
+   * keeps a note of it.
+   *
+   * Content is read loosely on purpose. The SDK's message types are exact,
+   * but a log that threw on an unexpected block shape would take the session
+   * down with it, and this is the one place in the loop that must not.
+   */
+  #logToolBlocks(live: LiveSession, message: SDKMessage): void {
+    if (message.type === "assistant") {
+      for (const block of message.message.content) {
+        if (block.type === "tool_use") {
+          this.toolLog.start({
+            id: block.id,
+            userId: live.userId,
+            sessionId: live.record.id,
+            name: block.name,
+            input: block.input,
+          });
+        }
+      }
+      return;
+    }
+    if (message.type === "user") {
+      const content: unknown = message.message.content;
+      if (!Array.isArray(content)) return;
+      for (const block of content as Record<string, unknown>[]) {
+        if (block?.type === "tool_result" && typeof block.tool_use_id === "string") {
+          this.toolLog.finish({
+            id: block.tool_use_id,
+            isError: block.is_error === true,
+            content: block.content,
+          });
+        }
+      }
+    }
   }
 
   /**

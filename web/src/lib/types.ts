@@ -151,6 +151,32 @@ export type Health = {
 };
 
 /**
+ * One tool call, as the backend logs it. Mirrors `ToolCall` in
+ * `src/server/tool-log.ts`; the monitor page draws these both from the live
+ * stream and from Mongo, so the two must agree.
+ */
+export type ToolCall = {
+  /** The SDK's `tool_use` id. */
+  id: string;
+  userId: string;
+  sessionId: string;
+  /** The full name, `mcp__<server>__<tool>` or a built-in. */
+  name: string;
+  kind: "mcp" | "builtin";
+  server: string | null;
+  tool: string;
+  /** The first 200 characters of the input as JSON. */
+  inputPreview: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  /** `null` while the call is still running. */
+  ok: boolean | null;
+  resultBytes: number | null;
+  decision: "auto" | "allowed" | "denied" | "expired" | null;
+};
+
+/**
  * What the transcript is made of — the client's assembled view of the stream.
  *
  * `streaming` means the item is still being appended to by token deltas; the

@@ -6328,3 +6328,306 @@ a.ghost.auth-submit {
   color: var(--ink);
   text-decoration: underline;
 }
+
+/* ---------------------------------------------------------------- monitor
+   The MCP Monitor: four tiles for the week, then one list of calls that
+   grows at the top while the page is open. The list is a grid with fixed
+   columns for the parts that align — dot, clock, name, meta — and one
+   flexible column for the input preview, which is the only thing on a row
+   that can be long and the first thing to give way. */
+
+.mon-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mon-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.mon-tile-value {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.mon-tile.is-bad .mon-tile-value {
+  color: var(--bad);
+}
+
+.mon-tile-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+}
+
+.mon-tile-detail {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-38);
+}
+
+.mon-tile-list .mon-tile-label {
+  margin-bottom: 4px;
+}
+
+.mon-top {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mon-top li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mon-top code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.mon-top span {
+  color: var(--ink-55);
+}
+
+.mon-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.mon-feed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-38);
+}
+
+.mon-feed-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-38);
+}
+
+.mon-feed.is-live {
+  color: var(--ok);
+}
+
+.mon-feed.is-live .mon-feed-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+  animation: conn-breathe 2.4s ease-in-out infinite;
+}
+
+.mon-feed.is-offline {
+  color: var(--bad);
+}
+
+.mon-feed.is-offline .mon-feed-dot {
+  background: var(--bad);
+  border-color: var(--bad);
+}
+
+.mon-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-80);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mon-switch input {
+  margin: 0;
+  accent-color: var(--ink);
+}
+
+.mon-empty {
+  margin: 0;
+  padding: 26px 0 8px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink-38);
+  text-align: center;
+}
+
+.mon-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mon-row {
+  display: grid;
+  grid-template-columns: 8px 62px minmax(150px, 220px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mon-row:last-child {
+  border-bottom: 0;
+}
+
+/* A call that landed while the page was open. One flash of the row's ground,
+   so an eye on the list catches the arrival without a colour that stays. */
+.mon-row.is-new {
+  animation: mon-land 1.6s ease-out;
+}
+
+@keyframes mon-land {
+  from {
+    background: var(--panel-3);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.mon-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink-38);
+}
+
+.mon-row.is-ok .mon-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.mon-row.is-bad .mon-dot {
+  background: var(--bad);
+  border-color: var(--bad);
+}
+
+.mon-row.is-running .mon-dot {
+  border-color: var(--ink);
+  animation: conn-breathe 1.2s ease-in-out infinite;
+}
+
+.mon-time {
+  color: var(--ink-38);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.mon-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.mon-name code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--ink);
+}
+
+.mon-server {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-38);
+}
+
+.mon-input {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-55);
+}
+
+.mon-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 110px;
+  font-size: 11px;
+  color: var(--ink-55);
+  white-space: nowrap;
+}
+
+.mon-decision {
+  color: var(--ink-38);
+}
+
+.mon-row.is-bad .mon-decision {
+  color: var(--bad);
+}
+
+.mon-running {
+  color: var(--ink);
+}
+
+.mon-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+.mon-error {
+  margin: 0;
+  font-size: 12px;
+  color: var(--bad);
+}
+
+@media (max-width: 900px) {
+  .mon-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .mon-row {
+    grid-template-columns: 8px 62px minmax(0, 1fr) auto;
+  }
+
+  .mon-input {
+    display: none;
+  }
+}
