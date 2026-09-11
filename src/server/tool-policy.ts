@@ -283,11 +283,15 @@ const GIT_READ: ReadonlySet<string> = new Set([
  * dialog — the failure mode is one more question, not one fewer.
  */
 export function isReadOnlyCommand(command: string): boolean {
-  if (/[<>]|\btee\b|\beval\b|\bsudo\b/.test(command)) return false;
-  if (/\b(node|python3?|ruby|perl|bash|sh|pwsh|powershell)\b\s+(-e|-c|-Command)/i.test(command)) {
+  // Sending stderr to nowhere, or folding it into stdout, writes nothing.
+  // Taken out before the redirection test so `cat x 2>/dev/null | tail` —
+  // the shape of half the plugin's own reads — is still a read.
+  const text = command.replace(/2>\s*\/dev\/null|2>&1/g, "");
+  if (/[<>]|\btee\b|\beval\b|\bsudo\b/.test(text)) return false;
+  if (/\b(node|python3?|ruby|perl|bash|sh|pwsh|powershell)\b\s+(-e|-c|-Command)/i.test(text)) {
     return false;
   }
-  const parts = command
+  const parts = text
     .split(/\n|&&|\|\||;|\|/)
     .map((part) => part.trim())
     .filter((part) => part !== "");
