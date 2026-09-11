@@ -6366,8 +6366,8 @@ a.ghost.auth-submit {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1 1 200px;
-  max-width: 300px;
+  flex: 1 1 240px;
+  max-width: 380px;
   min-width: 0;
   padding: 0 12px;
   color: var(--ink-38);
@@ -6572,9 +6572,80 @@ a.ghost.auth-submit {
   color: var(--ink-38);
 }
 
+/* The switch and the clear button, pushed to the far end of the row. */
+.mon-filters-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
 .mon-clear {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+/* Red on hover, because it throws the filters away. The base ghost hover
+   lifts to ink; this one says what is about to happen instead. */
+.mon-clear:hover:not(:disabled) {
+  border-color: var(--bad);
+  color: var(--bad);
+  background: transparent;
+}
+
+/* A checkbox the app draws. The native one is the operating system's, in
+   the operating system's colours, and it sat on the filter row looking like
+   the one thing there that was not ours. `appearance: none` takes it away
+   and the box, the tick and the states are drawn here. */
+.check {
+  appearance: none;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  background: var(--panel);
+  border: 1px solid var(--ink-38);
+  border-radius: 4px;
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.check::before {
+  content: "";
+  width: 9px;
+  height: 5px;
+  border-left: 2px solid var(--on-ink);
+  border-bottom: 2px solid var(--on-ink);
+  /* Up a hair so the tick's visual weight sits at the centre of the box. */
+  transform: translateY(-1px) rotate(-45deg) scale(0);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.check:checked {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.check:checked::before {
+  transform: translateY(-1px) rotate(-45deg) scale(1);
+}
+
+.check:hover:not(:checked):not(:disabled) {
+  border-color: var(--ink);
+}
+
+.check:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.check:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .mon-day {

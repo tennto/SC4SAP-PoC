@@ -48,7 +48,7 @@ type Filters = {
   mcpOnly: boolean;
   status: Status;
   q: string;
-  /** `YYYY-MM-DD`, or empty. Read as UTC days, which is what the rows are in. */
+  /** `YYYY-MM-DD` in local time, or empty. */
   from: string;
   to: string;
   order: Order;
@@ -75,14 +75,34 @@ const ORDER_OPTIONS: { value: Order; label: string }[] = [
   { value: "oldest", label: "Oldest first" },
 ];
 
-/** `14:09:44` — the time only; the date is in the row's title. */
+/**
+ * Times are the reader's, not the server's. The rows are stamped in UTC, and
+ * the first version showed them that way; a call made at ten past midnight
+ * in Seoul then sat under yesterday's date, and a range picked for "today"
+ * missed it. Everything here — the clock, the day, the range — is local.
+ */
+const two = (value: number): string => String(value).padStart(2, "0");
+
+/** `14:09:44` — the time only; the full stamp is in the row's title. */
 function clock(iso: string): string {
-  return iso.slice(11, 19);
+  const at = new Date(iso);
+  return `${two(at.getHours())}:${two(at.getMinutes())}:${two(at.getSeconds())}`;
+}
+
+/** `2026-09-12`, in local time. The shape the range filter holds. */
+function localDay(iso: string): string {
+  const at = new Date(iso);
+  return `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}`;
 }
 
 /** `09-12` — the day, shown when the list spans more than one. */
 function day(iso: string): string {
-  return iso.slice(5, 10);
+  return localDay(iso).slice(5);
+}
+
+/** `2026-09-12 14:09:44` — the row's title. */
+function stamp(iso: string): string {
+  return `${localDay(iso)} ${clock(iso)}`;
 }
 
 function duration(ms: number | null): string {
@@ -117,10 +137,15 @@ const DECISION_LABEL: Record<NonNullable<ToolCall["decision"]>, string> = {
   expired: "unanswered",
 };
 
-/** The exclusive end of a `YYYY-MM-DD` day, as an ISO instant. */
+/** Local midnight at the start of a `YYYY-MM-DD` day, as an ISO instant. */
+function dayStart(date: string): string {
+  return new Date(`${date}T00:00:00`).toISOString();
+}
+
+/** The exclusive end of a `YYYY-MM-DD` day — the next local midnight. */
 function dayAfter(date: string): string {
-  const end = new Date(`${date}T00:00:00.000Z`);
-  end.setUTCDate(end.getUTCDate() + 1);
+  const end = new Date(`${date}T00:00:00`);
+  end.setDate(end.getDate() + 1);
   return end.toISOString();
 }
 
@@ -131,8 +156,9 @@ function matches(call: ToolCall, filters: Filters): boolean {
   if (filters.status === "ok" && state !== "ok") return false;
   if (filters.status === "failed" && state !== "bad") return false;
   if (filters.status === "running" && state !== "running") return false;
-  if (filters.from && call.startedAt < `${filters.from}T00:00:00.000Z`) return false;
-  if (filters.to && call.startedAt >= dayAfter(filters.to)) return false;
+  const at = Date.parse(call.startedAt);
+  if (filters.from && at < Date.parse(dayStart(filters.from))) return false;
+  if (filters.to && at >= Date.parse(dayAfter(filters.to))) return false;
   const q = filters.q.trim().toLowerCase();
   if (
     q &&
@@ -150,7 +176,7 @@ function queryOf(filters: Filters, extra: Record<string, string>): string {
   if (filters.mcpOnly) query.set("mcp", "1");
   if (filters.status !== "all") query.set("status", filters.status);
   if (filters.q.trim()) query.set("q", filters.q.trim());
-  if (filters.from) query.set("from", `${filters.from}T00:00:00.000Z`);
+  if (filters.from) query.set("from", dayStart(filters.from));
   if (filters.to) query.set("to", dayAfter(filters.to));
   return query.toString();
 }
@@ -388,27 +414,30 @@ export function MonitorFeed({
           />
         </div>
 
-        <label className="mon-switch">
-          <input
-            type="checkbox"
-            checked={filters.mcpOnly}
-            onChange={(event) => set("mcpOnly", event.target.checked)}
-          />
-          MCP only
-        </label>
+        <div className="mon-filters-end">
+          <label className="mon-switch">
+            <input
+              type="checkbox"
+              className="check"
+              checked={filters.mcpOnly}
+              onChange={(event) => set("mcpOnly", event.target.checked)}
+            />
+            <span>MCP only</span>
+          </label>
 
-        {filtered ? (
-          <button
-            type="button"
-            className="ghost mon-clear"
-            onClick={() => {
-              setSearch("");
-              setFilters(DEFAULT_FILTERS);
-            }}
-          >
-            <Icon name="x" /> Clear
-          </button>
-        ) : null}
+          {filtered ? (
+            <button
+              type="button"
+              className="ghost mon-clear"
+              onClick={() => {
+                setSearch("");
+                setFilters(DEFAULT_FILTERS);
+              }}
+            >
+              <Icon name="trash" /> Clear
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {visible.length === 0 ? (
@@ -429,7 +458,7 @@ export function MonitorFeed({
               <li
                 key={call.id}
                 className={`mon-row is-${state}${arrived.current.has(call.id) ? " is-new" : ""}`}
-                title={`${call.startedAt.replace("T", " ").slice(0, 19)} UTC · session ${call.sessionId}`}
+                title={`${stamp(call.startedAt)} · session ${call.sessionId}`}
               >
                 <span className="mon-dot" aria-hidden="true" />
                 <span className="mon-time">

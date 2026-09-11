@@ -13,9 +13,8 @@
  * starts the range, a second finishes it, and clicking the same day twice
  * gives that single day. Presets cover the ranges people actually reach for.
  *
- * Days are UTC days. The rows this filters are stamped in UTC and the times
- * shown beside them are UTC, so a range drawn in local days would not line up
- * with what is on screen.
+ * Days are the reader's local days, like every time the monitor shows. The
+ * rows are stamped in UTC underneath; the feed converts at the edges.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
@@ -29,18 +28,21 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-function iso(year: number, month: number, day: number): string {
-  return new Date(Date.UTC(year, month, day)).toISOString().slice(0, 10);
+const two = (value: number): string => String(value).padStart(2, "0");
+
+/** `YYYY-MM-DD` of a local date. */
+function iso(value: Date): string {
+  return `${value.getFullYear()}-${two(value.getMonth() + 1)}-${two(value.getDate())}`;
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return iso(new Date());
 }
 
 function shiftDays(date: string, days: number): string {
-  const value = new Date(`${date}T00:00:00.000Z`);
-  value.setUTCDate(value.getUTCDate() + days);
-  return value.toISOString().slice(0, 10);
+  const value = new Date(`${date}T00:00:00`);
+  value.setDate(value.getDate() + days);
+  return iso(value);
 }
 
 /** `Sep 12` — enough to read a range at a glance; the year is the current one. */
@@ -65,17 +67,14 @@ const PRESETS: { label: string; range: () => DateRange }[] = [
 
 /** The 6×7 grid of a month: leading and trailing days of the neighbours included. */
 function gridOf(year: number, month: number): { date: string; inMonth: boolean }[] {
-  const first = new Date(Date.UTC(year, month, 1));
+  const first = new Date(year, month, 1);
   // Monday-first: JS Sunday is 0, so shift it to the end.
-  const lead = (first.getUTCDay() + 6) % 7;
+  const lead = (first.getDay() + 6) % 7;
   const cells: { date: string; inMonth: boolean }[] = [];
   for (let i = 0; i < 42; i++) {
     const day = i - lead + 1;
-    const value = new Date(Date.UTC(year, month, day));
-    cells.push({
-      date: value.toISOString().slice(0, 10),
-      inMonth: value.getUTCMonth() === month,
-    });
+    const value = new Date(year, month, day);
+    cells.push({ date: iso(value), inMonth: value.getMonth() === month });
   }
   return cells;
 }
@@ -137,8 +136,8 @@ export function DateRangePicker({
 
   function step(months: number): void {
     setView((current) => {
-      const value = new Date(Date.UTC(current.year, current.month + months, 1));
-      return { year: value.getUTCFullYear(), month: value.getUTCMonth() };
+      const value = new Date(current.year, current.month + months, 1);
+      return { year: value.getFullYear(), month: value.getMonth() };
     });
   }
 
@@ -265,7 +264,7 @@ export function DateRangePicker({
           <p className="daterange-hint">
             {pending
               ? `From ${short(pending)} — pick the last day.`
-              : "Pick the first day, then the last. UTC."}
+              : "Pick the first day, then the last."}
           </p>
         </div>
       ) : null}
