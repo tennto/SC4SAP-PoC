@@ -169,6 +169,22 @@ export const api = {
       body: JSON.stringify(response),
     }),
 
+  /**
+   * Stop asking about SAP read-class tools for this session, or start again.
+   *
+   * Scoped to the live backend session on purpose: it dies with the session,
+   * so a chat revived tomorrow asks again rather than inheriting a switch
+   * nobody remembers flipping.
+   */
+  setAutoApprove: (
+    id: string,
+    enabled: boolean,
+  ): Promise<{ ok: boolean; enabled: boolean }> =>
+    request<{ ok: boolean; enabled: boolean }>(`/sessions/${id}/auto-approve`, {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    }),
+
   /** Where 3-2 opens the stream. Same-origin, so `EventSource` works as-is. */
   streamUrl: (id: string): string => `/api/sessions/${id}/stream`,
 };

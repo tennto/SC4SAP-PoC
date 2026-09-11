@@ -7,6 +7,7 @@
  *   DELETE /sessions/:id          close
  *   POST   /sessions/:id/messages queue a user turn (202; output arrives on the stream)
  *   GET    /sessions/:id/stream   SSE of everything the SDK emits
+ *   POST   /sessions/:id/auto-approve  wave SAP reads through for this session
  *
  * The stream carries whole SDK messages. Token-level `text_delta` relay is
  * plan item 2-3, which turns on `includePartialMessages` and splits these into
@@ -155,6 +156,29 @@ export function buildApp(manager: SessionManager): FastifyInstance {
         return reply.code(409).send({ error: "session is not running a turn" });
       }
       return { ok: true };
+    },
+  );
+
+  /**
+   * Stop asking about SAP read-class tools for this session, or start again.
+   *
+   * A session-scoped switch rather than a config setting: it is granted by the
+   * person watching this conversation, dies with it, and cannot widen what the
+   * tool policy already considers a read.
+   */
+  app.post<{ Params: IdParams; Body: { enabled?: boolean } | undefined }>(
+    "/sessions/:id/auto-approve",
+    async (request, reply) => {
+      const enabled = request.body?.enabled;
+      if (typeof enabled !== "boolean") {
+        return reply
+          .code(400)
+          .send({ error: "body.enabled must be a boolean" });
+      }
+      if (manager.setAutoApprove(request.params.id, enabled) === "unknown-session") {
+        return reply.code(404).send({ error: "unknown session" });
+      }
+      return { ok: true, enabled };
     },
   );
 

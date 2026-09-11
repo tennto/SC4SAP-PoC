@@ -114,6 +114,25 @@ export function classifySapTool(bareName: string): ToolClass {
   return "other";
 }
 
+/**
+ * Whether a session's "allow all SAP reads" switch may wave this call through.
+ *
+ * Runs the same classifier the auto-allow list is built from, so the switch
+ * can never grant more than a healthy discovery would have granted anyway:
+ * SAP tools only, read class only — which excludes every write pattern and
+ * both row-extraction tools by construction rather than by a second list that
+ * could drift away from this one.
+ *
+ * The agent's own tools are deliberately not covered. `Bash`, `Write`, `Edit`
+ * and `WebFetch` change or leave the machine the server runs on, and a switch
+ * flipped to stop being asked about reading ABAP source is not consent to
+ * those.
+ */
+export function isSapReadTool(toolName: string): boolean {
+  if (!toolName.startsWith(SAP_TOOL_PREFIX)) return false;
+  return classifySapTool(toolName.slice(SAP_TOOL_PREFIX.length)) === "read";
+}
+
 export type ToolPolicy = {
   /** Auto-approved, no prompt. */
   allowedTools: string[];

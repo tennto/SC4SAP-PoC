@@ -34,6 +34,14 @@ type State = {
   status: SessionStatus | null;
   /** Approvals blocking the turn. 3-3 renders these; 3-2 only tracks them. */
   pending: PendingApproval[];
+  /**
+   * Whether SAP reads are being waved through.
+   *
+   * Read from the stream rather than from the button that set it, so a second
+   * tab watching the same session shows the switch someone flipped in the
+   * first one instead of its own stale idea of it.
+   */
+  autoApprove: boolean;
   error: string | null;
   /**
    * How many errors have arrived.
@@ -55,6 +63,7 @@ const EMPTY: State = {
   items: [],
   status: null,
   pending: [],
+  autoApprove: false,
   error: null,
   errorSeq: 0,
   connected: false,
@@ -296,6 +305,9 @@ function reduce(state: State, action: Action): State {
         pending: state.pending.filter((request) => request.reqId !== event.reqId),
       };
 
+    case "auto_approve":
+      return { ...state, autoApprove: event.enabled };
+
     case "error":
       return { ...state, error: event.error, errorSeq: state.errorSeq + 1 };
 
@@ -309,6 +321,7 @@ const EVENT_TYPES: SessionEvent["type"][] = [
   "message",
   "permission_request",
   "permission_resolved",
+  "auto_approve",
   "status",
   "turn_start",
   "turn_end",
@@ -323,6 +336,8 @@ export type SessionStream = {
   items: TranscriptItem[];
   status: SessionStatus | null;
   pending: PendingApproval[];
+  /** True while SAP read-class calls are being waved through. */
+  autoApprove: boolean;
   error: string | null;
   /** Changes on every error, so two identical ones are still two. */
   errorSeq: number;
@@ -373,6 +388,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
     items: state.items,
     status: state.status,
     pending: state.pending,
+    autoApprove: state.autoApprove,
     error: state.error,
     errorSeq: state.errorSeq,
     connected: state.connected,

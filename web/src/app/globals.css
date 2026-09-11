@@ -1328,6 +1328,38 @@ button.primary:hover:not(:disabled) {
   padding: 0 20px;
 }
 
+/* ---------- auto-approve bar ----------
+   Shares the composer's measure so it reads as a label on the box below it
+   rather than as a banner about the whole page. Deliberately quiet: it states
+   a standing condition, and a condition the operator chose does not need to
+   shout at them every time they look at the screen. */
+.auto-approve-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(var(--measure), 100%);
+  margin: 0 auto 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--ink-55);
+}
+
+/* Underlined rather than boxed: the way out of a mode should look like a link
+   back, not a second action competing with Send. */
+.auto-approve-bar button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink-80);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* The transcript shares the composer's measure, so an answer and the box you
    reply in sit on the same two edges. */
 .stage-body .transcript {
