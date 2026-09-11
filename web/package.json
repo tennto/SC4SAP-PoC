@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "grammars:refresh": "node scripts/refresh-grammars.mjs"
   },
   "dependencies": {
     "mongodb": "^7.5.0",
@@ -15,7 +16,8 @@
     "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "shiki": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20",

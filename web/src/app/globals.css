@@ -1858,6 +1858,52 @@ button.primary:hover:not(:disabled) {
   white-space: pre;
 }
 
+/* ---------- highlighted ABAP / CDS ----------
+   Shiki renders its own <pre class="shiki">, so this wrapper carries what
+   `.markdown pre` carries for every other fence: the box, and the horizontal
+   scroll that keeps a wide SELECT from stretching the bubble. */
+.markdown-code {
+  margin: 0 0 10px;
+  overflow-x: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.markdown-code pre.shiki {
+  margin: 0;
+  padding: 12px 14px;
+  /* Shiki paints a ground from the theme it was built with. The wrapper above
+     already has one, in the app's own colours. */
+  background: transparent !important;
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+/* One render serves both themes: `defaultColor: false` puts --shiki-light and
+   --shiki-dark on every span and no colour, and these three rules choose. The
+   shape matches the theme blocks at the top of this file, including the
+   :not([data-theme="light"]) guard — without it a reader on a dark machine who
+   picks light gets dark code on a light bubble. */
+.markdown-code .shiki,
+.markdown-code .shiki span {
+  color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .markdown-code .shiki,
+  :root:not([data-theme="light"]) .markdown-code .shiki span {
+    color: var(--shiki-dark);
+  }
+}
+
+:root[data-theme="dark"] .markdown-code .shiki,
+:root[data-theme="dark"] .markdown-code .shiki span {
+  color: var(--shiki-dark);
+}
+
 /* Wide tables scroll inside the bubble rather than stretching it. */
 .markdown-table {
   overflow-x: auto;
