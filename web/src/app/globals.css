@@ -4500,7 +4500,14 @@ button.link-button:disabled {
     /* It is dragged, so it needs to be catchable: a 5px bar is a hard target,
        and the padding gives it a 15px-tall hit area without making the mark on
        screen any heavier. `background-clip` keeps the track painted at its own
-       size rather than filling the padding. */
+       size rather than filling the padding.
+
+       `content-box` is load-bearing, not tidiness. Under the app's global
+       `border-box` the height above would have *included* the padding, leaving
+       a content box of zero — which is exactly what shipped: the hit area was
+       there and could be dragged, and both the track and the thumb were 0px
+       tall and therefore invisible. */
+    box-sizing: content-box;
     padding: 5px 0;
     background-clip: content-box;
     cursor: grab;
