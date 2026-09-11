@@ -520,6 +520,30 @@ export class SessionManager {
               hooks: [
                 async (input, toolUseID, { signal }) => {
                   if (input.hook_event_name !== "PreToolUse") return {};
+
+                  // Economy: the sub-agent dispatch goes through with its
+                  // model brought down to Sonnet. Here and not only in
+                  // `canUseTool`, because that callback was never consulted
+                  // for `Agent` — a dispatch with `model: "opus"` went out
+                  // unchanged on an economy session — and this hook is the
+                  // one place the SDK does stop for every tool.
+                  const economyLive = this.#sessions.get(id);
+                  if (input.tool_name === AGENT_TOOL && economyLive?.record.economy) {
+                    const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+                    const requested = toolInput.model;
+                    this.toolLog.decide(toolUseID ?? input.tool_use_id, "auto");
+                    return {
+                      hookSpecificOutput: {
+                        hookEventName: "PreToolUse" as const,
+                        permissionDecision: "allow" as const,
+                        permissionDecisionReason: "Economy: sub-agents run on Sonnet.",
+                        ...(typeof requested === "string" && /opus/i.test(requested)
+                          ? { updatedInput: { ...toolInput, model: "sonnet" } }
+                          : {}),
+                      },
+                    };
+                  }
+
                   if (!needsHookApproval(input.tool_name)) return {};
 
                   const result = await this.#requestApproval(
@@ -922,6 +946,11 @@ export class SessionManager {
     });
 
     await live.session.interrupt().catch(() => {});
+    // The interrupt takes the background reviewers down with the turn. A
+    // `background_tasks_changed` naming them can still arrive after this and
+    // put the session back to busy; an empty set here is what it should
+    // find when it does.
+    live.backgroundTasks.clear();
     this.#setStatus(live, "idle");
     return "stopped";
   }
@@ -1079,6 +1108,12 @@ export class SessionManager {
                 type: "error",
                 error: `The background review ${note.status === "failed" ? "failed" : "was stopped"} before it reported.`,
               });
+              // The parent turn ended when it dispatched, so nothing else
+              // ends this one: a stopped reviewer left the session `busy`
+              // for good, with a Stop button over a run that was over.
+              if (live.backgroundTasks.size === 0) {
+                this.#setStatus(live, "idle");
+              }
             }
           }
 
