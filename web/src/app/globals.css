@@ -4402,17 +4402,49 @@ button.link-button:disabled {
   .session-rail {
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    max-height: 168px;
+    /* Height from one row of cards, not from a cap. The cap squeezed the list
+       to 24px against 52px of card, so the strip was clipped top and bottom
+       and the vertical overflow it created then competed with the sideways
+       swipe this strip exists for. */
+    max-height: none;
+    /* A grid item will not shrink below its content unless told to, which is
+       how the strip ended up wider than the screen — and a scroll container
+       wider than the viewport cannot be scrolled, only overflowed. */
+    min-width: 0;
   }
 
   .session-list {
     flex-direction: row;
+    /*
+     * One axis, on purpose.
+     *
+     * The column layout sets `overflow-y: auto`, and leaving it on here meant
+     * the strip scrolled both ways at once. A browser has to decide which axis
+     * a drag belongs to, and on a strip barely taller than one card a mostly
+     * sideways swipe kept being read as a vertical one — so the second
+     * conversation was visible at the edge and could not be reached.
+     */
     overflow-x: auto;
+    overflow-y: hidden;
+    /* Reserved for a vertical bar that no longer exists here, and it was
+       taking height from a strip that has little to spare. */
+    scrollbar-gutter: auto;
+    /* Keep the swipe in the strip. Past the last card it would otherwise be
+       handed to the browser, which reads a rightward drag at the edge as
+       "go back" — losing the page instead of showing a conversation. */
+    overscroll-behavior-x: contain;
+    /* Cards come to rest aligned rather than half-cut, so what stops under the
+       thumb is a whole title and not the middle of one. `proximity` rather
+       than `mandatory`: a flick across four conversations should be able to
+       overshoot to the end instead of being caught by every card on the way. */
+    scroll-snap-type: x proximity;
+    min-width: 0;
   }
 
   .session-item {
     flex: none;
     min-width: 190px;
+    scroll-snap-align: start;
   }
 
   .page {
