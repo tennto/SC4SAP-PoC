@@ -9,3 +9,15 @@ dist/
 # (`npm run docs:pdf`) and is a megabyte of binary that changes wholesale on
 # every edit.
 docs/*.pdf
+
+# Per-machine plugin state: the active SAP profile pointer, tool-error records,
+# sub-agent tracking, session logs. Written by the plugin as it runs, different
+# on every machine, and of no use to anyone else's checkout. Both the repo root
+# and `web/` get one, depending on which directory the server was started from.
+.sc4sap/
+web/.sc4sap/
+
+# Scratch for screenshots and repro material dropped in while working on a
+# report. Deliberately not history: the useful part of a screenshot is the
+# change it led to, and that is in the commit.
+.test/
