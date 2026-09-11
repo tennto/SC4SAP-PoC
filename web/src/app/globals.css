@@ -4439,6 +4439,52 @@ button.link-button:disabled {
        overshoot to the end instead of being caught by every card on the way. */
     scroll-snap-type: x proximity;
     min-width: 0;
+    /* Named so the fade below can follow this element's scroll position from
+       outside it. Ignored where scroll-driven animation is not supported. */
+    scroll-timeline: --sessions inline;
+  }
+
+  /*
+   * The strip scrolls, and on a touch screen nothing says so.
+   *
+   * Overlay scrollbars are invisible at rest, so the only hint was a card
+   * clipped at the edge — which reads as "clipped", not as "there is more".
+   * This is the standard answer: the strip fades out where it continues, which
+   * is a cue people already know how to read.
+   *
+   * Drawn on the rail rather than on the scroller, because a pseudo-element
+   * inside a scroll container scrolls away with the content.
+   */
+  .session-rail {
+    position: relative;
+  }
+
+  .session-rail::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    /* Clears the heading, so the fade sits over the cards and not over the
+       word SESSIONS. */
+    top: 56px;
+    width: 44px;
+    pointer-events: none;
+    background: linear-gradient(to left, var(--panel), transparent);
+  }
+
+  /* Where the browser can follow a scroller's position, the cue goes away once
+     there is nothing more to reach — a fade that never leaves is just a
+     gradient, and stops being information. */
+  @supports (animation-timeline: scroll()) {
+    .session-rail {
+      timeline-scope: --sessions;
+    }
+
+    .session-rail::after {
+      animation: session-edge-fade linear both;
+      animation-timeline: --sessions;
+      animation-range: calc(100% - 44px) 100%;
+    }
   }
 
   .session-item {
@@ -4453,6 +4499,17 @@ button.link-button:disabled {
 
   .msg {
     max-width: 100%;
+  }
+}
+
+/* Runs over the last stretch of the session strip's scroll, so the edge cue is
+   at full strength while there is more to reach and gone once there is not. */
+@keyframes session-edge-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
