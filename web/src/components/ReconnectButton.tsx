@@ -16,23 +16,33 @@
  * is wanted. A control that answers sometimes is worse than one that never
  * does, because the silence has to be interpreted.
  *
- * So it asks the backend directly rather than only re-rendering the page. The
- * response is the thing reported, which means the dialog says what this press
- * found rather than what the last render happened to be holding, and a request
- * that fails outright has somewhere to be reported instead of vanishing.
- * `router.refresh()` then redraws the panel from the same check.
+ * So it asks directly rather than only re-rendering the page. Two questions,
+ * in parallel, because they have nothing to do with each other:
  *
- * `?fresh=1` matters here. The backend caches the key check for half a minute
- * so that ordinary renders do not each cost a round trip to Anthropic; someone
- * pressing a button labelled Reconnect is owed a real check, and without the
- * bypass this returned a cached answer instantly — no delay, no change, no
- * sign it had run.
+ * - The backend's `/health`, with `?fresh=1`. The backend caches its key check
+ *   for half a minute so that ordinary renders do not each cost a round trip
+ *   to Anthropic; someone pressing a button labelled Reconnect is owed a real
+ *   check, and without the bypass this returned a cached answer instantly —
+ *   no delay, no change, no sign it had run.
+ * - This account's stored SAP connection, through `/api/account/connection/
+ *   check`. That runs on the Next server, which is the only place the sealed
+ *   password can be opened, and it writes what it finds to the row — so the
+ *   SAP row of the panel, which is server-rendered, redraws from the same
+ *   answer this press got.
  *
- * What it still is not is a reconnection. Two of the three rows have a real
- * source behind them — the backend health call, and the key check the backend
- * performs against `GET /v1/models`; the SAP row does not, so there is no SAP
- * connection here to re-establish. See `lib/account.ts`, and the README's
- * "Not yet done" for what Phase 5-2/5-3 has to land first.
+ * `router.refresh()` then redraws the panel from both.
+ *
+ * **Every failure names a way onward.** A dialog that reports "the SAP system
+ * refused that user and password" and offers only OK has told the reader what
+ * is wrong and left them to work out where to go about it. The SAP Doctor
+ * skill is that place — it walks the plugin, the MCP server and the SAP
+ * connection layer by layer and says what to fix — so a failed press offers
+ * it as the primary button, and hands over what this press found so the run
+ * can start from the finding rather than from nothing. See `SkillForm`'s
+ * `autorun`.
+ *
+ * What it still is not is a reconnection. Nothing here re-establishes
+ * anything; it measures, and says what it measured.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -47,12 +57,33 @@ type Outcome =
   /** Healthy, and it was not before this press. Something did happen. */
   | { kind: "reconnected" }
   /**
-   * The check ran and something answered badly. `remedy` is set when this
-   * button is not the thing that can fix it — see `check`.
+   * The check ran and something answered badly. `remedy` is set when neither
+   * this button nor the doctor is the thing that can fix it — see `check`.
    */
   | { kind: "problems"; detail: string; remedy: string | null }
   /** The check could not be run at all. */
   | { kind: "unreachable"; detail: string };
+
+/**
+ * Ask the Next server to probe the stored SAP connection.
+ *
+ * Not on `api`, which is the door to the backend: this is a route of the web
+ * app's own, and the one place in the app that can reach the sealed password.
+ */
+async function checkSap(): Promise<{ ok: true } | { ok: false; detail: string }> {
+  const response = await fetch("/api/account/connection/check", {
+    method: "POST",
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    detail?: string;
+    error?: string;
+  };
+  if (response.ok) return { ok: true };
+  return {
+    ok: false,
+    detail: body.error ?? `the check answered ${response.status}`,
+  };
+}
 
 export function ReconnectButton({
   online,
@@ -77,48 +108,89 @@ export function ReconnectButton({
     if (checking) return;
     setChecking(true);
     try {
-      const health = await api.health(true);
+      // `allSettled`, not `all`: a backend that is down must not stop the SAP
+      // probe from reporting, and the other way round. Each row gets its own
+      // sentence either way.
+      const [healthResult, sapResult] = await Promise.allSettled([
+        api.health(true),
+        checkSap(),
+      ]);
 
-      // Only rows with a source of their own can fail here. The SAP row is
-      // drawn from this same call rather than measured, so it has nothing to
-      // contribute — when it does, this is where it joins.
       const problems: string[] = [];
       let remedy: string | null = null;
 
-      if (health.claudeApi.state === "down") {
-        problems.push(`the Claude API key was refused — ${health.claudeApi.detail}`);
-        // Pressing this again will keep returning the same answer, however
-        // many times it is pressed, and a dialog that reports a failure while
-        // implying the button might fix it is worse than no dialog. The key
-        // is read from the backend's own environment at startup and there is
-        // nowhere in this app to replace it, so the way out is named here
-        // rather than left to be guessed at.
-        remedy =
-          "This button cannot replace it: the key is read from the backend's .env when the server starts, and there is no screen in this app that sets one yet. A valid key has to be put there and `npm run server` restarted.";
-      } else if (health.claudeApi.state === "unknown") {
-        // Not a refusal — the question went unanswered, and asking again is a
-        // reasonable thing to do about that.
+      if (healthResult.status === "rejected") {
+        // The proxy answers a dead backend with a 502 carrying its own
+        // sentence, so this is usually that sentence rather than a bare
+        // status. Nothing else can be reported about the backend's rows when
+        // the backend is not there to ask.
         problems.push(
-          `the Claude API key could not be checked — ${health.claudeApi.detail}`,
+          `the agent backend did not answer — ${(healthResult.reason as Error).message}`,
         );
+        // The doctor runs on that backend, so offering it here would offer
+        // a run with nowhere to run. Starting the server is the only step.
+        remedy =
+          "The doctor runs on the agent backend, so there is nothing to diagnose until it is started with `npm run server`.";
+      } else {
+        const health = healthResult.value;
+        if (health.claudeApi.state === "down") {
+          problems.push(`the Claude API key was refused — ${health.claudeApi.detail}`);
+          // Pressing this again will keep returning the same answer, however
+          // many times it is pressed, and neither this button nor the doctor
+          // can change a key the backend reads from its own environment at
+          // startup. The way out is named here rather than left to be
+          // guessed at.
+          remedy =
+            "Neither this button nor the doctor can replace it: the key is read from the backend's .env when the server starts, and there is no screen in this app that sets one yet. A valid key has to be put there and `npm run server` restarted.";
+        } else if (health.claudeApi.state === "unknown") {
+          // Not a refusal — the question went unanswered, and asking again is
+          // a reasonable thing to do about that.
+          problems.push(
+            `the Claude API key could not be checked — ${health.claudeApi.detail}`,
+          );
+        }
       }
 
-      if (problems.length > 0) {
-        setOutcome({ kind: "problems", detail: problems.join(", and "), remedy });
-      } else {
-        setOutcome({ kind: wasConnected ? "connected" : "reconnected" });
+      if (sapResult.status === "rejected") {
+        problems.push(
+          `the SAP connection could not be checked — ${(sapResult.reason as Error).message}`,
+        );
+      } else if (!sapResult.value.ok) {
+        problems.push(`the SAP system did not accept the connection — ${sapResult.value.detail}`);
       }
-    } catch (error) {
-      // The proxy answers a dead backend with a 502 carrying its own sentence,
-      // so this is usually that sentence rather than a bare status.
-      setOutcome({ kind: "unreachable", detail: (error as Error).message });
+
+      if (problems.length === 0) {
+        setOutcome({ kind: wasConnected ? "connected" : "reconnected" });
+      } else if (healthResult.status === "rejected" && sapResult.status === "rejected") {
+        setOutcome({ kind: "unreachable", detail: problems.join(", and ") });
+      } else {
+        setOutcome({ kind: "problems", detail: problems.join(", and "), remedy });
+      }
     } finally {
       setChecking(false);
       // The panel is server-rendered, so it redraws from a new render rather
-      // than from the response above. Same check either way: the fetch has
-      // just refilled the backend's cache, which this read hits.
+      // than from the responses above. Same checks either way: the health
+      // fetch has just refilled the backend's cache, and the SAP probe has
+      // just written its answer to the row.
       router.refresh();
     }
+  };
+
+  /**
+   * Hand the finding to the doctor and go.
+   *
+   * The detail rides in the URL rather than in storage because it belongs to
+   * this navigation and nothing else: a reload of the doctor page should not
+   * re-run against a failure from an hour ago, and `SkillForm` strips the
+   * query once it has read it for exactly that reason.
+   */
+  const diagnose = (detail: string): void => {
+    const query = new URLSearchParams({
+      autorun: "1",
+      // The detail is a sentence with its own full stop; do not add a second.
+      context: `The web dashboard's connection check has just failed: ${detail.replace(/\.$/, "")}. Start the diagnosis from that finding.`,
+    });
+    router.push(`/skills/sap-doctor?${query.toString()}`);
   };
 
   const dialog = outcome ? describe(outcome) : null;
@@ -142,24 +214,41 @@ export function ReconnectButton({
         {checking ? "Checking…" : online ? "Reconnect" : "Connect to server"}
       </button>
 
-      {dialog ? (
+      {dialog && outcome ? (
         <NoticeModal
           kind="Connection"
           icon={dialog.icon}
           heading={dialog.heading}
           description={dialog.description}
           onDismiss={() => setOutcome(null)}
+          action={
+            dialog.diagnose
+              ? {
+                  label: "Run SAP Doctor",
+                  icon: "stethoscope",
+                  onClick: () => diagnose(dialog.diagnose as string),
+                }
+              : undefined
+          }
         />
       ) : null}
     </>
   );
 }
 
-/** The dialog for one outcome. A switch, so a new outcome fails to compile. */
+/**
+ * The dialog for one outcome. A switch, so a new outcome fails to compile.
+ *
+ * `diagnose` is the finding to hand the doctor, and is set only on outcomes
+ * the doctor can do something about. A refused API key is not one: the doctor
+ * would walk every layer and arrive at the same sentence the dialog already
+ * holds.
+ */
 function describe(outcome: Outcome): {
   icon: string;
   heading: string;
   description: string;
+  diagnose: string | null;
 } {
   switch (outcome.kind) {
     case "connected":
@@ -167,14 +256,16 @@ function describe(outcome: Outcome): {
         icon: "check-circle",
         heading: "Everything is connected",
         description:
-          "Re-checked just now: the agent backend is answering and its Claude API key was accepted. Nothing needed reconnecting. Run diagnostics if you want the detail behind that.",
+          "Re-checked just now: the agent backend is answering, its Claude API key was accepted, and the SAP system accepted the stored logon. Nothing needed reconnecting. Run diagnostics if you want the detail behind that.",
+        diagnose: null,
       };
     case "reconnected":
       return {
         icon: "check-circle",
         heading: "Reconnected",
         description:
-          "Something was failing a moment ago and is answering again: the agent backend responded and its Claude API key was accepted. The connection panel behind this has caught up.",
+          "Something was failing a moment ago and is answering again: the agent backend responded, its Claude API key was accepted, and the SAP system accepted the stored logon. The connection panel behind this has caught up.",
+        diagnose: null,
       };
     case "problems":
       return {
@@ -185,14 +276,18 @@ function describe(outcome: Outcome): {
         // result of the press rather than as a standing fact.
         description: `Re-checked just now, and ${outcome.detail}. ${
           outcome.remedy ??
-          "The connection panel has the same answer against the row it belongs to."
+          "SAP Doctor can walk the plugin, the MCP server and the SAP connection layer by layer and say what to fix."
         }`,
+        diagnose: outcome.remedy ? null : outcome.detail,
       };
     case "unreachable":
       return {
         icon: "warning-circle",
         heading: "The check could not be run",
         description: `Nothing answered, so nothing about the connection can be reported either way: ${outcome.detail}`,
+        // The doctor runs on the backend. With the backend not answering
+        // there is nowhere for it to run.
+        diagnose: null,
       };
   }
 }

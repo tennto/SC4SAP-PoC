@@ -13,10 +13,18 @@ import type { SetupDraft } from "@/lib/setup";
  * sealed string it might mistake for a usable one.
  */
 
-/** Write, or overwrite. Setup can be run again; there is one row either way. */
+/**
+ * Write, or overwrite. Setup can be run again; there is one row either way.
+ *
+ * `verified` is the sentence the SAP probe returned a moment before this was
+ * called — both callers probe before they save, and a row saved without that
+ * would tell the dashboard the connection had never been checked, one second
+ * after it had been.
+ */
 export async function saveConnection(
   userId: string,
   draft: SetupDraft,
+  verified?: string,
 ): Promise<void> {
   const connection: ConnectionDoc = {
     adtUrl: draft.adtUrl.trim().replace(/\/+$/, ""),
@@ -28,6 +36,7 @@ export async function saveConnection(
     language: draft.language,
     apiKeySealed: seal(draft.apiKey.trim()),
     connectedAt: new Date(),
+    ...(verified ? { lastCheck: { ok: true, detail: verified, at: new Date() } } : {}),
   };
 
   const result = await (await users()).updateOne(
@@ -58,6 +67,8 @@ export type ConnectionSummary = {
   client: string;
   language: string;
   connectedAt: string;
+  /** ISO timestamps. `null` when the connection has never been probed. */
+  lastCheck: { ok: boolean; detail: string; at: string } | null;
 };
 
 export async function readConnection(
@@ -79,7 +90,33 @@ export async function readConnection(
     client: connection.client,
     language: connection.language,
     connectedAt: connection.connectedAt.toISOString(),
+    lastCheck: connection.lastCheck
+      ? {
+          ok: connection.lastCheck.ok,
+          detail: connection.lastCheck.detail,
+          at: connection.lastCheck.at.toISOString(),
+        }
+      : null,
   };
+}
+
+/**
+ * Record what a probe of the stored connection found.
+ *
+ * Separate from `saveConnection` because the probe runs far more often than
+ * the values change: every Reconnect press lands here, and a press that
+ * rewrote the sealed secrets to record a timestamp would be doing something
+ * it was never asked to do.
+ */
+export async function recordCheck(
+  userId: string,
+  result: { ok: boolean; detail: string },
+): Promise<void> {
+  if (!ObjectId.isValid(userId)) return;
+  await (await users()).updateOne(
+    { _id: new ObjectId(userId), connection: { $exists: true } },
+    { $set: { "connection.lastCheck": { ...result, at: new Date() } } },
+  );
 }
 
 /**

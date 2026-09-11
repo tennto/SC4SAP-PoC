@@ -31,7 +31,7 @@
  * system to draw, and no CSS in this app reaches inside it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 import { useSessionStream } from "@/hooks/useSessionStream";
 import { Icon } from "@/components/Icon";
@@ -93,6 +93,13 @@ function composePrompt(
   command: string,
   fields: readonly SkillField[],
   values: Record<string, Value>,
+  /**
+   * Something the run should start from that no field asked for: what the
+   * dashboard's Reconnect found, handed to the doctor. Goes after the fields
+   * as its own paragraph, which is where a skill reading `{{ARGUMENTS}}` finds
+   * it.
+   */
+  context: string | null = null,
 ): string {
   const lines: string[] = [];
   for (const field of fields) {
@@ -105,7 +112,10 @@ function composePrompt(
       lines.push(`${field.label}: ${value.trim()}`);
     }
   }
-  return lines.length > 0 ? `${command}\n\n${lines.join("\n")}` : command;
+  const parts = [command];
+  if (lines.length > 0) parts.push(lines.join("\n"));
+  if (context) parts.push(context);
+  return parts.join("\n\n");
 }
 
 /**
@@ -200,14 +210,26 @@ export function SkillForm({
   fields,
   /** The skill cannot run here — see `blockedReason`. */
   blocked,
+  autorun = null,
 }: {
   slug: string;
   command: string;
   title: string;
   fields: readonly SkillField[];
   blocked: boolean;
+  /**
+   * Start a run the moment the page opens, with this as its context.
+   *
+   * From `?autorun=1&context=...` on the URL: the dashboard's Reconnect sends
+   * a failed press here so the doctor starts from the finding rather than
+   * from an empty form. It wins over a remembered run, since someone arriving
+   * with a fresh failure wants it looked at, not last hour's report. The query
+   * is stripped once read, so a reload lands on the run, not on a second one.
+   */
+  autorun?: { context: string } | null;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [values, setValues] = useState<Record<string, Value>>(() =>
     initial(fields),
   );
@@ -251,12 +273,33 @@ export function SkillForm({
    * on the review still running rather than on an empty form. The stored text
    * only covers the case where that session no longer exists.
    */
+  const autorunFired = useRef(false);
   useEffect(() => {
+    // An autorun owns this mount: it wins over a remembered run on arrival,
+    // and once the query has been stripped and the page re-rendered without
+    // it, a remembered run from an earlier sitting must not come back over
+    // the top of the one just started.
+    if (autorun || autorunFired.current) return;
     const stored = readStoredRun(slug);
     if (!stored) return;
     setSessionId(stored.sessionId);
     setRestored(stored.answer || null);
-  }, [slug]);
+  }, [slug, autorun]);
+
+  /**
+   * The run the URL asked for. Once, on arrival, and the URL is rewritten
+   * without the query in the same breath so that nothing re-reads it: not a
+   * reload, not the back button, not a second mount of this component.
+   */
+  useEffect(() => {
+    if (!autorun || autorunFired.current) return;
+    autorunFired.current = true;
+    router.replace(pathname);
+    void run(autorun.context);
+    // `run` closes over the form's state, and this is meant to fire exactly
+    // once with whatever that state is on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autorun]);
 
   /**
    * The turn is running. `starting` covers the gap before the backend has said
@@ -486,7 +529,7 @@ export function SkillForm({
     }
   }
 
-  async function run(): Promise<void> {
+  async function run(context: string | null = null): Promise<void> {
     if (running || blocked) return;
     setStarting(true);
     setError(null);
@@ -495,7 +538,7 @@ export function SkillForm({
       setSessionId(session.id);
       await api.sendMessage(
         session.id,
-        composePrompt(command, fields, values),
+        composePrompt(command, fields, values, context),
         null,
         images.map(toAttachment),
       );

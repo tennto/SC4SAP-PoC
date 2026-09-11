@@ -154,6 +154,20 @@ export type ConnectionDoc = {
   apiKeySealed: string;
   /** When setup last completed. Rewritten if it is run again. */
   connectedAt: Date;
+  /**
+   * What the last probe of this connection found — see `checkSap`.
+   *
+   * Written by every place that runs the probe: setup, a settings save, and
+   * the dashboard's Reconnect. Read by the dashboard so its SAP row can say
+   * something measured rather than something assumed. Absent on rows written
+   * before this existed, which the dashboard draws as "not checked yet".
+   */
+  lastCheck?: {
+    ok: boolean;
+    /** The sentence `checkSap` returned or threw. Never a credential. */
+    detail: string;
+    at: Date;
+  };
 };
 
 /** A live sign-in. The token itself is never stored; see `lib/auth/session.ts`. */

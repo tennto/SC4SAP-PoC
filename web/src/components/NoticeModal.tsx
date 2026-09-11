@@ -42,6 +42,7 @@ export function NoticeModal({
   icon,
   dismissLabel = "OK",
   onDismiss,
+  action,
 }: {
   /** The uppercase pill at the top of the dialog. */
   kind: string;
@@ -51,6 +52,17 @@ export function NoticeModal({
   icon?: string;
   dismissLabel?: string;
   onDismiss: () => void;
+  /**
+   * A way onward, when the statement has one.
+   *
+   * Still a dialog that tells rather than asks: nothing is decided here, and
+   * dismissing remains the plain way out. But a statement like "the SAP system
+   * refused the logon" has an obvious next place to go, and a reader who has
+   * to close the dialog and hunt for it is being told where to go and then
+   * left to find the door. It is drawn as the primary control because it is
+   * the one the reader came for; the dismiss steps back to `ghost`.
+   */
+  action?: { label: string; icon?: string; onClick: () => void };
 }) {
   const dismissRef = useRef<HTMLButtonElement>(null);
   const [leaving, setLeaving] = useState(false);
@@ -119,11 +131,22 @@ export function NoticeModal({
         ) : null}
 
         <div className="modal-actions">
-          {/* The only control in the dialog, and it is the affirmative one —
-              `primary`, like the confirming button it stands in for. */}
-          <button className="primary" ref={dismissRef} onClick={dismiss}>
+          {/* Without an `action` this is the only control in the dialog, and
+              it is the affirmative one — `primary`, like the confirming button
+              it stands in for. With one, the action takes that role. */}
+          <button
+            className={action ? "ghost" : "primary"}
+            ref={dismissRef}
+            onClick={dismiss}
+          >
             {dismissLabel}
           </button>
+          {action ? (
+            <button className="primary" onClick={action.onClick}>
+              {action.icon ? <Icon name={action.icon} /> : null}
+              {action.label}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>,

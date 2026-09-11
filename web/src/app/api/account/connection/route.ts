@@ -108,7 +108,7 @@ export async function POST(request: Request): Promise<Response> {
   };
 
   try {
-    await saveConnection(auth.account.id, draft);
+    await saveConnection(auth.account.id, draft, detail);
   } catch (err) {
     // Two ordinary causes, both the operator's to fix and neither worth hiding
     // behind a generic 500: Mongo is unreachable, or SETUP_SECRET is missing.
