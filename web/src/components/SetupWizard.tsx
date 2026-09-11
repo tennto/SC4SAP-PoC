@@ -32,7 +32,6 @@ import { Select } from "@/components/Select";
 import {
   ABAP_RELEASE_RULE,
   ADT_URL_RULE,
-  ALLOW_TABLES_RULE,
   API_KEY_RULE,
   BLOCKLIST_PROFILES,
   CLIENT_RULE,
@@ -45,7 +44,6 @@ import {
   isApiKeyValid,
   isClientValid,
   isStepComplete,
-  parseAllowTables,
   type BlocklistProfile,
   type SetupDraft,
 } from "@/lib/setup";
@@ -84,7 +82,7 @@ const LEDES: readonly (readonly string[])[] = [
   ],
   [
     "The industry the consultant agents read up on before they answer, and how firmly the MCP server refuses to hand back rows from sensitive tables.",
-    "Both have sensible defaults. Both can be changed later in Settings.",
+    "Both have sensible defaults. They can be changed later in Settings, which is also where tables can be allowed through the blocklist.",
   ],
   [
     "The key the agent thinks with. It bills to your own Console account, and it is the one credential here that is not SAP's.",
@@ -231,13 +229,6 @@ const HELPS: readonly (string | null)[] = [
 export function SetupWizard({ firstName }: { firstName: string }) {
   const router = useRouter();
   const [draft, setDraft] = useState<SetupDraft>(EMPTY_DRAFT);
-  /**
-   * The allowed-tables field as typed. The draft holds the parsed list, and
-   * parsing on every keystroke would eat the comma someone is about to type
-   * a name after — so the text lives here and the list is derived from it
-   * when the step is left.
-   */
-  const [allowTablesText, setAllowTablesText] = useState("");
   const [step, setStep] = useState(0);
   /**
    * Which way the next card should come in from — or `initial`, which is not a
@@ -282,12 +273,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
   const set = <K extends keyof SetupDraft>(key: K, value: SetupDraft[K]): void =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const complete =
-    isStepComplete(step, draft) &&
-    // The only free text on the Scope card, and the only way that card can
-    // be incomplete: a comma-separated list with something in it that is
-    // not a table name.
-    (step !== 3 || parseAllowTables(allowTablesText) !== null);
+  const complete = isStepComplete(step, draft);
   const last = step === STEPS.length - 1;
   const seen = visited.has(step);
 
@@ -303,14 +289,6 @@ export function SetupWizard({ firstName }: { firstName: string }) {
     });
 
   function go(to: number): void {
-    // Leaving the Scope card is when its typed list becomes the draft's
-    // parsed one. Next is disabled while the text will not parse, and the
-    // free rail in development skips this gate — so a bad list is dropped
-    // rather than stored, and comes back as typed when the card is returned
-    // to, since the text itself is kept.
-    if (step === 3) {
-      set("allowTables", parseAllowTables(allowTablesText) ?? []);
-    }
     setDir(to > step ? "forward" : "back");
     setVisited((current) => new Set(current).add(step));
     setError(null);
@@ -545,11 +523,6 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                 {INDUSTRIES.find((i) => i.value === draft.industry)?.label} ·{" "}
                 {BLOCKLIST_PROFILES.find((p) => p.value === draft.blocklist)?.label}{" "}
                 blocklist
-                {draft.allowTables.length > 0
-                  ? ` · ${draft.allowTables.length} table${
-                      draft.allowTables.length === 1 ? "" : "s"
-                    } allowed`
-                  : ""}
               </dd>
             </div>
             {/* The key itself is never echoed — not even a tail. A masked
@@ -842,33 +815,6 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                   </span>
                 </div>
               </div>
-
-              <label className="field">
-                <span className="field-label">Allowed tables</span>
-                <input
-                  className={
-                    allowTablesText !== "" && parseAllowTables(allowTablesText) === null
-                      ? "is-invalid"
-                      : undefined
-                  }
-                  type="text"
-                  name="allowTables"
-                  placeholder="MARA, VBAK, Z*_LOG"
-                  value={allowTablesText}
-                  onChange={(event) => setAllowTablesText(event.target.value)}
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-                <span
-                  className={
-                    allowTablesText !== "" && parseAllowTables(allowTablesText) === null
-                      ? "field-error"
-                      : "field-hint"
-                  }
-                >
-                  {ALLOW_TABLES_RULE}
-                </span>
-              </label>
             </>
           ) : null}
 
