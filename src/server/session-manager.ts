@@ -160,6 +160,8 @@ export type SessionRecord = {
    * stream relays as an error the reader can act on.
    */
   maxBudgetUsd: number | null;
+  /** The model this session runs on. The backend's default unless chosen. */
+  model: string;
   /**
    * Sub-agents run on Sonnet whatever the skill asked for.
    *
@@ -454,6 +456,8 @@ export class SessionManager {
       userId?: string;
       maxBudgetUsd?: number;
       economy?: boolean;
+      /** The session's own model, over the backend's default. */
+      model?: string;
     } = {},
   ): SessionRecord {
     const id = randomUUID();
@@ -471,7 +475,7 @@ export class SessionManager {
       options: {
         plugins: [{ type: "local", path: this.#config.pluginPath }],
         cwd: this.#config.workspace,
-        model: this.#config.model,
+        model: options.model ?? this.#config.model,
         // Loads the workspace .claude/settings.json, which is the ONLY place
         // the L1 blocklist guards are declared. Dropping this silently
         // ungates row extraction — see provision-workspace.ts.
@@ -591,6 +595,7 @@ export class SessionManager {
         autoApproveSapReads: false,
         maxBudgetUsd: options.maxBudgetUsd ?? null,
         economy,
+        model: options.model ?? this.#config.model,
       },
       pump,
       session,

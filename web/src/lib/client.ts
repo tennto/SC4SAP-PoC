@@ -100,7 +100,7 @@ export const api = {
      * How the run is allowed to spend. A skill screen sets these from its
      * pre-run dialog; the chat leaves them out. Zero budget means none.
      */
-    spend?: { maxBudgetUsd?: number; economy?: boolean },
+    spend?: { maxBudgetUsd?: number; economy?: boolean; model?: string },
   ): Promise<Session> =>
     (
       await request<{ session: Session }>("/sessions", {
@@ -112,6 +112,7 @@ export const api = {
             : {}),
           ...(spend?.maxBudgetUsd ? { maxBudgetUsd: spend.maxBudgetUsd } : {}),
           ...(spend?.economy !== undefined ? { economy: spend.economy } : {}),
+          ...(spend?.model ? { model: spend.model } : {}),
         }),
       })
     ).session,

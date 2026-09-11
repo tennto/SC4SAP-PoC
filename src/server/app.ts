@@ -34,6 +34,16 @@ const HEARTBEAT_MS = 15_000;
 
 type IdParams = { id: string };
 
+/**
+ * The models a session may be opened on. A closed list rather than any
+ * string, so a typo cannot open a session on a model that does not exist
+ * and fail on its first turn. The web app's cost dialog offers these.
+ */
+export const MODELS = [
+  { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
+  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about five times the price." },
+] as const;
+
 /** The account behind a request, or `undefined` for a caller that sent none. */
 function userOf(headers: Record<string, string | string[] | undefined>): string | undefined {
   const value = headers["x-sc4sap-user"];
@@ -47,6 +57,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
   const app = Fastify({ logger: true, bodyLimit: BODY_LIMIT });
 
   app.get<{ Querystring: { fresh?: string } }>("/health", async (request) => ({
+    models: MODELS,
     ok: true,
     plugin: manager.config.pluginPath,
     workspace: manager.config.workspace,
@@ -77,6 +88,8 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           maxBudgetUsd?: number;
           /** Sub-agents on Sonnet whatever the skill asked for. */
           economy?: boolean;
+          /** One of the models this backend offers — see `/health`. */
+          model?: string;
         }
       | undefined;
   }>("/sessions", async (request, reply) => {
@@ -100,6 +113,10 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     if (economy !== undefined && typeof economy !== "boolean") {
       return reply.code(400).send({ error: "body.economy must be a boolean" });
     }
+    const model = request.body?.model;
+    if (model !== undefined && !MODELS.some((entry) => entry.id === model)) {
+      return reply.code(400).send({ error: "body.model is not one this backend offers" });
+    }
 
     const session = manager.create({
       resume: request.body?.resume,
@@ -107,6 +124,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       priorCostUsd,
       maxBudgetUsd: maxBudgetUsd ? maxBudgetUsd : undefined,
       economy,
+      model,
       userId: userOf(request.headers),
     });
     return reply.code(201).send({ session });

@@ -67,7 +67,17 @@ const SEPARATOR = "\n\n";
 type Value = string | boolean;
 
 /** How a run may spend — what the cost dialog collects. See `Skill.cost`. */
-type Spend = { maxBudgetUsd: number; economy: boolean };
+type Spend = { maxBudgetUsd: number; economy: boolean; model: string };
+
+/**
+ * The models the dialog offers. The same two the backend accepts; listed
+ * here rather than fetched because the dialog opens before any session
+ * exists to ask through, and a list of two is not worth a round trip.
+ */
+const MODELS: { id: string; label: string; note: string }[] = [
+  { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
+  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about five times the price." },
+];
 
 function initial(fields: readonly SkillField[]): Record<string, Value> {
   const state: Record<string, Value> = {};
@@ -285,9 +295,9 @@ export function SkillForm({
   const [spend, setSpend] = useState<Spend | null>(null);
   /** The cost dialog is up, and this is what it holds. */
   const [askingCost, setAskingCost] = useState(false);
-  const [costForm, setCostForm] = useState<{ budget: string; economy: boolean }>(() => ({
+  const [costForm, setCostForm] = useState<{ budget: string; model: string }>(() => ({
     budget: String(cost?.defaultBudgetUsd ?? 0),
-    economy: true,
+    model: MODELS[0].id,
   }));
   /** The context a run was asked with while the cost dialog was up. */
   const pendingContext = useRef<string | null>(null);
@@ -923,7 +933,7 @@ export function SkillForm({
             line rather than a badge: it is a fact about the next press. */}
         {spend && (
           <span className="skill-spend">
-            {spend.economy ? "Sonnet reviewer" : "Opus reviewer"}
+            {MODELS.find((entry) => entry.id === spend.model)?.label ?? spend.model}
             {spend.maxBudgetUsd > 0 ? ` · up to $${spend.maxBudgetUsd.toFixed(2)}` : " · no ceiling"}
           </span>
         )}
@@ -1059,7 +1069,11 @@ export function SkillForm({
           onSubmit={() => {
             const chosen: Spend = {
               maxBudgetUsd: Math.max(0, Number(costForm.budget) || 0),
-              economy: costForm.economy,
+              model: costForm.model,
+              // On Sonnet the whole run stays on Sonnet, reviewers included,
+              // whatever the skill asks for. On Opus the skill gets what it
+              // asked for.
+              economy: !/opus/i.test(costForm.model),
             };
             setSpend(chosen);
             setAskingCost(false);
@@ -1071,24 +1085,22 @@ export function SkillForm({
             pendingContext.current = null;
           }}
         >
-          <label className="field field-switch">
-            <input
-              type="checkbox"
-              className="check"
-              checked={costForm.economy}
-              onChange={(event) =>
-                setCostForm((current) => ({ ...current, economy: event.target.checked }))
-              }
-            />
-            <span className="field-switch-main">
-              <span className="field-switch-label">Keep the reviewer on Sonnet</span>
-              <span className="field-hint">
-                The skill asks for Opus. Sonnet is about a fifth of the price and
-                usually enough to narrow the cause; switch off for a production
-                incident that needs the deeper read.
-              </span>
+          <div className="field">
+            <span className="field-label" id="cost-model-label">
+              Model
             </span>
-          </label>
+            <Select
+              name="model"
+              labelledBy="cost-model-label"
+              value={costForm.model}
+              options={MODELS.map((entry) => ({ value: entry.id, label: entry.label }))}
+              onChange={(next) => setCostForm((current) => ({ ...current, model: next }))}
+            />
+            <span className="field-hint">
+              {MODELS.find((entry) => entry.id === costForm.model)?.note} The run and any
+              reviewer it dispatches use this.
+            </span>
+          </div>
 
           <label className="field">
             <span className="field-label">Budget ceiling (USD)</span>

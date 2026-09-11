@@ -30,6 +30,8 @@ export type Session = {
   maxBudgetUsd: number | null;
   /** Sub-agents run on Sonnet whatever the skill asked for. */
   economy: boolean;
+  /** The model the session runs on. */
+  model: string;
 };
 
 /**
@@ -131,8 +133,12 @@ export type SessionEvent =
   | { type: "error"; error: string };
 
 /** Config snapshot from GET /health, shown in the header. */
+/** A model the backend offers a session on — see `MODELS` in the backend. */
+export type ModelChoice = { id: string; label: string; note: string };
+
 export type Health = {
   ok: boolean;
+  models: ModelChoice[];
   plugin: string;
   workspace: string;
   model: string;
