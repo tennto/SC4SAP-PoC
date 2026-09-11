@@ -41,20 +41,38 @@ export function DragScrollBar({ targetRef, className }: Props) {
     null,
   );
 
+  /**
+   * Measure, and only change state when the numbers actually changed.
+   *
+   * The equality check is not an optimisation. A `ResizeObserver` fires when
+   * it starts observing and again on any layout change, and handing `setThumb`
+   * a freshly built object every time makes each of those a re-render — which
+   * can lay the page out again, which fires the observer again. That is a loop
+   * with no exit, and React ends it by throwing "Maximum update depth
+   * exceeded". Returning the *same* object tells React there is nothing to do.
+   *
+   * Rounded for the same reason: sub-pixel widths drift by fractions that are
+   * invisible on screen and would otherwise count as a change forever.
+   */
   const measure = useCallback(() => {
     const element = targetRef.current;
     if (!element) return;
     const { clientWidth, scrollWidth, scrollLeft } = element;
+
     // A pixel of slack: sub-pixel layout leaves a scrollWidth a hair over the
     // clientWidth on content that plainly fits.
     if (scrollWidth <= clientWidth + 1) {
-      setThumb(null);
+      setThumb((current) => (current === null ? current : null));
       return;
     }
-    setThumb({
-      size: (clientWidth / scrollWidth) * 100,
-      offset: (scrollLeft / scrollWidth) * 100,
-    });
+
+    const size = Math.round((clientWidth / scrollWidth) * 1000) / 10;
+    const offset = Math.round((scrollLeft / scrollWidth) * 1000) / 10;
+    setThumb((current) =>
+      current && current.size === size && current.offset === offset
+        ? current
+        : { size, offset },
+    );
   }, [targetRef]);
 
   useEffect(() => {
