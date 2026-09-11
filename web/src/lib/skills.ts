@@ -179,7 +179,7 @@ export const SKILLS: Skill[] = [
       {
         label: "Where it happened",
         kind: "text",
-        placeholder: "VA01 · ZSD_ORDER_REPORT · job ZBILLING_RUN · a Fiori app",
+        placeholder: "VA01 · ZSD_ORDER_REPORT · job ZBILL_RUN",
         hint: "Transaction, program, job or app. Optional when the screenshot shows it.",
       },
       {
@@ -200,7 +200,7 @@ export const SKILLS: Skill[] = [
       {
         label: "Since when",
         kind: "text",
-        placeholder: "Yesterday afternoon · after the SP upgrade · not known",
+        placeholder: "Yesterday · after the SP upgrade · not known",
         hint: "Sets the window for the transport search.",
       },
       {

@@ -3759,7 +3759,10 @@ button.primary:hover:not(:disabled) {
 
 .fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  /* 300px, up from 260: four fields across a wide form left a placeholder
+     like "VA01 · ZSD_REPORT · job ZBILL_RUN" cut mid-word, and a hint that
+     cannot be read is not a hint. Three across at laptop width. */
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 16px;
 }
 
