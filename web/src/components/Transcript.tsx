@@ -64,8 +64,59 @@ export type Row =
  * Folds the stream's items into rows: tool and thinking items are dropped, and
  * the assistant messages between two of the reader's own turns become one row.
  */
-export function toRows(items: TranscriptItem[]): Row[] {
+/**
+ * What the plugin's skills print for their own bookkeeping, and nobody
+ * else's: the `[Model: … · Dispatched: …]` prefix every skill answer opens
+ * with, and the `▶ phase=…` banner before each sub-agent dispatch. Kept out
+ * of the transcript; the tool log and the monitor say the same things.
+ */
+const BOOKKEEPING = /^[ \t]*`?\[Model:[^\]]*\]`?[ \t]*$|^[ \t]*`?▶[ \t]*phase=.*$/gm;
+
+/** The text with the skills' bookkeeping lines taken out. */
+export function cleanText(text: string): string {
+  return text.replace(BOOKKEEPING, "").replace(/^\n+/, "").replace(/\n{3,}/g, "\n\n");
+}
+
+/** Where the "show everything" choice is kept, across screens. */
+export const EVERYTHING_KEY = "sc4sap.showEverything";
+
+export function readShowEverything(): boolean {
+  try {
+    return localStorage.getItem(EVERYTHING_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeShowEverything(value: boolean): void {
+  try {
+    if (value) localStorage.setItem(EVERYTHING_KEY, "1");
+    else localStorage.removeItem(EVERYTHING_KEY);
+  } catch {
+    // Storage refused. The choice lasts the page, which is not nothing.
+  }
+}
+
+/**
+ * The transcript's rows.
+ *
+ * Only the *last* assistant message of each turn is shown, by default. The
+ * plugin's skills talk while they work — "checking the dumps first", a phase
+ * banner, a summary before the report — and a turn arrived as a column of
+ * those with the report at the bottom. What was asked for was the report.
+ * The message still streaming is always shown, so the screen is never blank
+ * while the agent is mid-sentence; when the next message opens, the last one
+ * gives way to it.
+ *
+ * `everything` puts the whole turn back, for reading how the answer was
+ * reached. Either way the skills' bookkeeping lines are taken out.
+ */
+export function toRows(
+  items: TranscriptItem[],
+  options: { everything?: boolean } = {},
+): Row[] {
   const rows: Row[] = [];
+  const everything = options.everything === true;
 
   for (const item of items) {
     if (item.kind === "tool" || item.kind === "thinking") continue;
@@ -86,10 +137,19 @@ export function toRows(items: TranscriptItem[]): Row[] {
       continue;
     }
 
+    const text = cleanText(item.text);
     const last = rows[rows.length - 1];
     if (last && last.kind === "agent") {
-      // A blank line, so two blocks of markdown do not run into one paragraph.
-      last.text = last.text ? `${last.text}\n\n${item.text}` : item.text;
+      if (everything) {
+        // A blank line, so two blocks of markdown do not run into one paragraph.
+        last.text = last.text ? `${last.text}\n\n${text}` : text;
+      } else if (text.trim() !== "" || item.streaming) {
+        // The newer message replaces the older one. An empty message that is
+        // not streaming — a turn that ended on a tool call — leaves the last
+        // words standing rather than blanking them.
+        last.text = text;
+        last.id = item.id;
+      }
       last.streaming = item.streaming;
       continue;
     }
@@ -97,7 +157,7 @@ export function toRows(items: TranscriptItem[]): Row[] {
     rows.push({
       kind: "agent",
       id: item.id,
-      text: item.text,
+      text,
       streaming: item.streaming,
     });
   }
@@ -247,7 +307,11 @@ export function useSmoothText(
  */
 export function Transcript({ items, idle, busy, pending, activity }: Props) {
   const bottom = useRef<HTMLDivElement>(null);
-  const rows = toRows(items);
+  const [everything, setEverything] = useState(false);
+  useEffect(() => {
+    setEverything(readShowEverything());
+  }, []);
+  const rows = toRows(items, { everything });
   const last = rows[rows.length - 1];
 
   /**
@@ -362,6 +426,29 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
 
   return (
     <div className="transcript">
+      {/* Final answers only, or the whole turn. Pinned to the corner so it is
+          there whatever is scrolled, and drawn quiet because it is a reading
+          preference, not a control over the conversation. */}
+      {rows.length > 0 && (
+        <button
+          type="button"
+          className={`ghost transcript-everything${everything ? " is-on" : ""}`}
+          aria-pressed={everything}
+          title={
+            everything
+              ? "Showing everything the agent said. Click for final answers only."
+              : "Showing final answers only. Click to see everything the agent said."
+          }
+          onClick={() => {
+            const next = !everything;
+            setEverything(next);
+            writeShowEverything(next);
+          }}
+        >
+          {everything ? "Everything" : "Final only"}
+        </button>
+      )}
+
       {rows.length === 0 && !waiting && (
         <p className="empty">Ask the SC4SAP agent something.</p>
       )}

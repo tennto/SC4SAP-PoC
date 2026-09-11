@@ -110,6 +110,12 @@ export type UserDoc = {
    */
   connection?: ConnectionDoc;
   /**
+   * How much a session asks before it acts — see `ApprovalLevel` in
+   * `lib/account.ts`. Absent on rows written before this existed, which
+   * reads as `writes`: reads go through, writes ask.
+   */
+  approval?: "all" | "writes" | "never";
+  /**
    * What this account has run and then deleted.
    *
    * Activity is otherwise summed from the chat rows themselves, which is

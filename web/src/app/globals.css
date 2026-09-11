@@ -6332,6 +6332,45 @@ a.ghost.auth-submit {
   text-decoration: underline;
 }
 
+/* ---- final answers only, or everything. One quiet control in two places. */
+.transcript-everything {
+  position: sticky;
+  top: 0;
+  align-self: flex-end;
+  z-index: 2;
+  margin: -8px 0 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--ink-38);
+  border-color: transparent;
+  background: var(--bg);
+}
+
+.transcript-everything:hover:not(:disabled),
+.transcript-everything.is-on {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.skill-doc-everything {
+  margin-left: auto;
+  margin-right: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--ink-38);
+  border-color: transparent;
+}
+
+.skill-doc-everything:hover:not(:disabled),
+.skill-doc-everything.is-on {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.approval-pick {
+  max-width: 280px;
+}
+
 /* ---- a skill that asks back: the reply composer under its result, and the
    line that says what the page's runs may spend. */
 .skill-spend {

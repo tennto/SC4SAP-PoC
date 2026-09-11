@@ -29,6 +29,7 @@ import { AccountSettings } from "@/components/settings/AccountSettings";
 import { ConnectionSettings } from "@/components/settings/ConnectionSettings";
 import { ScopeSettings } from "@/components/settings/ScopeSettings";
 import { SettingRow } from "@/components/settings/EditModal";
+import { ApprovalSettings } from "@/components/settings/ApprovalSettings";
 
 export const metadata: Metadata = { title: "Settings · SC4SAP" };
 
@@ -135,7 +136,7 @@ export default async function SettingsPage() {
                 <Icon name="sliders" /> Sessions
               </h2>
               <p className="panel-note">
-                The backend&rsquo;s own configuration, read from it.
+                How your sessions run, and what they ask you first.
               </p>
             </div>
 
@@ -145,10 +146,11 @@ export default async function SettingsPage() {
                 per session, which is a change on that side and not a control
                 this screen can grow on its own. */}
             <div className="setting-rows">
+              <ApprovalSettings approval={account.approval} />
               <SettingRow
-                label="Model"
+                label="Default model"
                 value={model ?? "Backend not answering"}
-                hint="Set by SC4SAP_MODEL where the backend runs, and used by every session it opens. Changing it per account needs the backend to accept a model per session."
+                hint="What chat opens with. A skill that dispatches a reviewer asks which model to use before it runs."
               />
             </div>
           </section>

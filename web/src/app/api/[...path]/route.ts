@@ -59,6 +59,9 @@ async function proxy(
   // backend, and this proxy has just checked the cookie. Set, never copied
   // from the incoming request, so a browser cannot claim another account.
   headers.set("x-sc4sap-user", auth.account.id);
+  // And how much their sessions ask. Read from the row on every request, so
+  // a change in Settings reaches the next session without a sign-out.
+  headers.set("x-sc4sap-approval", auth.account.approval);
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
 

@@ -37,7 +37,12 @@ import { useSessionStream } from "@/hooks/useSessionStream";
 import { Icon } from "@/components/Icon";
 import { Select } from "@/components/Select";
 import { Markdown } from "@/components/Markdown";
-import { toRows, useSmoothText } from "@/components/Transcript";
+import {
+  readShowEverything,
+  toRows,
+  useSmoothText,
+  writeShowEverything,
+} from "@/components/Transcript";
 import { ApprovalModal } from "@/components/ApprovalModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { EditModal } from "@/components/settings/EditModal";
@@ -303,6 +308,11 @@ export function SkillForm({
   const pendingContext = useRef<string | null>(null);
   /** The next round's answer, as typed under the result. */
   const [reply, setReply] = useState("");
+  /** The whole run, or only what each turn ended on. See `toRows`. */
+  const [everything, setEverything] = useState(false);
+  useEffect(() => {
+    setEverything(readShowEverything());
+  }, []);
 
   const stream = useSessionStream(sessionId);
   const approval = stream.pending[0] ?? null;
@@ -415,7 +425,7 @@ export function SkillForm({
           .filter((file): file is File => file !== null)
       : [];
 
-  const rows = toRows(stream.items);
+  const rows = toRows(stream.items, { everything });
 
   /**
    * The run, as one document.
@@ -988,6 +998,23 @@ export function SkillForm({
                   contain it. */}
               <div className="skill-doc-bar">
                 <span className="skill-doc-kind">Markdown</span>
+                <button
+                  type="button"
+                  className={`ghost skill-doc-everything${everything ? " is-on" : ""}`}
+                  aria-pressed={everything}
+                  title={
+                    everything
+                      ? "Showing everything the agent said. Click for the report only."
+                      : "Showing the report only. Click to see everything the agent said."
+                  }
+                  onClick={() => {
+                    const next = !everything;
+                    setEverything(next);
+                    writeShowEverything(next);
+                  }}
+                >
+                  {everything ? "Everything" : "Final only"}
+                </button>
                 {/* Not while the run is going. A half-written report saved to
                     disk is indistinguishable from a whole one afterwards, and
                     the file is the thing people forward. */}

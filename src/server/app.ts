@@ -27,6 +27,7 @@ import {
   type SequencedEvent,
 } from "./session-manager.ts";
 import { claudeApiHealth } from "./claude-api.ts";
+import { APPROVAL_LEVELS, type ApprovalLevel } from "./tool-policy.ts";
 import { BODY_LIMIT, validateAttachments } from "./attachments.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
@@ -43,6 +44,17 @@ export const MODELS = [
   { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
   { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about five times the price." },
 ] as const;
+
+/**
+ * The account's approval level, from `x-sc4sap-approval`. Set by the proxy
+ * beside the account id; absent or unknown reads as `all`, which asks about
+ * everything — the safe way to be wrong.
+ */
+function approvalOf(headers: Record<string, string | string[] | undefined>): ApprovalLevel {
+  const value = headers["x-sc4sap-approval"];
+  const level = Array.isArray(value) ? value[0] : value;
+  return APPROVAL_LEVELS.includes(level as ApprovalLevel) ? (level as ApprovalLevel) : "all";
+}
 
 /** The account behind a request, or `undefined` for a caller that sent none. */
 function userOf(headers: Record<string, string | string[] | undefined>): string | undefined {
@@ -126,6 +138,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       economy,
       model,
       userId: userOf(request.headers),
+      approval: approvalOf(request.headers),
     });
     return reply.code(201).send({ session });
   });

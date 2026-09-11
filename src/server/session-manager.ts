@@ -36,6 +36,8 @@ import {
   QUESTION_TOOL,
   SAP_TOOL_PREFIX,
   type ToolPolicy,
+  allowedByLevel,
+  type ApprovalLevel,
 } from "./tool-policy.ts";
 import {
   toContentBlocks,
@@ -162,6 +164,11 @@ export type SessionRecord = {
   maxBudgetUsd: number | null;
   /** The model this session runs on. The backend's default unless chosen. */
   model: string;
+  /**
+   * How much this session asks before it acts — the account's setting at
+   * the time it was opened. See `ApprovalLevel`.
+   */
+  approval: ApprovalLevel;
   /**
    * Sub-agents run on Sonnet whatever the skill asked for.
    *
@@ -458,6 +465,7 @@ export class SessionManager {
       economy?: boolean;
       /** The session's own model, over the backend's default. */
       model?: string;
+      approval?: ApprovalLevel;
     } = {},
   ): SessionRecord {
     const id = randomUUID();
@@ -596,6 +604,7 @@ export class SessionManager {
         maxBudgetUsd: options.maxBudgetUsd ?? null,
         economy,
         model: options.model ?? this.#config.model,
+        approval: options.approval ?? "all",
       },
       pump,
       session,
@@ -848,6 +857,14 @@ export class SessionManager {
           ? { ...input, model: "sonnet" }
           : input;
       return Promise.resolve({ behavior: "allow", updatedInput });
+    }
+
+    // The account's approval level, applied before a request is raised. A
+    // read under "writes", or anything under "never", goes through here and
+    // is logged as auto-approved, the same as a policy allow.
+    if (allowedByLevel(live.record.approval, toolName, input)) {
+      this.toolLog.decide(context.toolUseID, "auto");
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
 
     // The switch, applied before a request is ever raised. Nothing reaches the
