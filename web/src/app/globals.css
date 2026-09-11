@@ -4493,18 +4493,47 @@ button.link-button:disabled {
   .session-scrollbar {
     display: block;
     position: relative;
-    height: 3px;
-    margin: 0 10px 7px;
+    height: 5px;
+    margin: 0 10px 6px;
     border-radius: 999px;
     background: var(--line-soft);
+    /* It is dragged, so it needs to be catchable: a 5px bar is a hard target,
+       and the padding gives it a 15px-tall hit area without making the mark on
+       screen any heavier. `background-clip` keeps the track painted at its own
+       size rather than filling the padding. */
+    padding: 5px 0;
+    background-clip: content-box;
+    cursor: grab;
+    /* The gesture belongs to this element. Without it a drag on a touch screen
+       is taken by the page as a scroll before the handler ever sees it. */
+    touch-action: none;
+  }
+
+  .session-scrollbar.dragging {
+    cursor: grabbing;
   }
 
   .session-scrollbar span {
     position: absolute;
-    top: 0;
-    bottom: 0;
+    top: 5px;
+    bottom: 5px;
     border-radius: inherit;
     background: var(--ink-38);
+    /* Not while being dragged: the thumb should sit under the finger, and a
+       transition puts it a few frames behind. */
+    transition: background var(--t-fast) var(--ease);
+  }
+
+  .session-scrollbar:hover span,
+  .session-scrollbar.dragging span {
+    background: var(--ink-55);
+  }
+
+  /* Snapping fights a scrub — the strip would tug back to a card on every
+     frame of the drag. It comes back the moment the bar is let go. */
+  .session-rail:has(.session-scrollbar.dragging) .session-list {
+    scroll-snap-type: none;
+    scroll-behavior: auto;
   }
 
   /* The list already has its own bottom padding; the bar takes the place of

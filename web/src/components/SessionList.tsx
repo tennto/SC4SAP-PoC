@@ -199,6 +199,46 @@ export function SessionList({
     });
   }, []);
 
+  /**
+   * The bar is a control, not just a readout.
+   *
+   * It was drawn as an indicator first, which was the wrong call: a mouse
+   * cannot drag a scroll container. Touch can swipe the cards and a wheel can
+   * turn them, but a pointer has nothing to take hold of — so on a desktop
+   * browser, and in the phone-preview extensions people check layouts with,
+   * the strip looked scrollable and was not reachable. Grabbing the bar is the
+   * gesture that was missing.
+   *
+   * Pointer events rather than mouse ones, so the same code covers a finger on
+   * the thumb, a trackpad and a stylus.
+   */
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const scrubTo = useCallback((clientX: number) => {
+    const element = listRef.current;
+    const track = trackRef.current;
+    if (!element || !track) return;
+    const box = track.getBoundingClientRect();
+    if (box.width === 0) return;
+    const visible = element.clientWidth / element.scrollWidth;
+    // Put the *middle* of the thumb under the pointer, so the strip does not
+    // jump by half a thumb the instant it is grabbed.
+    const fraction = (clientX - box.left) / box.width - visible / 2;
+    const maxScroll = element.scrollWidth - element.clientWidth;
+    element.scrollLeft = Math.max(0, Math.min(1, fraction / (1 - visible))) * maxScroll;
+  }, []);
+
+  const onTrackPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setDragging(true);
+      scrubTo(event.clientX);
+    },
+    [scrubTo],
+  );
+
   useEffect(() => {
     const element = listRef.current;
     if (!element) return;
@@ -282,7 +322,22 @@ export function SessionList({
           4px thumb is not a thing to aim at with a thumb. `aria-hidden`
           because the scroll position is already conveyed by the list itself. */}
       {thumb && (
-        <div className="session-scrollbar" aria-hidden="true">
+        <div
+          ref={trackRef}
+          className={`session-scrollbar${dragging ? " dragging" : ""}`}
+          onPointerDown={onTrackPointerDown}
+          onPointerMove={(event) => {
+            if (dragging) scrubTo(event.clientX);
+          }}
+          onPointerUp={() => setDragging(false)}
+          onPointerCancel={() => setDragging(false)}
+          /* Redundant by design: the strip already scrolls by wheel, by swipe
+             and by keyboard once a card has focus. This is a pointer
+             affordance on top of those, not the only way through, which is why
+             it stays out of the accessibility tree rather than pretending to
+             be a slider. */
+          aria-hidden="true"
+        >
           <span
             style={{ width: `${thumb.size}%`, left: `${thumb.offset}%` }}
           />
