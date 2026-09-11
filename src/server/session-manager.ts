@@ -31,6 +31,8 @@ import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
 import {
   buildToolPolicy,
   isSapReadTool,
+  needsHookApproval,
+  QUESTION_TOOL,
   SAP_TOOL_PREFIX,
   type ToolPolicy,
 } from "./tool-policy.ts";
@@ -68,8 +70,6 @@ const PERMISSION_TIMEOUT_MS = Number(
   process.env.SC4SAP_PERMISSION_TIMEOUT_MS ?? 5 * 60_000,
 );
 
-/** The tool through which the model asks the user a multiple-choice question. */
-const QUESTION_TOOL = "AskUserQuestion";
 
 export type SessionStatus = "starting" | "idle" | "busy" | "closed" | "error";
 
@@ -455,6 +455,59 @@ export class SessionManager {
         // rely on it alone.
         canUseTool: (toolName, input, context) =>
           this.#requestApproval(id, toolName, input, context),
+        /**
+         * The chokepoint `canUseTool` is not.
+         *
+         * Built-in tools reach the model's hands without the callback above
+         * ever being consulted — verified by running a `Bash` call to
+         * completion with `allowedTools` empty and no request raised. So the
+         * tools that can change or leave this machine are gated here instead,
+         * where the SDK does stop and wait, and the answer comes from the
+         * same queue and the same dialog as everything else.
+         *
+         * The matcher takes everything and `needsHookApproval` decides, rather
+         * than naming tools in a pattern: a built-in that a later SDK adds
+         * then arrives gated instead of quietly slipping past a list that was
+         * written before it existed.
+         */
+        hooks: {
+          PreToolUse: [
+            {
+              // Outlives the queue's own 5-minute deadline, so a forgotten
+              // dialog is denied by the timeout that reports it as such
+              // rather than killed by this one, which would not.
+              timeout: PERMISSION_TIMEOUT_MS / 1000 + 30,
+              hooks: [
+                async (input, toolUseID, { signal }) => {
+                  if (input.hook_event_name !== "PreToolUse") return {};
+                  if (!needsHookApproval(input.tool_name)) return {};
+
+                  const result = await this.#requestApproval(
+                    id,
+                    input.tool_name,
+                    (input.tool_input ?? {}) as Record<string, unknown>,
+                    {
+                      signal,
+                      toolUseID: toolUseID ?? input.tool_use_id,
+                    },
+                  );
+
+                  return {
+                    hookSpecificOutput: {
+                      hookEventName: "PreToolUse" as const,
+                      permissionDecision:
+                        result.behavior === "allow" ? "allow" : "deny",
+                      permissionDecisionReason:
+                        result.behavior === "allow"
+                          ? "Allowed by the operator."
+                          : (result.message ?? "Denied by the operator."),
+                    },
+                  };
+                },
+              ],
+            },
+          ],
+        },
       },
     });
 
