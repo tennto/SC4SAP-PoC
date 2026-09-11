@@ -47,7 +47,15 @@ function client(): Promise<MongoClient> {
       // Fail a request in seconds rather than hanging on a cluster that is
       // paused or firewalled — the default is 30s, which reads as a hang.
       serverSelectionTimeoutMS: 8_000,
-    }).connect();
+    })
+      .connect()
+      // A failed attempt must not be cached as a success, or every later
+      // request replays this rejection and the process never reconnects —
+      // one blip on the way to Atlas would need a restart to clear.
+      .catch((err: unknown) => {
+        globalThis.__sc4sapMongo = undefined;
+        throw err;
+      });
   }
   return globalThis.__sc4sapMongo;
 }
