@@ -1112,6 +1112,13 @@ button.primary:hover:not(:disabled) {
   gap: 6px;
 }
 
+/* The strip's own scrollbar. Absent on the desktop rail, which is a column
+   with the platform's bar down its side; see the narrow-screen block for the
+   shape it takes and why it is drawn by hand at all. */
+.session-scrollbar {
+  display: none;
+}
+
 .session-item {
   position: relative;
   display: grid;
@@ -4402,17 +4409,165 @@ button.link-button:disabled {
   .session-rail {
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    max-height: 168px;
+    /* Height from one row of cards, not from a cap. The cap squeezed the list
+       to 24px against 52px of card, so the strip was clipped top and bottom
+       and the vertical overflow it created then competed with the sideways
+       swipe this strip exists for. */
+    max-height: none;
+    /* A grid item will not shrink below its content unless told to, which is
+       how the strip ended up wider than the screen — and a scroll container
+       wider than the viewport cannot be scrolled, only overflowed. */
+    min-width: 0;
   }
 
   .session-list {
     flex-direction: row;
+    /*
+     * One axis, on purpose.
+     *
+     * The column layout sets `overflow-y: auto`, and leaving it on here meant
+     * the strip scrolled both ways at once. A browser has to decide which axis
+     * a drag belongs to, and on a strip barely taller than one card a mostly
+     * sideways swipe kept being read as a vertical one — so the second
+     * conversation was visible at the edge and could not be reached.
+     */
     overflow-x: auto;
+    overflow-y: hidden;
+    /* Reserved for a vertical bar that no longer exists here, and it was
+       taking height from a strip that has little to spare. */
+    scrollbar-gutter: auto;
+    /* Keep the swipe in the strip. Past the last card it would otherwise be
+       handed to the browser, which reads a rightward drag at the edge as
+       "go back" — losing the page instead of showing a conversation. */
+    overscroll-behavior-x: contain;
+    /* Cards come to rest aligned rather than half-cut, so what stops under the
+       thumb is a whole title and not the middle of one. `proximity` rather
+       than `mandatory`: a flick across four conversations should be able to
+       overshoot to the end instead of being caught by every card on the way. */
+    scroll-snap-type: x proximity;
+    min-width: 0;
+    /* Named so the fade below can follow this element's scroll position from
+       outside it. Ignored where scroll-driven animation is not supported. */
+    scroll-timeline: --sessions inline;
+  }
+
+  /*
+   * The strip scrolls, and on a touch screen nothing says so.
+   *
+   * Overlay scrollbars are invisible at rest, so the only hint was a card
+   * clipped at the edge — which reads as "clipped", not as "there is more".
+   * This is the standard answer: the strip fades out where it continues, which
+   * is a cue people already know how to read.
+   *
+   * Drawn on the rail rather than on the scroller, because a pseudo-element
+   * inside a scroll container scrolls away with the content.
+   */
+  .session-rail {
+    position: relative;
+  }
+
+  .session-rail::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    /* Clears the heading, so the fade sits over the cards and not over the
+       word SESSIONS. */
+    top: 56px;
+    width: 44px;
+    pointer-events: none;
+    background: linear-gradient(to left, var(--panel), transparent);
+  }
+
+  /*
+   * A visible bar under the strip.
+   *
+   * The platform's own is an overlay here: invisible until the moment someone
+   * already knows to scroll. `::-webkit-scrollbar` is not an answer either —
+   * iOS ignores it for overlay bars — so `SessionList` measures the element
+   * and sets the thumb's width and offset itself.
+   *
+   * Sits between the cards and the rail's bottom edge, inset to the same
+   * gutter the cards use, so it reads as belonging to the strip.
+   */
+  .session-scrollbar {
+    display: block;
+    position: relative;
+    height: 5px;
+    margin: 0 10px 6px;
+    border-radius: 999px;
+    background: var(--line-soft);
+    /* It is dragged, so it needs to be catchable: a 5px bar is a hard target,
+       and the padding gives it a 15px-tall hit area without making the mark on
+       screen any heavier. `background-clip` keeps the track painted at its own
+       size rather than filling the padding.
+
+       `content-box` is load-bearing, not tidiness. Under the app's global
+       `border-box` the height above would have *included* the padding, leaving
+       a content box of zero — which is exactly what shipped: the hit area was
+       there and could be dragged, and both the track and the thumb were 0px
+       tall and therefore invisible. */
+    box-sizing: content-box;
+    padding: 5px 0;
+    background-clip: content-box;
+    cursor: grab;
+    /* The gesture belongs to this element. Without it a drag on a touch screen
+       is taken by the page as a scroll before the handler ever sees it. */
+    touch-action: none;
+  }
+
+  .session-scrollbar.dragging {
+    cursor: grabbing;
+  }
+
+  .session-scrollbar span {
+    position: absolute;
+    top: 5px;
+    bottom: 5px;
+    border-radius: inherit;
+    background: var(--ink-38);
+    /* Not while being dragged: the thumb should sit under the finger, and a
+       transition puts it a few frames behind. */
+    transition: background var(--t-fast) var(--ease);
+  }
+
+  .session-scrollbar:hover span,
+  .session-scrollbar.dragging span {
+    background: var(--ink-55);
+  }
+
+  /* Snapping fights a scrub — the strip would tug back to a card on every
+     frame of the drag. It comes back the moment the bar is let go. */
+  .session-rail:has(.session-scrollbar.dragging) .session-list {
+    scroll-snap-type: none;
+    scroll-behavior: auto;
+  }
+
+  /* The list already has its own bottom padding; the bar takes the place of
+     the gap rather than adding to it. */
+  .session-list {
+    padding-bottom: 4px;
+  }
+
+  /* Where the browser can follow a scroller's position, the cue goes away once
+     there is nothing more to reach — a fade that never leaves is just a
+     gradient, and stops being information. */
+  @supports (animation-timeline: scroll()) {
+    .session-rail {
+      timeline-scope: --sessions;
+    }
+
+    .session-rail::after {
+      animation: session-edge-fade linear both;
+      animation-timeline: --sessions;
+      animation-range: calc(100% - 44px) 100%;
+    }
   }
 
   .session-item {
     flex: none;
     min-width: 190px;
+    scroll-snap-align: start;
   }
 
   .page {
@@ -4421,6 +4576,17 @@ button.link-button:disabled {
 
   .msg {
     max-width: 100%;
+  }
+}
+
+/* Runs over the last stretch of the session strip's scroll, so the edge cue is
+   at full strength while there is more to reach and gone once there is not. */
+@keyframes session-edge-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
