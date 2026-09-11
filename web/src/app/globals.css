@@ -6832,7 +6832,21 @@ button.mon-switch.is-on {
   list-style: none;
 }
 
+/* The row is a button — it opens the call — so the list item is only a
+   wrapper and gets out of the way of the grid. */
+.mon-list > li {
+  display: contents;
+}
+
 .mon-row {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  cursor: pointer;
   display: grid;
   grid-template-columns: 8px minmax(62px, auto) minmax(150px, 220px) minmax(0, 1fr) auto;
   align-items: center;
@@ -6843,8 +6857,95 @@ button.mon-switch.is-on {
   font-variant-numeric: tabular-nums;
 }
 
-.mon-row:last-child {
+.mon-list > li:last-child .mon-row {
   border-bottom: 0;
+}
+
+.mon-row:hover {
+  background: var(--panel-2);
+}
+
+/* The base button rule drops a control a pixel on press. A list row is not
+   a control to be felt pressing. */
+.mon-row:active {
+  transform: none;
+}
+
+.mon-row:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+/* ---- the call modal */
+.modal.toolcall {
+  width: min(640px, 100%);
+  gap: 12px;
+}
+
+.toolcall-state {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-38);
+}
+
+.toolcall-state.is-succeeded {
+  color: var(--ok);
+}
+
+.toolcall-state.is-failed,
+.toolcall-state.is-refused {
+  color: var(--bad);
+}
+
+.toolcall-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 2px 0 0;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.toolcall-server {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--ink-38);
+}
+
+.toolcall-facts > div {
+  grid-template-columns: 96px 1fr;
+  padding: 6px 0;
+}
+
+.toolcall-facts dd code {
+  font-size: 11.5px;
+}
+
+/* The markdown renderer's code block, without the paragraph margin under it
+   and capped so a long input scrolls inside the dialog rather than growing
+   it past the window. */
+.toolcall-json .markdown-code {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.toolcall-json .markdown > :last-child,
+.toolcall-json .markdown pre {
+  margin-bottom: 0;
+}
+
+.toolcall-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-38);
 }
 
 /* A call that landed while the page was open. One flash of the row's ground,

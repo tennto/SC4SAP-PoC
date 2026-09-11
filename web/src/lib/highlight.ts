@@ -37,7 +37,7 @@ const ABAP_TAGS = new Set(["abap"]);
 /** Fence tags that mean ABAP CDS. `cds` alone is the one people actually type. */
 const CDS_TAGS = new Set(["cds", "abapcds", "abap-cds", "ddl"]);
 
-export type HighlightLang = "abap" | "abapcds";
+export type HighlightLang = "abap" | "abapcds" | "json";
 
 /** The language a fence tag selects, or null to leave the block alone. */
 export function langFor(tag: string | undefined): HighlightLang | null {
@@ -45,6 +45,9 @@ export function langFor(tag: string | undefined): HighlightLang | null {
   const t = tag.toLowerCase();
   if (ABAP_TAGS.has(t)) return "abap";
   if (CDS_TAGS.has(t)) return "abapcds";
+  // Tool inputs, on the monitor. Shiki ships this grammar; the two above
+  // are the app's own.
+  if (t === "json") return "json";
   return null;
 }
 
@@ -79,12 +82,13 @@ export function loadedHighlighter(): HighlighterCore | null {
 export function highlighter(): Promise<HighlighterCore | null> {
   if (!started) {
     started = (async () => {
-      const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, abap, cds] =
+      const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, abap, cds, json] =
         await Promise.all([
           import("shiki/core"),
           import("@shikijs/engine-javascript"),
           import("./grammars/abap.tmLanguage.json"),
           import("./grammars/cds.tmLanguage.json"),
+          import("@shikijs/langs/json"),
         ]);
 
       return createHighlighterCore({
@@ -98,6 +102,7 @@ export function highlighter(): Promise<HighlighterCore | null> {
         langs: [
           { ...(abap.default ?? abap), name: "abap" } as never,
           { ...(cds.default ?? cds), name: "abapcds" } as never,
+          json.default,
         ],
         engine: createJavaScriptRegexEngine({ forgiving: true }),
       });

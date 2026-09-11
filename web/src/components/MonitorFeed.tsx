@@ -24,15 +24,15 @@
  * oldest held — paging a filtered list past calls that were never going to be
  * drawn would page nothing.
  *
- * The filter defaults to MCP only, which is what the page is named for. The
- * built-in calls are one switch away because the doctor and the workspace
- * reads are also where things go wrong, but a list that opens with forty
- * `Read` calls before the first `GetProgram` is a list about the wrong thing.
+ * Every call shows by default, MCP and built-in alike; "MCP only" narrows to
+ * the ones that reached the SAP system. A row opens in a modal with the whole
+ * input and a way to take the question to chat — see `ToolCallModal`.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Select } from "@/components/Select";
 import { DateRangePicker } from "@/components/DateRangePicker";
+import { ToolCallModal } from "@/components/ToolCallModal";
 import type { ToolCall } from "@/lib/types";
 
 /** How many calls the list keeps once live ones start piling up. */
@@ -55,7 +55,7 @@ type Filters = {
 };
 
 const DEFAULT_FILTERS: Filters = {
-  mcpOnly: true,
+  mcpOnly: false,
   status: "all",
   q: "",
   from: "",
@@ -217,6 +217,9 @@ export function MonitorFeed({
   const arrived = useRef(new Set<string>());
   /** Which fetch is current, so a slow one cannot land over a newer one. */
   const fetchSeq = useRef(0);
+  /** The call open in the modal. By id, so a live update to it is shown. */
+  const [openId, setOpenId] = useState<string | null>(null);
+  const openCall = openId ? (calls.get(openId) ?? null) : null;
 
   const set = <K extends keyof Filters>(key: K, value: Filters[K]): void =>
     setFilters((current) => ({ ...current, [key]: value }));
@@ -458,11 +461,13 @@ export function MonitorFeed({
           {visible.map((call) => {
             const state = stateOf(call);
             return (
-              <li
-                key={call.id}
-                className={`mon-row is-${state}${arrived.current.has(call.id) ? " is-new" : ""}`}
-                title={`${stamp(call.startedAt)} · session ${call.sessionId}`}
-              >
+              <li key={call.id}>
+                <button
+                  type="button"
+                  className={`mon-row is-${state}${arrived.current.has(call.id) ? " is-new" : ""}`}
+                  title={`${stamp(call.startedAt)} · session ${call.sessionId}`}
+                  onClick={() => setOpenId(call.id)}
+                >
                 <span className="mon-dot" aria-hidden="true" />
                 <span className="mon-time">
                   {spansDays ? <span className="mon-day">{day(call.startedAt)}</span> : null}
@@ -490,11 +495,14 @@ export function MonitorFeed({
                     </>
                   )}
                 </span>
+                </button>
               </li>
             );
           })}
         </ol>
       )}
+
+      {openCall ? <ToolCallModal call={openCall} onClose={() => setOpenId(null)} /> : null}
 
       {historyAvailable ? (
         <div className="mon-foot">

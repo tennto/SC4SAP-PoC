@@ -29,8 +29,15 @@ const RING_LIMIT = 200;
 const FLUSH_MS = 1000;
 /** A batch this large goes out at once rather than waiting. */
 const FLUSH_AT = 50;
-/** How much of the input is kept, in characters of its JSON. */
-const PREVIEW_CHARS = 200;
+/**
+ * How much of the input is kept, in characters of its JSON.
+ *
+ * Enough for the monitor to show a whole input for nearly every call — a
+ * program name, a table and a where-clause — and small enough that a row is
+ * still a row. A `WriteProgram` carrying a whole source is the case that
+ * gets cut, and that is the case where nobody wanted it in the log.
+ */
+const PREVIEW_CHARS = 2000;
 /** Rows expire after this. The page is a monitor, not an archive. */
 const RETENTION_DAYS = 30;
 
