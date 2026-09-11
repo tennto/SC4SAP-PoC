@@ -1112,10 +1112,11 @@ button.primary:hover:not(:disabled) {
   gap: 6px;
 }
 
-/* The strip's own scrollbar. Absent on the desktop rail, which is a column
-   with the platform's bar down its side; see the narrow-screen block for the
-   shape it takes and why it is drawn by hand at all. */
-.session-scrollbar {
+/* Hand-drawn scrollbars — see `DragScrollBar.tsx` for why the platform's own
+   will not do. Off by default: a desktop browser draws a real one for any
+   `overflow: auto`, and two bars for one scroller is worse than none. The
+   narrow-screen block turns them on and gives them their shape. */
+.drag-scrollbar {
   display: none;
 }
 
@@ -1926,12 +1927,20 @@ button.primary:hover:not(:disabled) {
    Shiki renders its own <pre class="shiki">, so this wrapper carries what
    `.markdown pre` carries for every other fence: the box, and the horizontal
    scroll that keeps a wide SELECT from stretching the bubble. */
+/* The box. It does not scroll — `.markdown-code-scroll` inside it does — so
+   that the bar under the code can sit outside the scroller instead of sliding
+   away with it. */
 .markdown-code {
   margin: 0 0 10px;
-  overflow-x: auto;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 8px;
+  /* The rounded corners have to clip the code that runs under them. */
+  overflow: hidden;
+}
+
+.markdown-code-scroll {
+  overflow-x: auto;
 }
 
 /* Both states put a <pre> in the same place with the same metrics: the
@@ -1948,6 +1957,13 @@ button.primary:hover:not(:disabled) {
   background: transparent !important;
   border: 0;
   border-radius: 0;
+  /* `.markdown pre` makes every fence its own scroller. Inside this box the
+     scrolling belongs to `.markdown-code-scroll`, one level out, because the
+     bar under the code has to sit outside whatever scrolls or it slides away
+     with it. Leaving this on meant the `pre` quietly absorbed the overflow —
+     555px of code inside a 348px box — and the outer element never saw
+     anything to scroll, so no bar was ever drawn. */
+  overflow: visible;
   font-family: ui-monospace, "Cascadia Mono", monospace;
   font-size: 12.5px;
   line-height: 1.55;
@@ -4484,13 +4500,14 @@ button.link-button:disabled {
    *
    * The platform's own is an overlay here: invisible until the moment someone
    * already knows to scroll. `::-webkit-scrollbar` is not an answer either —
-   * iOS ignores it for overlay bars — so `SessionList` measures the element
+   * iOS ignores it for overlay bars — so `DragScrollBar` measures the element
    * and sets the thumb's width and offset itself.
    *
-   * Sits between the cards and the rail's bottom edge, inset to the same
-   * gutter the cards use, so it reads as belonging to the strip.
+   * Two scrollers use it: the session strip and a code block. Both sit at the
+   * bottom of the thing they scroll, inset to the same gutter as its content,
+   * so the bar reads as part of that block rather than as a page control.
    */
-  .session-scrollbar {
+  .drag-scrollbar {
     display: block;
     position: relative;
     height: 5px;
@@ -4516,11 +4533,11 @@ button.link-button:disabled {
     touch-action: none;
   }
 
-  .session-scrollbar.dragging {
+  .drag-scrollbar.dragging {
     cursor: grabbing;
   }
 
-  .session-scrollbar span {
+  .drag-scrollbar span {
     position: absolute;
     top: 5px;
     bottom: 5px;
@@ -4531,16 +4548,24 @@ button.link-button:disabled {
     transition: background var(--t-fast) var(--ease);
   }
 
-  .session-scrollbar:hover span,
-  .session-scrollbar.dragging span {
+  .drag-scrollbar:hover span,
+  .drag-scrollbar.dragging span {
     background: var(--ink-55);
   }
 
   /* Snapping fights a scrub — the strip would tug back to a card on every
      frame of the drag. It comes back the moment the bar is let go. */
-  .session-rail:has(.session-scrollbar.dragging) .session-list {
+  .session-rail:has(.drag-scrollbar.dragging) .session-list,
+  .markdown-code:has(.drag-scrollbar.dragging) .markdown-code-scroll {
     scroll-snap-type: none;
     scroll-behavior: auto;
+  }
+
+  /* Inside the code block's border rather than under it, and inset to the
+     same 14px the code is padded by, so the bar lines up with the first
+     character rather than with the box. */
+  .markdown-code-bar {
+    margin: 0 14px 8px;
   }
 
   /* The list already has its own bottom padding; the bar takes the place of

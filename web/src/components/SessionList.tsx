@@ -13,6 +13,7 @@ export type RailItem = {
   totalCostUsd: number;
 };
 import { Icon } from "@/components/Icon";
+import { DragScrollBar } from "@/components/DragScrollBar";
 
 /** Matches the exit animation in `globals.css`. */
 const LEAVE_MS = 420;
@@ -168,92 +169,6 @@ export function SessionList({
     });
   }, [firstId]);
 
-  /**
-   * A scrollbar that is actually there.
-   *
-   * The platform's own is an overlay on a touch device: invisible until the
-   * moment someone already knows to scroll, which is too late to be the thing
-   * that tells them. `::-webkit-scrollbar` does not help — iOS ignores it for
-   * overlay bars — so the strip carries its own, measured off the element.
-   *
-   * Null when everything fits, so the track is absent rather than showing a
-   * thumb that fills it and means nothing.
-   */
-  const [thumb, setThumb] = useState<{ size: number; offset: number } | null>(
-    null,
-  );
-
-  const measure = useCallback(() => {
-    const element = listRef.current;
-    if (!element) return;
-    const { clientWidth, scrollWidth, scrollLeft } = element;
-    // A pixel of slack: sub-pixel layout leaves a scrollWidth a hair over the
-    // clientWidth on lists that plainly fit.
-    if (scrollWidth <= clientWidth + 1) {
-      setThumb(null);
-      return;
-    }
-    setThumb({
-      size: (clientWidth / scrollWidth) * 100,
-      offset: (scrollLeft / scrollWidth) * 100,
-    });
-  }, []);
-
-  /**
-   * The bar is a control, not just a readout.
-   *
-   * It was drawn as an indicator first, which was the wrong call: a mouse
-   * cannot drag a scroll container. Touch can swipe the cards and a wheel can
-   * turn them, but a pointer has nothing to take hold of — so on a desktop
-   * browser, and in the phone-preview extensions people check layouts with,
-   * the strip looked scrollable and was not reachable. Grabbing the bar is the
-   * gesture that was missing.
-   *
-   * Pointer events rather than mouse ones, so the same code covers a finger on
-   * the thumb, a trackpad and a stylus.
-   */
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const [dragging, setDragging] = useState(false);
-
-  const scrubTo = useCallback((clientX: number) => {
-    const element = listRef.current;
-    const track = trackRef.current;
-    if (!element || !track) return;
-    const box = track.getBoundingClientRect();
-    if (box.width === 0) return;
-    const visible = element.clientWidth / element.scrollWidth;
-    // Put the *middle* of the thumb under the pointer, so the strip does not
-    // jump by half a thumb the instant it is grabbed.
-    const fraction = (clientX - box.left) / box.width - visible / 2;
-    const maxScroll = element.scrollWidth - element.clientWidth;
-    element.scrollLeft = Math.max(0, Math.min(1, fraction / (1 - visible))) * maxScroll;
-  }, []);
-
-  const onTrackPointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.currentTarget.setPointerCapture(event.pointerId);
-      setDragging(true);
-      scrubTo(event.clientX);
-    },
-    [scrubTo],
-  );
-
-  useEffect(() => {
-    const element = listRef.current;
-    if (!element) return;
-    measure();
-    element.addEventListener("scroll", measure, { passive: true });
-    // Rows arriving, leaving, or the window turning sideways all change
-    // whether there is anything to scroll.
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => {
-      element.removeEventListener("scroll", measure);
-      observer.disconnect();
-    };
-  }, [measure, rows.length]);
-
   return (
     <aside className="session-rail">
       <div className="session-rail-head">
@@ -318,31 +233,9 @@ export function SessionList({
         })}
       </nav>
 
-      {/* Indication, not a control: dragging the strip is the gesture, and a
-          4px thumb is not a thing to aim at with a thumb. `aria-hidden`
-          because the scroll position is already conveyed by the list itself. */}
-      {thumb && (
-        <div
-          ref={trackRef}
-          className={`session-scrollbar${dragging ? " dragging" : ""}`}
-          onPointerDown={onTrackPointerDown}
-          onPointerMove={(event) => {
-            if (dragging) scrubTo(event.clientX);
-          }}
-          onPointerUp={() => setDragging(false)}
-          onPointerCancel={() => setDragging(false)}
-          /* Redundant by design: the strip already scrolls by wheel, by swipe
-             and by keyboard once a card has focus. This is a pointer
-             affordance on top of those, not the only way through, which is why
-             it stays out of the accessibility tree rather than pretending to
-             be a slider. */
-          aria-hidden="true"
-        >
-          <span
-            style={{ width: `${thumb.size}%`, left: `${thumb.offset}%` }}
-          />
-        </div>
-      )}
+      {/* The strip is the one place in the app a reader has to know they can
+          scroll before they try, and on a phone nothing else says so. */}
+      <DragScrollBar targetRef={listRef} className="session-scrollbar" />
     </aside>
   );
 }

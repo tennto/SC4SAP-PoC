@@ -14,12 +14,13 @@
  * moment as plain paragraphs before it snaps into a grid. That is the honest
  * trade for not making the user wait for the turn to end.
  */
-import { Children, useEffect, useMemo, useState } from "react";
+import { Children, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { HighlighterCore } from "shiki/core";
 import { highlight, highlighter, langFor, loadedHighlighter } from "@/lib/highlight";
+import { DragScrollBar } from "@/components/DragScrollBar";
 
 /** The text inside a fence, which react-markdown hands over as nested nodes. */
 function textOf(node: ReactNode): string {
@@ -39,6 +40,7 @@ function textOf(node: ReactNode): string {
  */
 function CodeBlock({ code, tag }: { code: string; tag?: string }) {
   const lang = langFor(tag);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   /*
    * Seeded from the module, not from null.
    *
@@ -84,17 +86,29 @@ function CodeBlock({ code, tag }: { code: string; tag?: string }) {
    * Shiki generated from the model's text with every character escaped on the
    * way in — the markup is ours, only the words are theirs.
    */
+  /*
+   * The scrolling is one element in from the box.
+   *
+   * ABAP runs wide — a `SELECT` with a long field list does not wrap — so the
+   * block scrolls sideways, and on a phone nothing says so: the platform's bar
+   * is an overlay that only appears once you are already scrolling. The bar
+   * has to live outside the scroller or it slides away with the code, hence
+   * the inner element rather than putting `overflow` on the box itself.
+   */
   return (
     <div className="markdown-code">
-      {html ? (
-        <div className="markdown-code-inner" dangerouslySetInnerHTML={{ __html: html }} />
-      ) : (
-        // Before the highlighter has loaded, so a block appears immediately as
-        // plain text rather than being withheld until it can be coloured.
-        <pre className="markdown-code-plain">
-          <code className={tag ? `language-${tag}` : undefined}>{code}</code>
-        </pre>
-      )}
+      <div className="markdown-code-scroll" ref={scrollRef}>
+        {html ? (
+          <div className="markdown-code-inner" dangerouslySetInnerHTML={{ __html: html }} />
+        ) : (
+          // Before the highlighter has loaded, so a block appears immediately
+          // as plain text rather than being withheld until it can be coloured.
+          <pre className="markdown-code-plain">
+            <code className={tag ? `language-${tag}` : undefined}>{code}</code>
+          </pre>
+        )}
+      </div>
+      <DragScrollBar targetRef={scrollRef} className="markdown-code-bar" />
     </div>
   );
 }
