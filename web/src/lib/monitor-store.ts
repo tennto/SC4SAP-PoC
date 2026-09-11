@@ -34,14 +34,65 @@ function toCall(doc: ToolCallDoc): ToolCall {
  * that shares a millisecond with the cursor is dropped rather than repeated,
  * which at this rate is never.
  */
+export type ToolCallFilter = {
+  /** Only calls that started before this. The page cursor. */
+  before?: Date;
+  limit?: number;
+  mcpOnly?: boolean;
+  /**
+   * `failed` is an error result or a refusal at the gate — the two things a
+   * reader scanning for trouble means by it. `running` has no result yet.
+   */
+  status?: "ok" | "failed" | "running";
+  /** Matched against the tool name and the input preview, case-insensitive. */
+  q?: string;
+  /** Inclusive start and exclusive end of a date range. */
+  from?: Date;
+  to?: Date;
+};
+
+/** A user's search, made safe to hand to `$regex`. */
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** The Mongo filter for one account's calls under `options`. */
+function filterOf(userId: string, options: ToolCallFilter): Record<string, unknown> {
+  const filter: Record<string, unknown> = { userId };
+  const started: Record<string, Date> = {};
+  if (options.before) started.$lt = options.before;
+  if (options.from) started.$gte = options.from;
+  if (options.to && (!options.before || options.to < options.before)) {
+    started.$lt = options.to;
+  }
+  if (Object.keys(started).length > 0) filter.startedAt = started;
+  if (options.mcpOnly) filter.kind = "mcp";
+  switch (options.status) {
+    case "ok":
+      filter.ok = true;
+      break;
+    case "failed":
+      filter.$or = [{ ok: false }, { decision: { $in: ["denied", "expired"] } }];
+      break;
+    case "running":
+      filter.ok = null;
+      break;
+  }
+  const q = options.q?.trim();
+  if (q) {
+    const pattern = { $regex: escapeRegex(q), $options: "i" };
+    // `$and`, so a status `$or` above is not overwritten.
+    filter.$and = [{ $or: [{ tool: pattern }, { inputPreview: pattern }] }];
+  }
+  return filter;
+}
+
 export async function listToolCalls(
   userId: string,
-  options: { before?: Date; limit?: number; mcpOnly?: boolean } = {},
+  options: ToolCallFilter = {},
 ): Promise<ToolCall[]> {
   const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
-  const filter: Record<string, unknown> = { userId };
-  if (options.before) filter.startedAt = { $lt: options.before };
-  if (options.mcpOnly) filter.kind = "mcp";
+  const filter = filterOf(userId, options);
   const docs = await (await toolCalls())
     .find(filter)
     .sort({ startedAt: -1 })

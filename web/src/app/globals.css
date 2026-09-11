@@ -6336,6 +6336,111 @@ a.ghost.auth-submit {
    flexible column for the input preview, which is the only thing on a row
    that can be long and the first thing to give way. */
 
+/* One column of panels with air between them, the same 14px the settings
+   stack uses. The panels are siblings of the page head, which carries its own
+   bottom rule, so the gap starts under it. */
+.page.monitor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.page.monitor > .page-head {
+  margin-bottom: 4px;
+}
+
+/* The filter bar. A row that wraps: search takes what is left, the rest sit
+   at their own widths. Inputs borrow `.field input`'s box so the bar reads as
+   the same family of control as every form in the app. */
+.mon-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.mon-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 0;
+  padding: 0 12px;
+  color: var(--ink-38);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.mon-search:focus-within {
+  border-color: var(--ink-38);
+}
+
+.mon-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.mon-search input::-webkit-search-cancel-button {
+  filter: invert(0.5);
+}
+
+.mon-filter {
+  flex: 0 0 auto;
+  width: 160px;
+}
+
+.mon-filter .select-button {
+  padding-top: 7px;
+  padding-bottom: 7px;
+  font-size: 12.5px;
+}
+
+.mon-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+}
+
+.mon-date input {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 7px 10px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.mon-date input:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.mon-clear {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.mon-day {
+  margin-right: 6px;
+  color: var(--ink-55);
+}
+
 .mon-tiles {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -6415,13 +6520,6 @@ a.ghost.auth-submit {
   color: var(--ink-55);
 }
 
-.mon-controls {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-shrink: 0;
-}
-
 .mon-feed {
   display: inline-flex;
   align-items: center;
@@ -6491,7 +6589,7 @@ a.ghost.auth-submit {
 
 .mon-row {
   display: grid;
-  grid-template-columns: 8px 62px minmax(150px, 220px) minmax(0, 1fr) auto;
+  grid-template-columns: 8px minmax(62px, auto) minmax(150px, 220px) minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 9px 4px;
@@ -6545,6 +6643,7 @@ a.ghost.auth-submit {
   color: var(--ink-38);
   font-family: var(--font-mono);
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .mon-name {
@@ -6624,7 +6723,7 @@ a.ghost.auth-submit {
 
 @media (max-width: 640px) {
   .mon-row {
-    grid-template-columns: 8px 62px minmax(0, 1fr) auto;
+    grid-template-columns: 8px minmax(62px, auto) minmax(0, 1fr) auto;
   }
 
   .mon-input {
