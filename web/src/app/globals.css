@@ -1112,6 +1112,13 @@ button.primary:hover:not(:disabled) {
   gap: 6px;
 }
 
+/* The strip's own scrollbar. Absent on the desktop rail, which is a column
+   with the platform's bar down its side; see the narrow-screen block for the
+   shape it takes and why it is drawn by hand at all. */
+.session-scrollbar {
+  display: none;
+}
+
 .session-item {
   position: relative;
   display: grid;
@@ -4470,6 +4477,40 @@ button.link-button:disabled {
     width: 44px;
     pointer-events: none;
     background: linear-gradient(to left, var(--panel), transparent);
+  }
+
+  /*
+   * A visible bar under the strip.
+   *
+   * The platform's own is an overlay here: invisible until the moment someone
+   * already knows to scroll. `::-webkit-scrollbar` is not an answer either —
+   * iOS ignores it for overlay bars — so `SessionList` measures the element
+   * and sets the thumb's width and offset itself.
+   *
+   * Sits between the cards and the rail's bottom edge, inset to the same
+   * gutter the cards use, so it reads as belonging to the strip.
+   */
+  .session-scrollbar {
+    display: block;
+    position: relative;
+    height: 3px;
+    margin: 0 10px 7px;
+    border-radius: 999px;
+    background: var(--line-soft);
+  }
+
+  .session-scrollbar span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: inherit;
+    background: var(--ink-38);
+  }
+
+  /* The list already has its own bottom padding; the bar takes the place of
+     the gap rather than adding to it. */
+  .session-list {
+    padding-bottom: 4px;
   }
 
   /* Where the browser can follow a scroller's position, the cue goes away once
