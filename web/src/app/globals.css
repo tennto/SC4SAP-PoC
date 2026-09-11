@@ -6366,7 +6366,8 @@ a.ghost.auth-submit {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1 1 260px;
+  flex: 1 1 200px;
+  max-width: 300px;
   min-width: 0;
   padding: 0 12px;
   color: var(--ink-38);
@@ -6406,29 +6407,169 @@ a.ghost.auth-submit {
   font-size: 12.5px;
 }
 
-.mon-date {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ink-55);
+.mon-filter-dates {
+  width: 190px;
 }
 
-.mon-date input {
-  font: inherit;
-  font-size: 12.5px;
-  padding: 7px 10px;
+/* ---- the date range picker. The trigger is a `.select-button`, so it sits
+   on the row like the selects beside it; the panel borrows `.select-list`'s
+   surface and lift. */
+.daterange {
+  position: relative;
+}
+
+.daterange-icon {
+  flex: none;
+  font-size: 14px;
+  color: var(--ink-38);
+}
+
+.daterange-button.is-set .daterange-icon,
+.daterange-button.is-set .select-value {
   color: var(--ink);
+}
+
+.daterange-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  width: 272px;
+  padding: 10px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16);
+  animation: select-list-in var(--t-base) var(--ease) both;
 }
 
-.mon-date input:focus-visible {
-  outline: 2px solid var(--ink);
-  outline-offset: 2px;
+.daterange-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.daterange-preset {
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink-80);
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+}
+
+.daterange-preset:hover {
+  border-color: var(--ink-38);
+  color: var(--ink);
+}
+
+.daterange-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.daterange-month {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.daterange-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 13px;
+  color: var(--ink-55);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.daterange-nav:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.daterange-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.daterange-dow {
+  padding: 4px 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+  color: var(--ink-38);
+}
+
+.daterange-day {
+  height: 30px;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-80);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.daterange-day:hover:not(:disabled) {
+  border-color: var(--ink-38);
+  color: var(--ink);
+}
+
+/* Presses must not shift a grid cell; the base button rule drops it a pixel. */
+.daterange-day:active:not(:disabled) {
+  transform: none;
+}
+
+.daterange-day.is-outside {
+  color: var(--ink-38);
+}
+
+.daterange-day.is-today {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.daterange-day.is-in-range {
+  background: var(--panel-2);
+  border-radius: 0;
+  color: var(--ink);
+}
+
+.daterange-day.is-end {
+  background: var(--ink);
+  border-color: var(--ink);
+  border-radius: 6px;
+  color: var(--on-ink);
+}
+
+.daterange-day.is-future,
+.daterange-day:disabled {
+  color: var(--ink-38);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.daterange-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--ink-38);
 }
 
 .mon-clear {
@@ -6450,9 +6591,9 @@ a.ghost.auth-submit {
 .mon-tile {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
-  padding: 14px 16px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-2);
@@ -6460,7 +6601,7 @@ a.ghost.auth-submit {
 
 .mon-tile-value {
   font-family: var(--font-display);
-  font-size: 26px;
+  font-size: 20px;
   font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.02em;
@@ -6473,7 +6614,7 @@ a.ghost.auth-submit {
 }
 
 .mon-tile-label {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -6481,8 +6622,8 @@ a.ghost.auth-submit {
 }
 
 .mon-tile-detail {
-  margin-top: 4px;
-  font-size: 11.5px;
+  margin-top: 2px;
+  font-size: 11px;
   line-height: 1.5;
   color: var(--ink-38);
 }
@@ -6494,11 +6635,11 @@ a.ghost.auth-submit {
 .mon-top {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 11.5px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 

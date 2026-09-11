@@ -32,6 +32,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Select } from "@/components/Select";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import type { ToolCall } from "@/lib/types";
 
 /** How many calls the list keeps once live ones start piling up. */
@@ -369,26 +370,14 @@ export function MonitorFeed({
           />
         </div>
 
-        <label className="mon-date">
-          <span>From</span>
-          <input
-            type="date"
-            value={filters.from}
-            max={filters.to || undefined}
-            onChange={(event) => set("from", event.target.value)}
-            aria-label="From date"
+        <div className="mon-filter mon-filter-dates">
+          <DateRangePicker
+            value={{ from: filters.from, to: filters.to }}
+            onChange={(range) =>
+              setFilters((current) => ({ ...current, from: range.from, to: range.to }))
+            }
           />
-        </label>
-        <label className="mon-date">
-          <span>To</span>
-          <input
-            type="date"
-            value={filters.to}
-            min={filters.from || undefined}
-            onChange={(event) => set("to", event.target.value)}
-            aria-label="To date"
-          />
-        </label>
+        </div>
 
         <div className="mon-filter">
           <Select
