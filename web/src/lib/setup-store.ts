@@ -2,7 +2,7 @@ import "server-only";
 import { ObjectId } from "mongodb";
 import { users, type ConnectionDoc } from "@/lib/mongo";
 import { open, seal } from "@/lib/secrets";
-import type { SetupDraft } from "@/lib/setup";
+import { EMPTY_DRAFT, type BlocklistProfile, type SetupDraft } from "@/lib/setup";
 
 /**
  * Reading and writing one account's connection.
@@ -35,6 +35,9 @@ export async function saveConnection(
     client: draft.client.trim(),
     language: draft.language,
     apiKeySealed: seal(draft.apiKey.trim()),
+    industry: draft.industry,
+    blocklist: draft.blocklist,
+    allowTables: draft.allowTables,
     connectedAt: new Date(),
     ...(verified ? { lastCheck: { ok: true, detail: verified, at: new Date() } } : {}),
   };
@@ -66,6 +69,9 @@ export type ConnectionSummary = {
   abapRelease: string;
   client: string;
   language: string;
+  industry: string;
+  blocklist: BlocklistProfile;
+  allowTables: string[];
   connectedAt: string;
   /** ISO timestamps. `null` when the connection has never been probed. */
   lastCheck: { ok: boolean; detail: string; at: string } | null;
@@ -89,6 +95,11 @@ export async function readConnection(
     abapRelease: connection.abapRelease,
     client: connection.client,
     language: connection.language,
+    // Rows from before these existed read as the plugin's own defaults,
+    // which is what the backend applies to them today anyway.
+    industry: connection.industry ?? EMPTY_DRAFT.industry,
+    blocklist: connection.blocklist ?? EMPTY_DRAFT.blocklist,
+    allowTables: connection.allowTables ?? [],
     connectedAt: connection.connectedAt.toISOString(),
     lastCheck: connection.lastCheck
       ? {
@@ -98,6 +109,33 @@ export async function readConnection(
         }
       : null,
   };
+}
+
+/**
+ * Change the plugin-side scope without touching the connection.
+ *
+ * Its own writer because the settings screen edits these on their own and
+ * none of them needs the SAP system consulted: an industry is a choice, not a
+ * logon, and running the twelve-second probe to record one would be the wrong
+ * kind of careful. Refuses an account with no connection — the wizard is the
+ * only flow that creates one.
+ */
+export async function saveScope(
+  userId: string,
+  scope: Pick<SetupDraft, "industry" | "blocklist" | "allowTables">,
+): Promise<boolean> {
+  if (!ObjectId.isValid(userId)) return false;
+  const result = await (await users()).updateOne(
+    { _id: new ObjectId(userId), connection: { $exists: true } },
+    {
+      $set: {
+        "connection.industry": scope.industry,
+        "connection.blocklist": scope.blocklist,
+        "connection.allowTables": scope.allowTables,
+      },
+    },
+  );
+  return result.matchedCount > 0;
 }
 
 /**

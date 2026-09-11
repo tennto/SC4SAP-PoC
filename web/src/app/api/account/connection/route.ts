@@ -1,5 +1,5 @@
 import { checkSap, CheckError } from "@/lib/setup-checks";
-import { readConnectionSecrets, saveConnection } from "@/lib/setup-store";
+import { readConnection, readConnectionSecrets, saveConnection } from "@/lib/setup-store";
 import {
   EMPTY_DRAFT,
   isAbapReleaseValid,
@@ -73,8 +73,15 @@ export async function POST(request: Request): Promise<Response> {
   // This edits a connection; it does not establish one. An account with
   // nothing stored has no key to carry forward and belongs in the wizard,
   // which is the only flow that asks for one.
-  const stored = await readConnectionSecrets(auth.account.id);
-  if (!stored) {
+  // Two reads of the same row, because one returns only what a screen may
+  // see and the other only what a screen must not — and this needs both:
+  // the sealed values to carry forward, and the scope (industry, blocklist)
+  // that this endpoint does not edit and must not reset to defaults.
+  const [stored, current] = await Promise.all([
+    readConnectionSecrets(auth.account.id),
+    readConnection(auth.account.id),
+  ]);
+  if (!stored || !current) {
     return jsonError(409, "This account has no connection yet. Run setup first.");
   }
 
@@ -105,6 +112,9 @@ export async function POST(request: Request): Promise<Response> {
     client,
     language,
     apiKey: stored.apiKey,
+    industry: current.industry,
+    blocklist: current.blocklist,
+    allowTables: current.allowTables,
   };
 
   try {

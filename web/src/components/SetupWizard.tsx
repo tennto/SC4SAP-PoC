@@ -32,9 +32,12 @@ import { Select } from "@/components/Select";
 import {
   ABAP_RELEASE_RULE,
   ADT_URL_RULE,
+  ALLOW_TABLES_RULE,
   API_KEY_RULE,
+  BLOCKLIST_PROFILES,
   CLIENT_RULE,
   EMPTY_DRAFT,
+  INDUSTRIES,
   LANGUAGES,
   SAP_VERSIONS,
   isAbapReleaseValid,
@@ -42,17 +45,20 @@ import {
   isApiKeyValid,
   isClientValid,
   isStepComplete,
+  parseAllowTables,
+  type BlocklistProfile,
   type SetupDraft,
 } from "@/lib/setup";
 
 /**
  * The rail across the foot. `title` is the card's heading as well, so the two
- * cannot drift; `short` is what fits in a four-up rail on a phone.
+ * cannot drift; `short` is what fits in a five-up rail on a phone.
  */
 const STEPS = [
   { short: "System", title: "Where is the system", icon: "link-simple" },
   { short: "Sign-in", title: "How do you log in", icon: "user-circle" },
   { short: "Release", title: "What is the system", icon: "database" },
+  { short: "Scope", title: "What is it for", icon: "shield-check" },
   { short: "API key", title: "What thinks for it", icon: "key" },
 ] as const;
 
@@ -75,6 +81,10 @@ const LEDES: readonly (readonly string[])[] = [
   ],
   [
     "Which release, and which client. Both decide what is in scope: the release picks the table and TCode catalogue, the client picks the data.",
+  ],
+  [
+    "The industry the consultant agents read up on before they answer, and how firmly the MCP server refuses to hand back rows from sensitive tables.",
+    "Both have sensible defaults. Both can be changed later in Settings.",
   ],
   [
     "The key the agent thinks with. It bills to your own Console account, and it is the one credential here that is not SAP's.",
@@ -165,7 +175,7 @@ const CHECKS: readonly {
  * this app talks to and about nothing on any card, so it lands on the last one
  * — where Connect is, and where trying again costs a single press.
  */
-const FAILED_STEP = [1, 3, 3] as const;
+const FAILED_STEP = [1, 4, 4] as const;
 
 /**
  * POST to one of our own endpoints, and throw what it said if it refused.
@@ -214,12 +224,20 @@ const HELPS: readonly (string | null)[] = [
   "In SAP GUI, run transaction SICF and use its ADT test function. The SAP URL it opens is the one to paste here.",
   null,
   null,
+  "Standard refuses HR, payroll and finance line-item tables as well as anything holding credentials. Pick Strict for a system with production data in it; Minimal only for a sandbox.",
   null,
 ];
 
 export function SetupWizard({ firstName }: { firstName: string }) {
   const router = useRouter();
   const [draft, setDraft] = useState<SetupDraft>(EMPTY_DRAFT);
+  /**
+   * The allowed-tables field as typed. The draft holds the parsed list, and
+   * parsing on every keystroke would eat the comma someone is about to type
+   * a name after — so the text lives here and the list is derived from it
+   * when the step is left.
+   */
+  const [allowTablesText, setAllowTablesText] = useState("");
   const [step, setStep] = useState(0);
   /**
    * Which way the next card should come in from — or `initial`, which is not a
@@ -264,7 +282,12 @@ export function SetupWizard({ firstName }: { firstName: string }) {
   const set = <K extends keyof SetupDraft>(key: K, value: SetupDraft[K]): void =>
     setDraft((current) => ({ ...current, [key]: value }));
 
-  const complete = isStepComplete(step, draft);
+  const complete =
+    isStepComplete(step, draft) &&
+    // The only free text on the Scope card, and the only way that card can
+    // be incomplete: a comma-separated list with something in it that is
+    // not a table name.
+    (step !== 3 || parseAllowTables(allowTablesText) !== null);
   const last = step === STEPS.length - 1;
   const seen = visited.has(step);
 
@@ -280,6 +303,14 @@ export function SetupWizard({ firstName }: { firstName: string }) {
     });
 
   function go(to: number): void {
+    // Leaving the Scope card is when its typed list becomes the draft's
+    // parsed one. Next is disabled while the text will not parse, and the
+    // free rail in development skips this gate — so a bad list is dropped
+    // rather than stored, and comes back as typed when the card is returned
+    // to, since the text itself is kept.
+    if (step === 3) {
+      set("allowTables", parseAllowTables(allowTablesText) ?? []);
+    }
     setDir(to > step ? "forward" : "back");
     setVisited((current) => new Set(current).add(step));
     setError(null);
@@ -506,6 +537,19 @@ export function SetupWizard({ firstName }: { firstName: string }) {
               <dd>
                 {SAP_VERSIONS.find((v) => v.value === draft.sapVersion)?.label} ·
                 ABAP {draft.abapRelease.trim()}
+              </dd>
+            </div>
+            <div>
+              <dt>Scope</dt>
+              <dd>
+                {INDUSTRIES.find((i) => i.value === draft.industry)?.label} ·{" "}
+                {BLOCKLIST_PROFILES.find((p) => p.value === draft.blocklist)?.label}{" "}
+                blocklist
+                {draft.allowTables.length > 0
+                  ? ` · ${draft.allowTables.length} table${
+                      draft.allowTables.length === 1 ? "" : "s"
+                    } allowed`
+                  : ""}
               </dd>
             </div>
             {/* The key itself is never echoed — not even a tail. A masked
@@ -757,6 +801,78 @@ export function SetupWizard({ firstName }: { firstName: string }) {
           ) : null}
 
           {step === 3 ? (
+            <>
+              <div className="field-pair">
+                <div className="field">
+                  <span className="field-label" id="setup-industry-label">
+                    Industry
+                  </span>
+                  <Select
+                    name="industry"
+                    labelledBy="setup-industry-label"
+                    value={draft.industry}
+                    options={INDUSTRIES.map((industry) => ({
+                      value: industry.value,
+                      label: industry.label,
+                    }))}
+                    onChange={(next) => set("industry", next)}
+                    autoFocus
+                  />
+                  <span className="field-hint">
+                    Which reference the consultant agents read first.
+                  </span>
+                </div>
+
+                <div className="field">
+                  <span className="field-label" id="setup-blocklist-label">
+                    Blocklist profile
+                  </span>
+                  <Select
+                    name="blocklist"
+                    labelledBy="setup-blocklist-label"
+                    value={draft.blocklist}
+                    options={BLOCKLIST_PROFILES.map((profile) => ({
+                      value: profile.value,
+                      label: profile.label,
+                    }))}
+                    onChange={(next) => set("blocklist", next as BlocklistProfile)}
+                  />
+                  <span className="field-hint">
+                    {BLOCKLIST_PROFILES.find((p) => p.value === draft.blocklist)?.hint}
+                  </span>
+                </div>
+              </div>
+
+              <label className="field">
+                <span className="field-label">Allowed tables</span>
+                <input
+                  className={
+                    allowTablesText !== "" && parseAllowTables(allowTablesText) === null
+                      ? "is-invalid"
+                      : undefined
+                  }
+                  type="text"
+                  name="allowTables"
+                  placeholder="MARA, VBAK, Z*_LOG"
+                  value={allowTablesText}
+                  onChange={(event) => setAllowTablesText(event.target.value)}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <span
+                  className={
+                    allowTablesText !== "" && parseAllowTables(allowTablesText) === null
+                      ? "field-error"
+                      : "field-hint"
+                  }
+                >
+                  {ALLOW_TABLES_RULE}
+                </span>
+              </label>
+            </>
+          ) : null}
+
+          {step === 4 ? (
             <label className="field">
               <span className="field-label">Claude Console API key</span>
               <span className="field-secret">
@@ -817,7 +933,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
         ) : null}
 
         <div className="setup-actions">
-          {/* No Back. The four steps are a one-way run: each card is a
+          {/* No Back. The five steps are a one-way run: each card is a
               different question rather than a stage of one, and a control that
               walks backwards through them turns four short answers into a form
               to be paged around.

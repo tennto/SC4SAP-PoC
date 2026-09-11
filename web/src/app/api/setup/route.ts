@@ -4,7 +4,9 @@ import {
   isAbapReleaseValid,
   isAdtUrlValid,
   isApiKeyValid,
+  isBlocklistValid,
   isClientValid,
+  isIndustryValid,
   type SetupDraft,
 } from "@/lib/setup";
 import { jsonError, readJson, readSecret, signedIn } from "./shared";
@@ -50,6 +52,12 @@ export async function POST(request: Request): Promise<Response> {
   const language =
     typeof body.language === "string" ? body.language.trim().toUpperCase() : "";
   const apiKey = readSecret(body, "apiKey");
+  const industry = typeof body.industry === "string" ? body.industry.trim() : "";
+  const blocklist = typeof body.blocklist === "string" ? body.blocklist.trim() : "";
+  // The wizard sends the list it parsed; anything else is refused whole
+  // rather than filtered, since a caller that sent a bad entry did not go
+  // through the parser and nothing about the rest of its list is trusted.
+  const allowTables = Array.isArray(body.allowTables) ? body.allowTables : [];
 
   if (!isAdtUrlValid(adtUrl)) return jsonError(400, "That is not a usable ADT URL.");
   if (!sapUser) return jsonError(400, "A SAP user is required.");
@@ -62,6 +70,11 @@ export async function POST(request: Request): Promise<Response> {
   if (!LANGUAGE.test(language)) return jsonError(400, "Pick a logon language.");
   if (!apiKey || !isApiKeyValid(apiKey)) {
     return jsonError(400, "That does not look like a Console key.");
+  }
+  if (!isIndustryValid(industry)) return jsonError(400, "Pick an industry.");
+  if (!isBlocklistValid(blocklist)) return jsonError(400, "Pick a blocklist profile.");
+  if (!allowTables.every((table) => typeof table === "string" && /^[A-Z0-9_*]+$/.test(table))) {
+    return jsonError(400, "Allowed tables must be upper-case names or globs.");
   }
 
   // Built from the validated locals rather than spread from the body, so a
@@ -76,6 +89,9 @@ export async function POST(request: Request): Promise<Response> {
     client,
     language,
     apiKey,
+    industry,
+    blocklist,
+    allowTables: allowTables as string[],
   };
 
   try {

@@ -152,6 +152,15 @@ export type ConnectionDoc = {
   language: string;
   /** AES-256-GCM. Never the key, and never any part of it. */
   apiKeySealed: string;
+  /**
+   * The plugin-side scope: industry reference, blocklist profile, and the
+   * tables let through it. Stored per account, not yet read by the backend —
+   * see `lib/setup.ts`. Optional because rows written before this existed
+   * do not have it; readers fall back to the plugin's own defaults.
+   */
+  industry?: string;
+  blocklist?: "minimal" | "standard" | "strict";
+  allowTables?: string[];
   /** When setup last completed. Rewritten if it is run again. */
   connectedAt: Date;
   /**

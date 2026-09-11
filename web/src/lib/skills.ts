@@ -71,7 +71,7 @@ export const SKILL_GROUPS: SkillGroup[] = [
   // answer, which is not a reason for a menu of its own.
   { id: "analyze", label: "Analyze", hint: "Read the system, answer questions" },
   { id: "build", label: "Build", hint: "Create and transport objects" },
-  { id: "system", label: "System", hint: "Connection, profile, diagnostics" },
+  { id: "system", label: "System", hint: "Diagnostics and the MCP server" },
 ];
 
 /** Shared across every consultant-routed skill. */
@@ -290,22 +290,11 @@ export const SKILLS: Skill[] = [
     status: "ready",
     fields: [],
   },
-  {
-    slug: "sap-option",
-    command: "/sc4sap:sap-option",
-    title: "SAP Options",
-    icon: "sliders",
-    summary:
-      "The connection snapshot and the editable values behind it — credentials, blocklist profile, HUD limits.",
-    group: "system",
-    status: "blocked",
-    blockedReason:
-      "Edits `.sc4sap/sap.env` on the backend host, which is shared by every session until Phase 5 lands per-session workspaces.",
-    fields: [
-      { label: "Profile alias", kind: "text", placeholder: "KR-DEV" },
-      { label: "Blocklist profile", kind: "select", options: ["Strict", "Standard", "Relaxed"] },
-    ],
-  },
+  // No `sap-option` here any more. What that skill edits — the connection,
+  // the industry, the blocklist profile and its allowed tables — is what
+  // `/settings` holds for this account; the CLI-only parts (profile aliases,
+  // HUD usage limits) have no meaning in an app that has an account per
+  // person. The status snapshot it also drew belongs to the dashboard.
   {
     slug: "mcp-setup",
     command: "/sc4sap:mcp-setup",

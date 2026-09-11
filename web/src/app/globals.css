@@ -3936,6 +3936,14 @@ button.primary:hover:not(:disabled) {
   align-items: center;
 }
 
+/* A head that carries a note beside its pencil. The row wraps, and a note
+   long enough to be a sentence would otherwise take the whole width and push
+   the pencil onto a line of its own — so the text column shrinks first. */
+.settings .panel-head-row > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 /* Back to the base spacing where the head carries a note under it — the note
    is what separates the heading from the rows there, and it needs room to be
    read as a sentence rather than as a third line of the title. */
@@ -5701,7 +5709,10 @@ a.ghost.auth-submit {
 
 .setup-dots {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* One column per step, however many there are — a fixed count here put
+     the fifth step on a line of its own the day one was added. */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   gap: 6px;
   width: 100%;
   margin: 0;

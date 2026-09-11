@@ -27,6 +27,7 @@ import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { AccountSettings } from "@/components/settings/AccountSettings";
 import { ConnectionSettings } from "@/components/settings/ConnectionSettings";
+import { ScopeSettings } from "@/components/settings/ScopeSettings";
 import { SettingRow } from "@/components/settings/EditModal";
 
 export const metadata: Metadata = { title: "Settings · SC4SAP" };
@@ -115,7 +116,19 @@ export default async function SettingsPage() {
           )}
         </div>
 
-        <div className="rise" style={{ "--delay": "250ms" } as React.CSSProperties}>
+        {connection ? (
+          <div className="rise" style={{ "--delay": "250ms" } as React.CSSProperties}>
+            <ScopeSettings
+              scope={{
+                industry: connection.industry,
+                blocklist: connection.blocklist,
+                allowTables: connection.allowTables,
+              }}
+            />
+          </div>
+        ) : null}
+
+        <div className="rise" style={{ "--delay": "320ms" } as React.CSSProperties}>
           <section className="panel">
             <div className="panel-head">
               <h2>
