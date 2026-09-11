@@ -39,6 +39,12 @@ import { toAttachment, type Draft } from "@/lib/attachments";
 
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
+/**
+ * Text the monitor left for the composer: a question about a tool call,
+ * written before navigating here. Read once and removed, so a reload does
+ * not put the same question back after it has been sent or thrown away.
+ */
+const DRAFT_KEY = "sc4sap.chatDraft";
 /** Which backend session is running which stored chat — see `attached`. */
 const ATTACHED_KEY = "sc4sap.attached";
 
@@ -331,9 +337,21 @@ export function Chat({
     }
   }, []);
 
+  /** What the composer opens with, if the monitor left something. */
+  const [seed, setSeed] = useState<string | null>(null);
+
   useEffect(() => {
     const stored = localStorage.getItem(ACTIVE_KEY);
     if (stored) setActiveId(stored);
+    try {
+      const draft = localStorage.getItem(DRAFT_KEY);
+      if (draft) {
+        localStorage.removeItem(DRAFT_KEY);
+        setSeed(draft);
+      }
+    } catch {
+      // Storage refused. Nothing to seed.
+    }
     try {
       const links = JSON.parse(
         localStorage.getItem(ATTACHED_KEY) ?? "{}",
@@ -1038,6 +1056,7 @@ export function Chat({
               // screen is waiting for something.
               running={status === "busy" || awaitingAck !== null}
               onStop={() => void stop()}
+              seed={seed}
               hint={
                 hero
                   ? "Ask anything about your SAP system…"

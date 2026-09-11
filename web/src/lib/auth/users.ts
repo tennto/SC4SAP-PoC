@@ -41,7 +41,23 @@ export function toAccount(doc: UserDoc): Account {
     favorites: doc.favorites ?? [],
     // The presence of the sub-document, never its contents. See `Account`.
     hasConnection: doc.connection != null,
+    // Rows from before the setting existed ask about writes only, which is
+    // the level a proof of concept wants and the one the settings screen
+    // shows as chosen.
+    approval: doc.approval ?? "writes",
   };
+}
+
+export async function updateApproval(
+  userId: string,
+  approval: "all" | "writes" | "never",
+): Promise<boolean> {
+  if (!ObjectId.isValid(userId)) return false;
+  const result = await (await users()).updateOne(
+    { _id: new ObjectId(userId) },
+    { $set: { approval } },
+  );
+  return result.matchedCount === 1;
 }
 
 export async function findByEmail(email: string): Promise<UserDoc | null> {

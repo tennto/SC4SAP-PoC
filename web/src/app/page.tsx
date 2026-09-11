@@ -6,11 +6,13 @@
  * go when you already know what you want; this screen answers "am I set up,
  * and is it working".
  *
- * The backend row, the account panel and the activity panel are live: the
- * first from the real `/health` call below, the second from the signed-in
- * user's row, the third aggregated from this account's stored conversations.
- * The SAP system is still a fixture from `lib/account.ts` until Phase 5-2
- * gives it a real source; see that file for the mapping.
+ * The three connection rows, the account panel and the activity panel are
+ * live: the backend and key rows from the real `/health` call below, the SAP
+ * row from this account's stored connection and the last probe of it, the
+ * account from the signed-in user's row, the activity aggregated from this
+ * account's stored conversations. The SAP system *card* lower down is still a
+ * fixture from `lib/account.ts` — it wants a SID, a tier and a module list
+ * that setup does not collect yet; see that file for the mapping.
  *
  * Activity is where a credit balance used to be. The balance was a fixture and
  * could only ever have been one — the remaining amount is a number Anthropic
@@ -23,6 +25,7 @@ import type { Health } from "@/lib/types";
 import { CREDITS, SAP_SYSTEM } from "@/lib/account";
 import { requireAccount } from "@/lib/auth/session";
 import { readActivity } from "@/lib/chat-store";
+import { readConnection } from "@/lib/setup-store";
 import { Icon } from "@/components/Icon";
 import { FavoriteSkills } from "@/components/FavoriteSkills";
 import { ReconnectButton } from "@/components/ReconnectButton";
@@ -111,15 +114,24 @@ export default async function HomePage() {
   // Independent of each other: one is an HTTP call to the backend, the other a
   // Mongo aggregate, and waiting for them in turn would add the slower to the
   // faster for nothing.
-  const [{ health, error }, activity] = await Promise.all([
+  const [{ health, error }, activity, connection] = await Promise.all([
     loadHealth(),
     readActivity(account.id),
+    readConnection(account.id),
   ]);
   const online = health !== null;
-  // Every row with a real source behind it, not just the backend — what the
-  // reconnect control compares its own check against to tell "still fine"
-  // apart from "it came back".
-  const connected = health !== null && health.claudeApi.state === "up";
+  // The SAP row is not measured on render — the probe takes up to twelve
+  // seconds against a system that is not answering, which is not a price a
+  // page load should pay. It shows what the last probe found, and the
+  // reconnect control is what runs a new one. `null` means never probed,
+  // which is drawn as unknown rather than as down: an unasked question is not
+  // a failed answer.
+  const sap = connection?.lastCheck ?? null;
+  // Every row with a real source behind it — what the reconnect control
+  // compares its own check against to tell "still fine" apart from "it came
+  // back".
+  const connected =
+    health !== null && health.claudeApi.state === "up" && sap?.ok === true;
 
   return (
     <div className="page dashboard">
@@ -181,13 +193,20 @@ export default async function HomePage() {
           <ConnectionRow
             icon="database"
             label="SAP System"
-            state={online ? "up" : "unknown"}
-            status={online ? "reachable" : "unknown"}
+            state={sap === null ? "unknown" : sap.ok ? "up" : "down"}
+            status={sap === null ? "not checked" : sap.ok ? "reachable" : "refused"}
             detail={
-              <>
-                {SAP_SYSTEM.sid} · client {SAP_SYSTEM.client} ·{" "}
-                {SAP_SYSTEM.user} · <code>{SAP_SYSTEM.host}</code>
-              </>
+              connection ? (
+                <>
+                  client {connection.client} · {connection.sapUser} ·{" "}
+                  <code>{connection.adtUrl}</code>
+                  {sap
+                    ? ` · ${sap.ok ? "answered" : sap.detail} ${ago(sap.at)}`
+                    : " · press Reconnect to check it"}
+                </>
+              ) : (
+                <>no connection stored — run setup</>
+              )
             }
           />
           {/* The one row whose state does not come from `online`: the backend

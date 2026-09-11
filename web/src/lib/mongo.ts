@@ -110,6 +110,12 @@ export type UserDoc = {
    */
   connection?: ConnectionDoc;
   /**
+   * How much a session asks before it acts — see `ApprovalLevel` in
+   * `lib/account.ts`. Absent on rows written before this existed, which
+   * reads as `writes`: reads go through, writes ask.
+   */
+  approval?: "all" | "writes" | "never";
+  /**
    * What this account has run and then deleted.
    *
    * Activity is otherwise summed from the chat rows themselves, which is
@@ -152,8 +158,31 @@ export type ConnectionDoc = {
   language: string;
   /** AES-256-GCM. Never the key, and never any part of it. */
   apiKeySealed: string;
+  /**
+   * The plugin-side scope: industry reference, blocklist profile, and the
+   * tables let through it. Stored per account, not yet read by the backend —
+   * see `lib/setup.ts`. Optional because rows written before this existed
+   * do not have it; readers fall back to the plugin's own defaults.
+   */
+  industry?: string;
+  blocklist?: "minimal" | "standard" | "strict";
+  allowTables?: string[];
   /** When setup last completed. Rewritten if it is run again. */
   connectedAt: Date;
+  /**
+   * What the last probe of this connection found — see `checkSap`.
+   *
+   * Written by every place that runs the probe: setup, a settings save, and
+   * the dashboard's Reconnect. Read by the dashboard so its SAP row can say
+   * something measured rather than something assumed. Absent on rows written
+   * before this existed, which the dashboard draws as "not checked yet".
+   */
+  lastCheck?: {
+    ok: boolean;
+    /** The sentence `checkSap` returned or threw. Never a credential. */
+    detail: string;
+    at: Date;
+  };
 };
 
 /** A live sign-in. The token itself is never stored; see `lib/auth/session.ts`. */
@@ -239,6 +268,32 @@ export type ChatMessageDoc = {
    */
   attachments?: { name: string; mediaType: string; size: number }[];
   at: Date;
+};
+
+/**
+ * One tool call, written by the backend — see `src/server/tool-log.ts`.
+ *
+ * This app never writes these; it reads them for the monitor page. The
+ * indexes are the backend's too, created where the rows are written, which
+ * is why they are not in `ensureIndexes` below. Kept in step by hand: the
+ * backend's `ToolCallDoc` is the same fields with `Date`s.
+ */
+export type ToolCallDoc = {
+  /** The SDK's `tool_use` id. */
+  _id: string;
+  userId: string;
+  sessionId: string;
+  name: string;
+  kind: "mcp" | "builtin";
+  server: string | null;
+  tool: string;
+  inputPreview: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  durationMs: number | null;
+  ok: boolean | null;
+  resultBytes: number | null;
+  decision: "auto" | "allowed" | "denied" | "expired" | null;
 };
 
 /**
@@ -333,6 +388,10 @@ export async function resets(): Promise<Collection<ResetDoc>> {
 
 export async function chats(): Promise<Collection<ChatDoc>> {
   return (await database()).collection<ChatDoc>("chat_sessions");
+}
+
+export async function toolCalls(): Promise<Collection<ToolCallDoc>> {
+  return (await database()).collection<ToolCallDoc>("tool_calls");
 }
 
 export async function chatMessages(): Promise<Collection<ChatMessageDoc>> {

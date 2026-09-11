@@ -48,14 +48,26 @@ const STEP = 110;
 
 export default async function SkillPage({
   params,
+  searchParams,
 }: {
   params: Promise<Params>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   // Same guard as the dashboard: `proxy.ts` checks that a cookie exists,
   // this checks that it still resolves to a user before rendering.
   await requireAccount();
   const skill = findSkill((await params).slug);
   if (!skill) notFound();
+
+  // `?autorun=1&context=...` is a run the dashboard's Reconnect is sending
+  // here, with what it found. Read on the server so the form mounts already
+  // knowing, rather than mounting empty and then noticing. See `SkillForm`.
+  const query = await searchParams;
+  const context = typeof query.context === "string" ? query.context : "";
+  const autorun =
+    query.autorun === "1" && skill.status === "ready"
+      ? { context: context.slice(0, 2000) }
+      : null;
 
   const showsNotice = skill.status === "blocked" && Boolean(skill.blockedReason);
   const panelDelay = showsNotice ? STEP * 2 : STEP;
@@ -111,6 +123,9 @@ export default async function SkillPage({
           title={skill.title}
           fields={skill.fields}
           blocked={showsNotice}
+          autorun={autorun}
+          cost={skill.cost ?? null}
+          followUp={skill.followUp === true}
         />
       </section>
     </div>

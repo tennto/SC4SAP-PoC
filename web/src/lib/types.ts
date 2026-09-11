@@ -26,6 +26,12 @@ export type Session = {
   title: string | null;
   /** SAP read-class calls are waved through without a dialog. Off by default. */
   autoApproveSapReads: boolean;
+  /** The USD ceiling the session was opened with, or `null` for none. */
+  maxBudgetUsd: number | null;
+  /** Sub-agents run on Sonnet whatever the skill asked for. */
+  economy: boolean;
+  /** The model the session runs on. */
+  model: string;
 };
 
 /**
@@ -127,8 +133,12 @@ export type SessionEvent =
   | { type: "error"; error: string };
 
 /** Config snapshot from GET /health, shown in the header. */
+/** A model the backend offers a session on — see `MODELS` in the backend. */
+export type ModelChoice = { id: string; label: string; note: string };
+
 export type Health = {
   ok: boolean;
+  models: ModelChoice[];
   plugin: string;
   workspace: string;
   model: string;
@@ -148,6 +158,32 @@ export type Health = {
     denyPatterns: string[];
     classes: Record<string, number>;
   };
+};
+
+/**
+ * One tool call, as the backend logs it. Mirrors `ToolCall` in
+ * `src/server/tool-log.ts`; the monitor page draws these both from the live
+ * stream and from Mongo, so the two must agree.
+ */
+export type ToolCall = {
+  /** The SDK's `tool_use` id. */
+  id: string;
+  userId: string;
+  sessionId: string;
+  /** The full name, `mcp__<server>__<tool>` or a built-in. */
+  name: string;
+  kind: "mcp" | "builtin";
+  server: string | null;
+  tool: string;
+  /** The first 200 characters of the input as JSON. */
+  inputPreview: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
+  /** `null` while the call is still running. */
+  ok: boolean | null;
+  resultBytes: number | null;
+  decision: "auto" | "allowed" | "denied" | "expired" | null;
 };
 
 /**

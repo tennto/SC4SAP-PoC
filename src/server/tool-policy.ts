@@ -135,6 +135,11 @@ export const LOCAL_AUTO_ALLOW: readonly string[] = [
   // allowing what it goes on to do.
   "Agent",
   "SlashCommand",
+  // Loads a skill's instructions into the turn — the plugin's own skills
+  // call each other this way (`analyze-symptom` starts by invoking
+  // `trust-session`). It reads markdown and nothing else, and a dialog on
+  // it was the first thing every symptom run put in front of the reader.
+  "Skill",
   "BashOutput",
   "ExitPlanMode",
   // Reads the schemas of tools the session has not loaded yet. It reaches
@@ -214,6 +219,126 @@ export function needsHookApproval(toolName: string): boolean {
 export function isSapReadTool(toolName: string): boolean {
   if (!toolName.startsWith(SAP_TOOL_PREFIX)) return false;
   return classifySapTool(toolName.slice(SAP_TOOL_PREFIX.length)) === "read";
+}
+
+/**
+ * How much a session asks before it acts. An account setting, sent with
+ * every session the web app opens.
+ *
+ *   all    — every gated call is put to the reader. The original behaviour.
+ *   writes — reads go through, writes ask: SAP reads of every class but row
+ *            extraction, the agent's own read tools, and a shell command
+ *            that only looks. Anything that changes a file or the SAP system,
+ *            or leaves the machine, still asks.
+ *   never  — nothing asks. For a PoC on the operator's own machine; SAP
+ *            write tools are still out of the model's reach altogether.
+ *
+ * The question tool is outside all three — it is the model asking, not the
+ * model wanting — and so is a row-extraction read under `writes`, because
+ * pulling table rows is the one read the blocklist was built around.
+ */
+export type ApprovalLevel = "all" | "writes" | "never";
+
+export const APPROVAL_LEVELS: readonly ApprovalLevel[] = ["all", "writes", "never"];
+
+/**
+ * The agent's own tools that only look at the machine. Under `writes` they
+ * are waved through; `LOCAL_AUTO_ALLOW` above already covers most of them
+ * before this is consulted, and this is the list for the ones it does not.
+ */
+const LOCAL_READ_TOOLS: ReadonlySet<string> = new Set([
+  "Read",
+  "Grep",
+  "Glob",
+  "LS",
+  "ToolSearch",
+  "Skill",
+  "Agent",
+  "SlashCommand",
+  "BashOutput",
+  "TodoWrite",
+]);
+
+/** First words of shell commands that only read. */
+const READ_COMMANDS: ReadonlySet<string> = new Set([
+  "cat", "ls", "dir", "grep", "rg", "find", "head", "tail", "wc", "echo",
+  "printf", "pwd", "dirname", "basename", "sort", "uniq", "cut", "awk", "tr",
+  "jq", "stat", "file", "which", "where", "type", "test", "[", "date", "true",
+  "less", "more", "diff", "md5sum", "sha256sum", "env", "printenv", "realpath",
+  "readlink", "du", "df", "nl", "tac", "column", "xargs",
+]);
+
+/** `git` sub-commands that only read. */
+const GIT_READ: ReadonlySet<string> = new Set([
+  "log", "status", "diff", "show", "branch", "rev-parse", "ls-files", "blame", "remote",
+]);
+
+/**
+ * Whether a shell command only looks.
+ *
+ * A heuristic, and a conservative one: it says yes only when every part of
+ * the command starts with a word known to read, there is no redirection
+ * anywhere, and nothing is evaluated (`node -e`, `python -c`, `eval`). A
+ * `cd` in front is fine. Anything it is unsure about is a no, which means a
+ * dialog — the failure mode is one more question, not one fewer.
+ */
+export function isReadOnlyCommand(command: string): boolean {
+  // Sending stderr to nowhere, or folding it into stdout, writes nothing.
+  // Taken out before the redirection test so `cat x 2>/dev/null | tail` —
+  // the shape of half the plugin's own reads — is still a read.
+  const text = command.replace(/2>\s*\/dev\/null|2>&1/g, "");
+  if (/[<>]|\btee\b|\beval\b|\bsudo\b/.test(text)) return false;
+  if (/\b(node|python3?|ruby|perl|bash|sh|pwsh|powershell)\b\s+(-e|-c|-Command)/i.test(text)) {
+    return false;
+  }
+  const parts = text
+    .split(/\n|&&|\|\||;|\|/)
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
+  if (parts.length === 0) return false;
+  for (const part of parts) {
+    const words = part.split(/\s+/);
+    const head = (words[0] ?? "").replace(/^["']|["']$/g, "");
+    if (head === "cd") continue;
+    if (head === "git") {
+      if (!GIT_READ.has(words[1] ?? "")) return false;
+      continue;
+    }
+    if (head === "sed") {
+      // `sed -i` edits in place; every other sed is a filter.
+      if (words.some((word) => /^-[a-zA-Z]*i/.test(word))) return false;
+      continue;
+    }
+    if (!READ_COMMANDS.has(head)) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether the session's approval level lets this call through unasked.
+ *
+ * `all` lets nothing through — that is what it means. `never` lets everything
+ * but a question through. `writes` is the judgement call, and it is made
+ * from the tool's class, not its name, so it cannot drift from the policy
+ * that decides what reaches the model at all.
+ */
+export function allowedByLevel(
+  level: ApprovalLevel,
+  toolName: string,
+  input: Record<string, unknown>,
+): boolean {
+  if (toolName === QUESTION_TOOL) return false;
+  if (level === "all") return false;
+  if (level === "never") return true;
+  if (toolName.startsWith(SAP_TOOL_PREFIX)) {
+    const cls = classifySapTool(toolName.slice(SAP_TOOL_PREFIX.length));
+    return cls === "read" || cls === "other";
+  }
+  if (LOCAL_READ_TOOLS.has(toolName)) return true;
+  if (toolName === "Bash") {
+    return typeof input.command === "string" && isReadOnlyCommand(input.command);
+  }
+  return false;
 }
 
 export type ToolPolicy = {

@@ -8,6 +8,12 @@
  *   POST   /sessions/:id/messages queue a user turn (202; output arrives on the stream)
  *   GET    /sessions/:id/stream   SSE of everything the SDK emits
  *   POST   /sessions/:id/auto-approve  wave SAP reads through for this session
+ *   GET    /monitor/stream        SSE of every tool call the caller's account runs
+ *
+ * The caller's account arrives as `x-sc4sap-user`, set by the web app's proxy
+ * after it has checked the session cookie. The backend does not verify it —
+ * it is bound to the loopback interface and the proxy is the only thing that
+ * reaches it — so the header is an identity, not a credential.
  *
  * The stream carries whole SDK messages. Token-level `text_delta` relay is
  * plan item 2-3, which turns on `includePartialMessages` and splits these into
@@ -21,6 +27,7 @@ import {
   type SequencedEvent,
 } from "./session-manager.ts";
 import { claudeApiHealth } from "./claude-api.ts";
+import { APPROVAL_LEVELS, type ApprovalLevel } from "./tool-policy.ts";
 import { BODY_LIMIT, validateAttachments } from "./attachments.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
@@ -28,12 +35,41 @@ const HEARTBEAT_MS = 15_000;
 
 type IdParams = { id: string };
 
+/**
+ * The models a session may be opened on. A closed list rather than any
+ * string, so a typo cannot open a session on a model that does not exist
+ * and fail on its first turn. The web app's cost dialog offers these.
+ */
+export const MODELS = [
+  { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
+  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about five times the price." },
+] as const;
+
+/**
+ * The account's approval level, from `x-sc4sap-approval`. Set by the proxy
+ * beside the account id; absent or unknown reads as `all`, which asks about
+ * everything — the safe way to be wrong.
+ */
+function approvalOf(headers: Record<string, string | string[] | undefined>): ApprovalLevel {
+  const value = headers["x-sc4sap-approval"];
+  const level = Array.isArray(value) ? value[0] : value;
+  return APPROVAL_LEVELS.includes(level as ApprovalLevel) ? (level as ApprovalLevel) : "all";
+}
+
+/** The account behind a request, or `undefined` for a caller that sent none. */
+function userOf(headers: Record<string, string | string[] | undefined>): string | undefined {
+  const value = headers["x-sc4sap-user"];
+  const id = Array.isArray(value) ? value[0] : value;
+  return id && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : undefined;
+}
+
 export function buildApp(manager: SessionManager): FastifyInstance {
   // The default 1 MB body ceiling is smaller than one attached screenshot.
   // See `attachments.ts` for how the figure is arrived at.
   const app = Fastify({ logger: true, bodyLimit: BODY_LIMIT });
 
   app.get<{ Querystring: { fresh?: string } }>("/health", async (request) => ({
+    models: MODELS,
     ok: true,
     plugin: manager.config.pluginPath,
     workspace: manager.config.workspace,
@@ -56,17 +92,28 @@ export function buildApp(manager: SessionManager): FastifyInstance {
 
   app.post<{
     Body:
-      | { resume?: string; priorTurns?: number; priorCostUsd?: number }
+      | {
+          resume?: string;
+          priorTurns?: number;
+          priorCostUsd?: number;
+          /** A USD ceiling for the run. Zero or absent means none. */
+          maxBudgetUsd?: number;
+          /** Sub-agents on Sonnet whatever the skill asked for. */
+          economy?: boolean;
+          /** One of the models this backend offers — see `/health`. */
+          model?: string;
+        }
       | undefined;
   }>("/sessions", async (request, reply) => {
     // The running totals of the conversation this session is picking up, sent
     // by the web app when it revives a stored chat. Only a finite number is
     // worth carrying: a bad one would be added to every later figure, so it
     // is refused here rather than poisoning the count downstream.
-    const { priorTurns, priorCostUsd } = request.body ?? {};
+    const { priorTurns, priorCostUsd, maxBudgetUsd, economy } = request.body ?? {};
     for (const [name, value] of [
       ["priorTurns", priorTurns],
       ["priorCostUsd", priorCostUsd],
+      ["maxBudgetUsd", maxBudgetUsd],
     ] as const) {
       if (value === undefined) continue;
       if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
@@ -75,13 +122,70 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           .send({ error: `body.${name} must be a non-negative number` });
       }
     }
+    if (economy !== undefined && typeof economy !== "boolean") {
+      return reply.code(400).send({ error: "body.economy must be a boolean" });
+    }
+    const model = request.body?.model;
+    if (model !== undefined && !MODELS.some((entry) => entry.id === model)) {
+      return reply.code(400).send({ error: "body.model is not one this backend offers" });
+    }
 
     const session = manager.create({
       resume: request.body?.resume,
       priorTurns,
       priorCostUsd,
+      maxBudgetUsd: maxBudgetUsd ? maxBudgetUsd : undefined,
+      economy,
+      model,
+      userId: userOf(request.headers),
+      approval: approvalOf(request.headers),
     });
     return reply.code(201).send({ session });
+  });
+
+  /**
+   * Every tool call this account runs, as it happens, across every session.
+   *
+   * Opens with the account's recent calls from the in-memory ring as a
+   * `recent` event, so the page has something to draw before the next call
+   * lands; then one event per start and per finish. No `Last-Event-ID`
+   * replay: the ring is the replay, and history older than it is the web
+   * app's to read from Mongo.
+   */
+  app.get("/monitor/stream", async (request, reply) => {
+    const userId = userOf(request.headers);
+    if (!userId) {
+      return reply.code(400).send({ error: "x-sc4sap-user header is required" });
+    }
+
+    reply.hijack();
+    const { raw } = reply;
+    raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+
+    const write = (event: string, data: unknown): void => {
+      raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    write("recent", {
+      calls: manager.toolLog.recent(userId),
+      persistent: manager.toolLog.persistent,
+    });
+    const unsubscribe = manager.toolLog.subscribe(userId, (event) =>
+      write(event.type, event.call),
+    );
+
+    const heartbeat = setInterval(() => raw.write(": ping\n\n"), HEARTBEAT_MS);
+    const stop = (): void => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    };
+    request.raw.on("close", stop);
+    request.raw.on("error", stop);
   });
 
   app.get("/sessions", async () => ({ sessions: manager.list() }));

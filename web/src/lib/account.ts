@@ -19,9 +19,36 @@
  * from the real `/health` call in `app/page.tsx`.
  */
 
+/**
+ * How much a session asks before it acts. Mirrors the backend's
+ * `ApprovalLevel`; the proxy sends it with every request as
+ * `x-sc4sap-approval`, and the backend reads it when it opens a session.
+ */
+export type ApprovalLevel = "all" | "writes" | "never";
+
+export const APPROVAL_LEVELS: { value: ApprovalLevel; label: string; hint: string }[] = [
+  {
+    value: "writes",
+    label: "Ask for writes only",
+    hint: "SAP reads, the agent's own reads and read-only shell commands go through. Anything that changes a file, pulls table rows, or leaves the machine asks.",
+  },
+  {
+    value: "all",
+    label: "Ask for everything",
+    hint: "Every gated call is put to you. Slowest, and the only level where nothing runs unseen.",
+  },
+  {
+    value: "never",
+    label: "Never ask",
+    hint: "Nothing asks. For a proof of concept on your own machine — SAP write tools are still out of the agent's reach altogether.",
+  },
+];
+
 export type Account = {
   /** The user row's `_id`, stringified. */
   id: string;
+  /** See `ApprovalLevel`. */
+  approval: ApprovalLevel;
   /** Family name first, the order sign-up asks for the two parts in. */
   name: string;
   /**

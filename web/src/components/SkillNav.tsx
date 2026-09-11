@@ -31,6 +31,24 @@ const FIXED = [
   },
 ];
 
+/**
+ * Pages that sit inside a skill group without being skills.
+ *
+ * The rail is grouped by what a thing does, and a page that watches the MCP
+ * server belongs under System beside the doctor whether or not it is a slash
+ * command. Not in `lib/skills.ts` because nothing there fits it: no command,
+ * no fields, no run. Listed after the group's skills.
+ */
+const PAGES: { group: string; href: string; icon: string; label: string; hint: string }[] = [
+  {
+    group: "system",
+    href: "/monitor",
+    icon: "pulse",
+    label: "MCP Monitor",
+    hint: "Every tool call the agent makes, as it happens",
+  },
+];
+
 export function SkillNav({ collapsed, onNavigate }: Props) {
   const pathname = usePathname();
   const { isFavorite, toggle } = useFavorites();
@@ -119,6 +137,9 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
               ) : null,
               skill.slug,
             ),
+          )}
+          {PAGES.filter((page) => page.group === group.id).map((page) =>
+            entry(page.href, page.icon, page.label, `${page.label} — ${page.hint}`),
           )}
         </div>
       ))}

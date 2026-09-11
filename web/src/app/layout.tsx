@@ -122,7 +122,10 @@ export default async function RootLayout({
           href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/fill/style.css"
         />
       </head>
-      <body>
+      {/* `spellcheck` inherits, so this is every input and textarea in the
+          app: what gets typed here is ABAP names, table names and SAP
+          messages, and a red line under every one of them said nothing. */}
+      <body spellCheck={false}>
         {/* Above the shell because both the rail and the dashboard read it,
             and neither contains the other. */}
         <FavoritesProvider

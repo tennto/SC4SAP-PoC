@@ -5,14 +5,28 @@
  * without it the session has no active SAP profile and no L1 blocklist guards.
  */
 import { SessionManager } from "./session-manager.ts";
+import { ToolLog } from "./tool-log.ts";
 import { buildApp } from "./app.ts";
+import { loadEnv } from "../config.ts";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? "127.0.0.1";
 
 async function main(): Promise<void> {
-  const manager = new SessionManager();
+  // Before the tool log reads MONGODB_URI. `SessionManager` loads it too,
+  // but the log is built first so the manager can be handed it.
+  loadEnv();
+  const pending: string[] = [];
+  const toolLog = new ToolLog({
+    mongoUri: process.env.MONGODB_URI,
+    mongoDb: process.env.MONGODB_DB,
+    // The app's logger does not exist yet; anything said now is said once
+    // it does.
+    log: (message) => pending.push(message),
+  });
+  const manager = new SessionManager(undefined, { toolLog });
   const app = buildApp(manager);
+  for (const message of pending) app.log.warn(message);
 
   // Learn the SAP tool list before serving, so the first session already has
   // the read-class auto-allow list rather than prompting for everything.
@@ -26,6 +40,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info(`${signal} received, closing sessions`);
     await manager.closeAll();
+    await toolLog.close();
     await app.close();
     process.exit(0);
   };

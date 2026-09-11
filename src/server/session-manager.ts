@@ -28,6 +28,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
+import { ToolLog } from "./tool-log.ts";
 import {
   buildToolPolicy,
   isSapReadTool,
@@ -35,6 +36,8 @@ import {
   QUESTION_TOOL,
   SAP_TOOL_PREFIX,
   type ToolPolicy,
+  allowedByLevel,
+  type ApprovalLevel,
 } from "./tool-policy.ts";
 import {
   toContentBlocks,
@@ -72,6 +75,9 @@ const PERMISSION_TIMEOUT_MS = Number(
 
 
 export type SessionStatus = "starting" | "idle" | "busy" | "closed" | "error";
+
+/** The sub-agent dispatch. Its input carries the model the skill asked for. */
+const AGENT_TOOL = "Agent";
 
 /** The raw Anthropic stream event, reached through SDKMessage so no transitive import is needed. */
 type StreamEvent = Extract<SDKMessage, { type: "stream_event" }>["event"];
@@ -150,6 +156,28 @@ export type SessionRecord = {
    * than inheriting a switch nobody remembers flipping.
    */
   autoApproveSapReads: boolean;
+  /**
+   * The USD ceiling this session was opened with, or `null` for none. The
+   * SDK stops the run at it and reports `error_max_budget_usd`, which the
+   * stream relays as an error the reader can act on.
+   */
+  maxBudgetUsd: number | null;
+  /** The model this session runs on. The backend's default unless chosen. */
+  model: string;
+  /**
+   * How much this session asks before it acts — the account's setting at
+   * the time it was opened. See `ApprovalLevel`.
+   */
+  approval: ApprovalLevel;
+  /**
+   * Sub-agents run on Sonnet whatever the skill asked for.
+   *
+   * The plugin's heavier skills dispatch a reviewer with `model: "opus"`,
+   * which is the right call for a production incident and five times the
+   * price of Sonnet for a PoC. With this on, the dispatch is let through
+   * with that one field rewritten — see `#requestApproval`.
+   */
+  economy: boolean;
 };
 
 type Subscriber = (event: SequencedEvent) => void;
@@ -284,6 +312,12 @@ function isHookNoise(message: SDKMessage): boolean {
 
 type LiveSession = {
   record: SessionRecord;
+  /**
+   * Whose session this is — the web app's account id, forwarded by its proxy
+   * in `x-sc4sap-user`. The tool log keys on it; nothing else here does. A
+   * session opened without one (a curl, a smoke test) is logged as such.
+   */
+  userId: string;
   pump: InputPump;
   session: Query;
   subscribers: Set<Subscriber>;
@@ -335,10 +369,13 @@ export class SessionManager {
   readonly #config: PocConfig;
   /** Deny half applies from the start; the auto-allow half fills in at discover(). */
   #policy: ToolPolicy = buildToolPolicy([]);
+  /** Every tool call, as it happens. See `tool-log.ts`. */
+  readonly toolLog: ToolLog;
 
-  constructor(config?: PocConfig) {
+  constructor(config?: PocConfig, options: { toolLog?: ToolLog } = {}) {
     this.#config = config ?? loadConfig();
     requireApiKey();
+    this.toolLog = options.toolLog ?? new ToolLog();
   }
 
   get config(): PocConfig {
@@ -423,17 +460,30 @@ export class SessionManager {
       resume?: string;
       priorTurns?: number;
       priorCostUsd?: number;
+      userId?: string;
+      maxBudgetUsd?: number;
+      economy?: boolean;
+      /** The session's own model, over the backend's default. */
+      model?: string;
+      approval?: ApprovalLevel;
     } = {},
   ): SessionRecord {
     const id = randomUUID();
     const pump = new InputPump();
+    const economy = options.economy === true;
+    // An economy session takes `Agent` off the auto-allow list, so that a
+    // dispatch reaches `canUseTool` — the one place its input can be edited
+    // on the way through. Every other session keeps it waved through.
+    const allowedTools = economy
+      ? this.#policy.allowedTools.filter((tool) => tool !== "Agent")
+      : this.#policy.allowedTools;
 
     const session = query({
       prompt: pump,
       options: {
         plugins: [{ type: "local", path: this.#config.pluginPath }],
         cwd: this.#config.workspace,
-        model: this.#config.model,
+        model: options.model ?? this.#config.model,
         // Loads the workspace .claude/settings.json, which is the ONLY place
         // the L1 blocklist guards are declared. Dropping this silently
         // ungates row extraction — see provision-workspace.ts.
@@ -447,7 +497,9 @@ export class SessionManager {
         // read-class ones are auto-approved so a single consultant answer does
         // not fire twenty prompts. Everything else falls through to 2-4.
         disallowedTools: this.#policy.disallowedTools,
-        allowedTools: this.#policy.allowedTools,
+        allowedTools,
+        // A ceiling the SDK enforces. Undefined means none, as before.
+        maxBudgetUsd: options.maxBudgetUsd,
         // Plan 2-4 — every tool call parks here until a human answers over
         // the SSE channel. Plan 2-5 adds allowedTools on top; note this
         // callback is NOT a complete chokepoint (ToolSearch was observed
@@ -480,6 +532,30 @@ export class SessionManager {
               hooks: [
                 async (input, toolUseID, { signal }) => {
                   if (input.hook_event_name !== "PreToolUse") return {};
+
+                  // Economy: the sub-agent dispatch goes through with its
+                  // model brought down to Sonnet. Here and not only in
+                  // `canUseTool`, because that callback was never consulted
+                  // for `Agent` — a dispatch with `model: "opus"` went out
+                  // unchanged on an economy session — and this hook is the
+                  // one place the SDK does stop for every tool.
+                  const economyLive = this.#sessions.get(id);
+                  if (input.tool_name === AGENT_TOOL && economyLive?.record.economy) {
+                    const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+                    const requested = toolInput.model;
+                    this.toolLog.decide(toolUseID ?? input.tool_use_id, "auto");
+                    return {
+                      hookSpecificOutput: {
+                        hookEventName: "PreToolUse" as const,
+                        permissionDecision: "allow" as const,
+                        permissionDecisionReason: "Economy: sub-agents run on Sonnet.",
+                        ...(typeof requested === "string" && /opus/i.test(requested)
+                          ? { updatedInput: { ...toolInput, model: "sonnet" } }
+                          : {}),
+                      },
+                    };
+                  }
+
                   if (!needsHookApproval(input.tool_name)) return {};
 
                   const result = await this.#requestApproval(
@@ -515,6 +591,7 @@ export class SessionManager {
     const priorCostUsd = Math.max(0, options.priorCostUsd ?? 0);
 
     const live: LiveSession = {
+      userId: options.userId ?? "anonymous",
       record: {
         id,
         sdkSessionId: null,
@@ -524,6 +601,10 @@ export class SessionManager {
         totalCostUsd: priorCostUsd,
         title: null,
         autoApproveSapReads: false,
+        maxBudgetUsd: options.maxBudgetUsd ?? null,
+        economy,
+        model: options.model ?? this.#config.model,
+        approval: options.approval ?? "all",
       },
       pump,
       session,
@@ -764,6 +845,28 @@ export class SessionManager {
       });
     }
 
+    // Economy: a sub-agent dispatch is allowed as it always was, with its
+    // model brought down to Sonnet. Only here because `Agent` was taken off
+    // the auto-allow list for this session — see `create`. `updatedInput`
+    // is the SDK's own door for this; nothing else about the call changes.
+    if (toolName === AGENT_TOOL && live.record.economy) {
+      this.toolLog.decide(context.toolUseID, "auto");
+      const requested = input.model;
+      const updatedInput =
+        typeof requested === "string" && /opus/i.test(requested)
+          ? { ...input, model: "sonnet" }
+          : input;
+      return Promise.resolve({ behavior: "allow", updatedInput });
+    }
+
+    // The account's approval level, applied before a request is raised. A
+    // read under "writes", or anything under "never", goes through here and
+    // is logged as auto-approved, the same as a policy allow.
+    if (allowedByLevel(live.record.approval, toolName, input)) {
+      this.toolLog.decide(context.toolUseID, "auto");
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
+    }
+
     // The switch, applied before a request is ever raised. Nothing reaches the
     // dialog, so there is no flicker of a modal that answers itself — and the
     // eligibility test is the policy's own, which is what keeps this from
@@ -776,6 +879,7 @@ export class SessionManager {
       toolName !== QUESTION_TOOL &&
       isSapReadTool(toolName)
     ) {
+      this.toolLog.decide(context.toolUseID, "auto");
       return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
 
@@ -803,6 +907,10 @@ export class SessionManager {
         if (!live.pending.delete(reqId)) return;
         clearTimeout(timer);
         context.signal.removeEventListener("abort", onAbort);
+        this.toolLog.decide(
+          context.toolUseID,
+          decision === "allow" ? "allowed" : decision === "deny" ? "denied" : "expired",
+        );
         this.#emit(live, { type: "permission_resolved", reqId, decision });
         resolve(result);
       };
@@ -860,6 +968,11 @@ export class SessionManager {
     });
 
     await live.session.interrupt().catch(() => {});
+    // The interrupt takes the background reviewers down with the turn. A
+    // `background_tasks_changed` naming them can still arrive after this and
+    // put the session back to busy; an empty set here is what it should
+    // find when it does.
+    live.backgroundTasks.clear();
     this.#setStatus(live, "idle");
     return "stopped";
   }
@@ -877,6 +990,7 @@ export class SessionManager {
     }
     this.#cancelOrphanTimer(live);
     live.pump.close();
+    this.toolLog.abandon(id);
     // Tell subscribers before dropping the entry — after this the id 404s.
     this.#setStatus(live, "closed");
     live.subscribers.clear();
@@ -925,6 +1039,17 @@ export class SessionManager {
             // `num_turns` is per-turn in streaming-input mode, not cumulative,
             // so assigning it pins the session at 1. Accumulate instead.
             live.record.turns += message.num_turns;
+            // The ceiling the session was opened with has been hit. Said as
+            // a notice rather than left as a run that stopped mid-sentence:
+            // the reader set the number, and this is what it did.
+            if (message.subtype === "error_max_budget_usd") {
+              this.#emit(live, {
+                type: "error",
+                error: `The run stopped at its budget of $${(
+                  live.record.maxBudgetUsd ?? 0
+                ).toFixed(2)}. Continue in chat to go on with a fresh budget, or run again with a higher one.`,
+              });
+            }
             if (!message.is_error) {
               // A running total for this SDK run, so it replaces rather than
               // adds — and what it does not know about is whatever the
@@ -1005,6 +1130,12 @@ export class SessionManager {
                 type: "error",
                 error: `The background review ${note.status === "failed" ? "failed" : "was stopped"} before it reported.`,
               });
+              // The parent turn ended when it dispatched, so nothing else
+              // ends this one: a stopped reviewer left the session `busy`
+              // for good, with a Stop button over a run that was over.
+              if (live.backgroundTasks.size === 0) {
+                this.#setStatus(live, "idle");
+              }
             }
           }
 
@@ -1013,14 +1144,59 @@ export class SessionManager {
             continue;
           }
           if (isHookNoise(message)) continue;
+          this.#logToolBlocks(live, message);
           this.#emit(live, { type: "message", message });
         }
+        this.toolLog.abandon(live.record.id);
         this.#setStatus(live, "closed");
       } catch (err) {
         this.#emit(live, { type: "error", error: (err as Error).message });
         this.#setStatus(live, "error");
       }
     })();
+  }
+
+  /**
+   * Feed the tool log from the complete messages.
+   *
+   * The assistant message is where a tool call's input is whole — the stream
+   * events only carry it as JSON fragments — and the user message that follows
+   * is where its result lands. Both are on the same loop the transcript is
+   * relayed from, so nothing is observed that a client could not; this only
+   * keeps a note of it.
+   *
+   * Content is read loosely on purpose. The SDK's message types are exact,
+   * but a log that threw on an unexpected block shape would take the session
+   * down with it, and this is the one place in the loop that must not.
+   */
+  #logToolBlocks(live: LiveSession, message: SDKMessage): void {
+    if (message.type === "assistant") {
+      for (const block of message.message.content) {
+        if (block.type === "tool_use") {
+          this.toolLog.start({
+            id: block.id,
+            userId: live.userId,
+            sessionId: live.record.id,
+            name: block.name,
+            input: block.input,
+          });
+        }
+      }
+      return;
+    }
+    if (message.type === "user") {
+      const content: unknown = message.message.content;
+      if (!Array.isArray(content)) return;
+      for (const block of content as Record<string, unknown>[]) {
+        if (block?.type === "tool_result" && typeof block.tool_use_id === "string") {
+          this.toolLog.finish({
+            id: block.tool_use_id,
+            isError: block.is_error === true,
+            content: block.content,
+          });
+        }
+      }
+    }
   }
 
   /**

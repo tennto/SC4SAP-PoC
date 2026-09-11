@@ -49,6 +49,12 @@ type Props = {
   onStop?: () => void;
   /** A file could not be attached, and this is why. */
   onReject?: (message: string) => void;
+  /**
+   * Text to open with, typed and not sent. The monitor hands a question
+   * about a tool call over this way. Applied whenever it changes; the reader
+   * edits or sends it from there.
+   */
+  seed?: string | null;
 };
 
 export function Composer({
@@ -60,8 +66,21 @@ export function Composer({
   onSend,
   onStop,
   onReject,
+  seed = null,
 }: Props) {
   const [text, setText] = useState("");
+
+  useEffect(() => {
+    if (!seed) return;
+    setText(seed);
+    // Put the caret at the end, so typing continues the question rather than
+    // prepending to it.
+    const el = area.current;
+    if (el) {
+      el.focus();
+      el.setSelectionRange(seed.length, seed.length);
+    }
+  }, [seed]);
   /**
    * Files chosen and not yet sent. Read into memory on the click, so the
    * size check and the image downscale happen while the reader is still

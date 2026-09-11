@@ -33,8 +33,10 @@ import {
   ABAP_RELEASE_RULE,
   ADT_URL_RULE,
   API_KEY_RULE,
+  BLOCKLIST_PROFILES,
   CLIENT_RULE,
   EMPTY_DRAFT,
+  INDUSTRIES,
   LANGUAGES,
   SAP_VERSIONS,
   isAbapReleaseValid,
@@ -42,17 +44,19 @@ import {
   isApiKeyValid,
   isClientValid,
   isStepComplete,
+  type BlocklistProfile,
   type SetupDraft,
 } from "@/lib/setup";
 
 /**
  * The rail across the foot. `title` is the card's heading as well, so the two
- * cannot drift; `short` is what fits in a four-up rail on a phone.
+ * cannot drift; `short` is what fits in a five-up rail on a phone.
  */
 const STEPS = [
   { short: "System", title: "Where is the system", icon: "link-simple" },
   { short: "Sign-in", title: "How do you log in", icon: "user-circle" },
   { short: "Release", title: "What is the system", icon: "database" },
+  { short: "Scope", title: "What is it for", icon: "shield-check" },
   { short: "API key", title: "What thinks for it", icon: "key" },
 ] as const;
 
@@ -75,6 +79,10 @@ const LEDES: readonly (readonly string[])[] = [
   ],
   [
     "Which release, and which client. Both decide what is in scope: the release picks the table and TCode catalogue, the client picks the data.",
+  ],
+  [
+    "The industry the consultant agents read up on before they answer, and how firmly the MCP server refuses to hand back rows from sensitive tables.",
+    "Both have sensible defaults. They can be changed later in Settings, which is also where tables can be allowed through the blocklist.",
   ],
   [
     "The key the agent thinks with. It bills to your own Console account, and it is the one credential here that is not SAP's.",
@@ -165,7 +173,7 @@ const CHECKS: readonly {
  * this app talks to and about nothing on any card, so it lands on the last one
  * — where Connect is, and where trying again costs a single press.
  */
-const FAILED_STEP = [1, 3, 3] as const;
+const FAILED_STEP = [1, 4, 4] as const;
 
 /**
  * POST to one of our own endpoints, and throw what it said if it refused.
@@ -214,6 +222,7 @@ const HELPS: readonly (string | null)[] = [
   "In SAP GUI, run transaction SICF and use its ADT test function. The SAP URL it opens is the one to paste here.",
   null,
   null,
+  "Standard refuses HR, payroll and finance line-item tables as well as anything holding credentials. Pick Strict for a system with production data in it; Minimal only for a sandbox.",
   null,
 ];
 
@@ -508,6 +517,14 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                 ABAP {draft.abapRelease.trim()}
               </dd>
             </div>
+            <div>
+              <dt>Scope</dt>
+              <dd>
+                {INDUSTRIES.find((i) => i.value === draft.industry)?.label} ·{" "}
+                {BLOCKLIST_PROFILES.find((p) => p.value === draft.blocklist)?.label}{" "}
+                blocklist
+              </dd>
+            </div>
             {/* The key itself is never echoed — not even a tail. A masked
                 secret is still a secret leaking its shape, and this panel is
                 served to a browser. */}
@@ -757,6 +774,51 @@ export function SetupWizard({ firstName }: { firstName: string }) {
           ) : null}
 
           {step === 3 ? (
+            <>
+              <div className="field-pair">
+                <div className="field">
+                  <span className="field-label" id="setup-industry-label">
+                    Industry
+                  </span>
+                  <Select
+                    name="industry"
+                    labelledBy="setup-industry-label"
+                    value={draft.industry}
+                    options={INDUSTRIES.map((industry) => ({
+                      value: industry.value,
+                      label: industry.label,
+                    }))}
+                    onChange={(next) => set("industry", next)}
+                    autoFocus
+                  />
+                  <span className="field-hint">
+                    Which reference the consultant agents read first.
+                  </span>
+                </div>
+
+                <div className="field">
+                  <span className="field-label" id="setup-blocklist-label">
+                    Blocklist profile
+                  </span>
+                  <Select
+                    name="blocklist"
+                    labelledBy="setup-blocklist-label"
+                    value={draft.blocklist}
+                    options={BLOCKLIST_PROFILES.map((profile) => ({
+                      value: profile.value,
+                      label: profile.label,
+                    }))}
+                    onChange={(next) => set("blocklist", next as BlocklistProfile)}
+                  />
+                  <span className="field-hint">
+                    {BLOCKLIST_PROFILES.find((p) => p.value === draft.blocklist)?.hint}
+                  </span>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {step === 4 ? (
             <label className="field">
               <span className="field-label">Claude Console API key</span>
               <span className="field-secret">
@@ -817,7 +879,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
         ) : null}
 
         <div className="setup-actions">
-          {/* No Back. The four steps are a one-way run: each card is a
+          {/* No Back. The five steps are a one-way run: each card is a
               different question rather than a stage of one, and a control that
               walks backwards through them turns four short answers into a form
               to be paged around.

@@ -31,15 +31,21 @@
  * system to draw, and no CSS in this app reaches inside it.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 import { useSessionStream } from "@/hooks/useSessionStream";
 import { Icon } from "@/components/Icon";
 import { Select } from "@/components/Select";
 import { Markdown } from "@/components/Markdown";
-import { toRows, useSmoothText } from "@/components/Transcript";
+import {
+  readShowEverything,
+  toRows,
+  useSmoothText,
+  writeShowEverything,
+} from "@/components/Transcript";
 import { ApprovalModal } from "@/components/ApprovalModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { EditModal } from "@/components/settings/EditModal";
 import type { PermissionResponse } from "@/lib/types";
 import type { SkillField } from "@/lib/skills";
 import { FileChip } from "@/components/FileChip";
@@ -64,6 +70,19 @@ const SEPARATOR = "\n\n";
 
 /** What one field holds. Toggles are the only non-text control here. */
 type Value = string | boolean;
+
+/** How a run may spend — what the cost dialog collects. See `Skill.cost`. */
+type Spend = { maxBudgetUsd: number; economy: boolean; model: string };
+
+/**
+ * The models the dialog offers. The same two the backend accepts; listed
+ * here rather than fetched because the dialog opens before any session
+ * exists to ask through, and a list of two is not worth a round trip.
+ */
+const MODELS: { id: string; label: string; note: string }[] = [
+  { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
+  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about five times the price." },
+];
 
 function initial(fields: readonly SkillField[]): Record<string, Value> {
   const state: Record<string, Value> = {};
@@ -93,6 +112,13 @@ function composePrompt(
   command: string,
   fields: readonly SkillField[],
   values: Record<string, Value>,
+  /**
+   * Something the run should start from that no field asked for: what the
+   * dashboard's Reconnect found, handed to the doctor. Goes after the fields
+   * as its own paragraph, which is where a skill reading `{{ARGUMENTS}}` finds
+   * it.
+   */
+  context: string | null = null,
 ): string {
   const lines: string[] = [];
   for (const field of fields) {
@@ -105,7 +131,10 @@ function composePrompt(
       lines.push(`${field.label}: ${value.trim()}`);
     }
   }
-  return lines.length > 0 ? `${command}\n\n${lines.join("\n")}` : command;
+  const parts = [command];
+  if (lines.length > 0) parts.push(lines.join("\n"));
+  if (context) parts.push(context);
+  return parts.join("\n\n");
 }
 
 /**
@@ -200,14 +229,40 @@ export function SkillForm({
   fields,
   /** The skill cannot run here — see `blockedReason`. */
   blocked,
+  autorun = null,
+  cost = null,
+  followUp = false,
 }: {
   slug: string;
   command: string;
   title: string;
   fields: readonly SkillField[];
   blocked: boolean;
+  /**
+   * Start a run the moment the page opens, with this as its context.
+   *
+   * From `?autorun=1&context=...` on the URL: the dashboard's Reconnect sends
+   * a failed press here so the doctor starts from the finding rather than
+   * from an empty form. It wins over a remembered run, since someone arriving
+   * with a fresh failure wants it looked at, not last hour's report. The query
+   * is stripped once read, so a reload lands on the run, not on a second one.
+   */
+  autorun?: { context: string } | null;
+  /**
+   * The run is worth a word before it starts — see `Skill.cost`. With this
+   * set, the first Run opens a dialog for a budget ceiling and the Sonnet
+   * switch, and the choice is kept for "Run again" on this page.
+   */
+  cost?: { note: string; defaultBudgetUsd: number } | null;
+  /**
+   * The skill answers in rounds and asks back — see `Skill.followUp`. With
+   * this set, a composer sits under the result while the session is open,
+   * and what is typed there goes to the same session as the next round.
+   */
+  followUp?: boolean;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [values, setValues] = useState<Record<string, Value>>(() =>
     initial(fields),
   );
@@ -238,6 +293,26 @@ export function SkillForm({
   const written = useRef<string | null>(null);
   const [settling, setSettling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * How this page's runs may spend, once the reader has said. `null` until
+   * the cost dialog has been answered — or always, on a skill without one.
+   */
+  const [spend, setSpend] = useState<Spend | null>(null);
+  /** The cost dialog is up, and this is what it holds. */
+  const [askingCost, setAskingCost] = useState(false);
+  const [costForm, setCostForm] = useState<{ budget: string; model: string }>(() => ({
+    budget: String(cost?.defaultBudgetUsd ?? 0),
+    model: MODELS[0].id,
+  }));
+  /** The context a run was asked with while the cost dialog was up. */
+  const pendingContext = useRef<string | null>(null);
+  /** The next round's answer, as typed under the result. */
+  const [reply, setReply] = useState("");
+  /** The whole run, or only what each turn ended on. See `toRows`. */
+  const [everything, setEverything] = useState(false);
+  useEffect(() => {
+    setEverything(readShowEverything());
+  }, []);
 
   const stream = useSessionStream(sessionId);
   const approval = stream.pending[0] ?? null;
@@ -251,12 +326,59 @@ export function SkillForm({
    * on the review still running rather than on an empty form. The stored text
    * only covers the case where that session no longer exists.
    */
+  const autorunFired = useRef(false);
   useEffect(() => {
+    // An autorun owns this mount: it wins over a remembered run on arrival,
+    // and once the query has been stripped and the page re-rendered without
+    // it, a remembered run from an earlier sitting must not come back over
+    // the top of the one just started.
+    if (autorun || autorunFired.current) return;
     const stored = readStoredRun(slug);
     if (!stored) return;
-    setSessionId(stored.sessionId);
-    setRestored(stored.answer || null);
-  }, [slug]);
+
+    // Ask whether the session is still there before attaching to it. The
+    // backend restarts; a remembered run whose session is gone and whose
+    // answer was never stored is nothing — and attaching to it drew a result
+    // panel with dots that never stopped, over a form that could not be run
+    // again without pressing Done first.
+    let cancelled = false;
+    void api
+      .getSession(stored.sessionId)
+      .then(() => {
+        if (!cancelled) setSessionId(stored.sessionId);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (stored.answer) {
+          setSessionId(stored.sessionId);
+          setRestored(stored.answer);
+        } else {
+          try {
+            sessionStorage.removeItem(runKey(slug));
+          } catch {
+            // Storage refused; the run will be asked about again next visit.
+          }
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, autorun]);
+
+  /**
+   * The run the URL asked for. Once, on arrival, and the URL is rewritten
+   * without the query in the same breath so that nothing re-reads it: not a
+   * reload, not the back button, not a second mount of this component.
+   */
+  useEffect(() => {
+    if (!autorun || autorunFired.current) return;
+    autorunFired.current = true;
+    router.replace(pathname);
+    start(autorun.context);
+    // `run` closes over the form's state, and this is meant to fire exactly
+    // once with whatever that state is on arrival.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autorun]);
 
   /**
    * The turn is running. `starting` covers the gap before the backend has said
@@ -329,7 +451,7 @@ export function SkillForm({
           .filter((file): file is File => file !== null)
       : [];
 
-  const rows = toRows(stream.items);
+  const rows = toRows(stream.items, { everything });
 
   /**
    * The run, as one document.
@@ -340,9 +462,19 @@ export function SkillForm({
    * assistant messages of one turn together, so this is usually a single
    * entry — the join is for a run that came back in more than one.
    */
+  // On a skill that asks back, what the reader answered is part of the
+  // record too — quoted, so the report reads as a report with the reader's
+  // replies set off from it, not as a transcript. The first user row is the
+  // prompt the form composed, and stays out as before.
+  const firstUser = rows.findIndex((row) => row.kind === "user");
   const streamed = rows
-    .filter((row) => row.kind === "agent")
-    .map((row) => row.text)
+    .filter(
+      (row, index) =>
+        row.kind === "agent" || (followUp && row.kind === "user" && index > firstUser),
+    )
+    .map((row) =>
+      row.kind === "user" ? `> **You:** ${row.text.trim().replace(/\n/g, "\n> ")}` : row.text,
+    )
     .join(SEPARATOR);
   // The live stream wins the moment it has anything; the stored copy is only
   // for a session the backend no longer has.
@@ -486,16 +618,34 @@ export function SkillForm({
     }
   }
 
-  async function run(): Promise<void> {
+  /**
+   * Run, or ask first.
+   *
+   * On a skill with a cost note the first press opens the dialog and the
+   * run starts from its Run button, with what was chosen there. Later
+   * presses on this page reuse the choice: the question was about this
+   * skill on this system, and it has been answered.
+   */
+  function start(context: string | null = null): void {
+    if (running || blocked) return;
+    if (cost && !spend) {
+      pendingContext.current = context;
+      setAskingCost(true);
+      return;
+    }
+    void run(context, spend);
+  }
+
+  async function run(context: string | null, how: Spend | null): Promise<void> {
     if (running || blocked) return;
     setStarting(true);
     setError(null);
     try {
-      const session = await api.createSession();
+      const session = await api.createSession(undefined, undefined, how ?? undefined);
       setSessionId(session.id);
       await api.sendMessage(
         session.id,
-        composePrompt(command, fields, values),
+        composePrompt(command, fields, values, context),
         null,
         images.map(toAttachment),
       );
@@ -517,6 +667,28 @@ export function SkillForm({
     } catch {
       // The only way this fails on a run that was going a moment ago is that
       // it finished first, which is not worth interrupting anyone with.
+    }
+  }
+
+  /**
+   * Answer the report's questions, in the same session.
+   *
+   * The skill's next round is one more turn of the conversation this run
+   * already is, so this is `sendMessage` on the session the form holds — the
+   * same call the chat screen makes — and the answer lands in the same
+   * result box, under a line quoting what was said.
+   */
+  async function sendReply(): Promise<void> {
+    const text = reply.trim();
+    if (!sessionId || running || text === "") return;
+    setStarting(true);
+    setError(null);
+    try {
+      await api.sendMessage(sessionId, text);
+      setReply("");
+    } catch (err) {
+      setError((err as Error).message);
+      setStarting(false);
     }
   }
 
@@ -785,12 +957,21 @@ export function SkillForm({
         ) : (
           <button
             className="primary"
-            onClick={() => void run()}
+            onClick={() => start()}
             disabled={blocked}
             title={blocked ? "This skill cannot run from here" : undefined}
           >
             {settled ? "Run again" : "Run"}
           </button>
+        )}
+
+        {/* What the runs on this page are allowed to spend, once chosen. A
+            line rather than a badge: it is a fact about the next press. */}
+        {spend && (
+          <span className="skill-spend">
+            {MODELS.find((entry) => entry.id === spend.model)?.label ?? spend.model}
+            {spend.maxBudgetUsd > 0 ? ` · up to $${spend.maxBudgetUsd.toFixed(2)}` : " · no ceiling"}
+          </span>
         )}
 
         {/* After Run again, not before it: the two are the ends of the same
@@ -843,6 +1024,23 @@ export function SkillForm({
                   contain it. */}
               <div className="skill-doc-bar">
                 <span className="skill-doc-kind">Markdown</span>
+                <button
+                  type="button"
+                  className={`ghost skill-doc-everything${everything ? " is-on" : ""}`}
+                  aria-pressed={everything}
+                  title={
+                    everything
+                      ? "Showing everything the agent said. Click for the report only."
+                      : "Showing the report only. Click to see everything the agent said."
+                  }
+                  onClick={() => {
+                    const next = !everything;
+                    setEverything(next);
+                    writeShowEverything(next);
+                  }}
+                >
+                  {everything ? "Everything" : "Final only"}
+                </button>
                 {/* Not while the run is going. A half-written report saved to
                     disk is indistinguishable from a whole one afterwards, and
                     the file is the thing people forward. */}
@@ -883,7 +1081,100 @@ export function SkillForm({
               {notice.text}
             </p>
           ))}
+
+          {/* The next round. Only once there is a report to answer, and only
+              while the session is there to answer to — a restored run whose
+              session is gone has "Continue in chat" for that. */}
+          {followUp && settled && answer.trim() !== "" && !restored && (
+            <div className="skill-reply">
+              <textarea
+                className="skill-reply-text"
+                rows={2}
+                value={reply}
+                placeholder="Answer the questions above, or add what you know. Enter to send, Shift+Enter for a newline."
+                onChange={(event) => setReply(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    void sendReply();
+                  }
+                }}
+              />
+              <button
+                className="primary skill-reply-send"
+                onClick={() => void sendReply()}
+                disabled={reply.trim() === ""}
+              >
+                <Icon name="paper-plane-tilt" /> Reply
+              </button>
+            </div>
+          )}
         </section>
+      )}
+
+      {askingCost && cost && (
+        <EditModal
+          kind="Cost"
+          heading={`Run ${title}?`}
+          description={cost.note}
+          submitLabel="Run"
+          disabled={!Number.isFinite(Number(costForm.budget)) || Number(costForm.budget) < 0}
+          onSubmit={() => {
+            const chosen: Spend = {
+              maxBudgetUsd: Math.max(0, Number(costForm.budget) || 0),
+              model: costForm.model,
+              // On Sonnet the whole run stays on Sonnet, reviewers included,
+              // whatever the skill asks for. On Opus the skill gets what it
+              // asked for.
+              economy: !/opus/i.test(costForm.model),
+            };
+            setSpend(chosen);
+            setAskingCost(false);
+            void run(pendingContext.current, chosen);
+            pendingContext.current = null;
+          }}
+          onCancel={() => {
+            setAskingCost(false);
+            pendingContext.current = null;
+          }}
+        >
+          <div className="field">
+            <span className="field-label" id="cost-model-label">
+              Model
+            </span>
+            <Select
+              name="model"
+              labelledBy="cost-model-label"
+              value={costForm.model}
+              options={MODELS.map((entry) => ({ value: entry.id, label: entry.label }))}
+              onChange={(next) => setCostForm((current) => ({ ...current, model: next }))}
+            />
+            <span className="field-hint">
+              {MODELS.find((entry) => entry.id === costForm.model)?.note} The run and any
+              reviewer it dispatches use this.
+            </span>
+          </div>
+
+          <label className="field">
+            <span className="field-label">Budget ceiling (USD)</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={costForm.budget}
+              onChange={(event) =>
+                setCostForm((current) => ({ ...current, budget: event.target.value }))
+              }
+              className={
+                !Number.isFinite(Number(costForm.budget)) || Number(costForm.budget) < 0
+                  ? "is-invalid"
+                  : undefined
+              }
+            />
+            <span className="field-hint">
+              The run stops when it reaches this, and says so. 0 for no ceiling.
+            </span>
+          </label>
+        </EditModal>
       )}
 
       {confirmDone && (
