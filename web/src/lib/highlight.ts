@@ -59,6 +59,23 @@ export function langFor(tag: string | undefined): HighlightLang | null {
  */
 let started: Promise<HighlighterCore | null> | undefined;
 
+/**
+ * The highlighter if it is already built, synchronously.
+ *
+ * Exists because a code block can be remounted — the transcript replaces a
+ * streamed bubble with the authoritative one when an assistant message
+ * completes, and React rebuilds the row. Without this, every remount reset the
+ * component's state to "no highlighter", fell back to plain text, and swapped
+ * back a moment later once the promise resolved again. On a plain paragraph
+ * that is invisible; on a code block it collapsed the box to nothing and
+ * pushed the whole page up, several times per answer.
+ */
+let loaded: HighlighterCore | null = null;
+
+export function loadedHighlighter(): HighlighterCore | null {
+  return loaded;
+}
+
 export function highlighter(): Promise<HighlighterCore | null> {
   if (!started) {
     started = (async () => {
@@ -84,10 +101,35 @@ export function highlighter(): Promise<HighlighterCore | null> {
         ],
         engine: createJavaScriptRegexEngine({ forgiving: true }),
       });
-    })().catch(() => null);
+    })()
+      .then((core) => {
+        loaded = core;
+        return core;
+      })
+      .catch(() => null);
   }
   return started;
 }
+
+/**
+ * Rendered blocks, kept across remounts.
+ *
+ * A `useMemo` inside the component is not enough. The transcript rebuilds a
+ * streaming row often — measured at roughly five times a second on a growing
+ * answer — and every rebuild throws the memo away, so a block that has already
+ * been tokenised gets tokenised again from scratch. At forty lines and rising
+ * that is the most expensive thing on the page, repeated for no gain.
+ *
+ * Keyed by the exact text, so a growing block still re-tokenises once per
+ * change — which is correct, the text really is different — but a rebuild of
+ * unchanged text costs a map lookup.
+ *
+ * Bounded, and oldest-out: a long session would otherwise hold every
+ * intermediate state of every code block it ever streamed. `Map` iterates in
+ * insertion order, which is what makes the eviction one line.
+ */
+const RENDERED_LIMIT = 60;
+const rendered = new Map<string, string | null>();
 
 /** `<pre class="shiki">…` for one block, or null if the highlighter is not up. */
 export function highlight(
@@ -96,15 +138,29 @@ export function highlight(
   lang: HighlightLang,
 ): string | null {
   if (!hl) return null;
+
+  const key = `${lang}\u0000${code}`;
+  const hit = rendered.get(key);
+  if (hit !== undefined) return hit;
+
+  let html: string | null;
   try {
-    return hl.codeToHtml(code, {
+    html = hl.codeToHtml(code, {
       lang,
       themes: { light: "github-light", dark: "github-dark" },
       defaultColor: false,
     });
   } catch {
     // A grammar can throw on input it cannot tokenise. One unhighlighted block
-    // is a much smaller problem than a transcript that stops rendering.
-    return null;
+    // is a much smaller problem than a transcript that stops rendering — and
+    // the failure is cached too, so a block the grammar cannot read does not
+    // cost a thrown exception on every rebuild.
+    html = null;
   }
+
+  rendered.set(key, html);
+  if (rendered.size > RENDERED_LIMIT) {
+    rendered.delete(rendered.keys().next().value as string);
+  }
+  return html;
 }

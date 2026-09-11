@@ -1927,16 +1927,29 @@ button.primary:hover:not(:disabled) {
   border-radius: 8px;
 }
 
-.markdown-code pre.shiki {
+/* Both states put a <pre> in the same place with the same metrics: the
+   highlighted one Shiki builds, and the plain one shown until the highlighter
+   has loaded. Identical padding and line-height is what lets one replace the
+   other without the box changing size. */
+.markdown-code pre.shiki,
+.markdown-code pre.markdown-code-plain {
   margin: 0;
   padding: 12px 14px;
-  /* Shiki paints a ground from the theme it was built with. The wrapper above
-     already has one, in the app's own colours. */
+  /* Shiki paints a ground from the theme it was built with, and `.markdown pre`
+     paints one for the plain fallback. The wrapper above already has one, in
+     the app's own colours. */
   background: transparent !important;
+  border: 0;
+  border-radius: 0;
   font-family: ui-monospace, "Cascadia Mono", monospace;
   font-size: 12.5px;
   line-height: 1.55;
   white-space: pre;
+}
+
+/* The wrapper scrolls; the inner box must not add a second scroller. */
+.markdown-code-inner {
+  min-width: 0;
 }
 
 /* One render serves both themes: `defaultColor: false` puts --shiki-light and

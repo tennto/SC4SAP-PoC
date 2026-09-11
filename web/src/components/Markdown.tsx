@@ -19,7 +19,7 @@ import type { ReactElement, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { HighlighterCore } from "shiki/core";
-import { highlight, highlighter, langFor } from "@/lib/highlight";
+import { highlight, highlighter, langFor, loadedHighlighter } from "@/lib/highlight";
 
 /** The text inside a fence, which react-markdown hands over as nested nodes. */
 function textOf(node: ReactNode): string {
@@ -39,12 +39,21 @@ function textOf(node: ReactNode): string {
  */
 function CodeBlock({ code, tag }: { code: string; tag?: string }) {
   const lang = langFor(tag);
-  const [hl, setHl] = useState<HighlighterCore | null>(null);
+  /*
+   * Seeded from the module, not from null.
+   *
+   * This component gets remounted mid-answer — the transcript swaps a streamed
+   * bubble for the finished one — and starting at null meant every remount
+   * dropped to plain text and climbed back a tick later. Once the highlighter
+   * exists it is the same object for the whole page, so a fresh mount can have
+   * it on its very first render and never show the fallback at all.
+   */
+  const [hl, setHl] = useState<HighlighterCore | null>(() => loadedHighlighter());
 
   // Loaded on demand, and only for a block that will use it: a conversation
   // with no ABAP in it never pulls the grammars down.
   useEffect(() => {
-    if (!lang) return;
+    if (!lang || hl) return;
     let alive = true;
     void highlighter().then((ready) => {
       if (alive) setHl(ready);
@@ -52,7 +61,7 @@ function CodeBlock({ code, tag }: { code: string; tag?: string }) {
     return () => {
       alive = false;
     };
-  }, [lang]);
+  }, [lang, hl]);
 
   // Streaming re-renders this on every token, and the block grows as it goes.
   // Memoised so the tokeniser runs when the text actually changed rather than
@@ -62,28 +71,31 @@ function CodeBlock({ code, tag }: { code: string; tag?: string }) {
     [hl, code, lang],
   );
 
-  if (html) {
-    /*
-     * `dangerouslySetInnerHTML` here, having refused `rehype-raw` above, is
-     * not a contradiction. That would render HTML *the model wrote*. This is
-     * HTML Shiki generated from the model's text, with every character of it
-     * escaped on the way in — the markup is ours, only the words are theirs.
-     */
-    return (
-      <div
-        className="markdown-code"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    );
-  }
-
-  // Also the state a block is in before the highlighter has loaded, so an
-  // ABAP block appears immediately as plain text and gains colour a moment
-  // later rather than being withheld until it can be coloured.
+  /*
+   * One wrapper for both states, always the same element in the same place.
+   *
+   * It used to return a `<div>` when highlighted and a bare `<pre>` otherwise.
+   * React cannot reconcile one into the other, so every flip between them tore
+   * the box out and built a new one — the block's height went to zero and the
+   * page jumped. Now only the contents change, and the box keeps its size.
+   *
+   * `dangerouslySetInnerHTML`, having refused `rehype-raw` above, is not a
+   * contradiction: that would render HTML *the model wrote*, this is HTML
+   * Shiki generated from the model's text with every character escaped on the
+   * way in — the markup is ours, only the words are theirs.
+   */
   return (
-    <pre>
-      <code className={tag ? `language-${tag}` : undefined}>{code}</code>
-    </pre>
+    <div className="markdown-code">
+      {html ? (
+        <div className="markdown-code-inner" dangerouslySetInnerHTML={{ __html: html }} />
+      ) : (
+        // Before the highlighter has loaded, so a block appears immediately as
+        // plain text rather than being withheld until it can be coloured.
+        <pre className="markdown-code-plain">
+          <code className={tag ? `language-${tag}` : undefined}>{code}</code>
+        </pre>
+      )}
+    </div>
   );
 }
 
