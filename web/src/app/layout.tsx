@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
@@ -8,6 +8,31 @@ import { getAccount } from "@/lib/auth/session";
 export const metadata: Metadata = {
   title: "SC4SAP Web PoC",
   description: "Browser UI over the sc4sap plugin, via the Claude Agent SDK",
+};
+
+/**
+ * Without this a phone lays the page out at about 980px and scales the result
+ * down, so the stylesheet's six breakpoints — 1140, 900, 860, 700, 560, 520 —
+ * never match and the responsive work already in it never runs. One line is
+ * what turns it on.
+ *
+ * Zoom is deliberately left alone. `maximumScale` or `userScalable: false`
+ * would stop the page twitching under a stray pinch, at the cost of taking
+ * magnification away from anyone who needs it to read an ABAP identifier.
+ *
+ * `themeColor` matches `--bg` in each theme so the browser's own chrome — the
+ * status bar on iOS, the toolbar on Android — is the same colour as the page
+ * behind it instead of a white band above a dark app. Both are declared: the
+ * `media` variants are what the OS setting picks between, and an app that
+ * paints its own dark mode has to say so here too.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f7f7f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#121212" },
+  ],
 };
 
 // Typography and icons: Pretendard for body and UI, Schibsted Grotesk for

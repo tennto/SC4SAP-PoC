@@ -1328,6 +1328,38 @@ button.primary:hover:not(:disabled) {
   padding: 0 20px;
 }
 
+/* ---------- auto-approve bar ----------
+   Shares the composer's measure so it reads as a label on the box below it
+   rather than as a banner about the whole page. Deliberately quiet: it states
+   a standing condition, and a condition the operator chose does not need to
+   shout at them every time they look at the screen. */
+.auto-approve-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(var(--measure), 100%);
+  margin: 0 auto 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--ink-55);
+}
+
+/* Underlined rather than boxed: the way out of a mode should look like a link
+   back, not a second action competing with Send. */
+.auto-approve-bar button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink-80);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* The transcript shares the composer's measure, so an answer and the box you
    reply in sit on the same two edges. */
 .stage-body .transcript {
@@ -1622,6 +1654,63 @@ button.primary:hover:not(:disabled) {
    own to ride in on — without this it appears in one frame under text that
    was already there. Slower than the row animation for the same reason the
    waiting row is: nothing else on screen is moving when this arrives. */
+/* ---------- what the agent is doing ----------
+   A row rather than a lone cluster of dots. The dots say something is
+   happening; the words say what, and the clock says for how long — which is
+   the only part that separates "working" from "stopped", the question this
+   whole line exists to answer. */
+.activity {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.activity-said {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12.5px;
+  /* Digits in the clock change every second. Tabular figures keep the line
+     from twitching sideways on the way from 9s to 10s. */
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-label {
+  color: var(--ink-80);
+  white-space: nowrap;
+}
+
+/* The specific tool, for a reader who knows what GetProgram costs. Allowed to
+   shrink and ellipsise: it is the first thing worth losing on a narrow rail. */
+.activity-detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 11px;
+  color: var(--ink-38);
+}
+
+.activity-meta {
+  color: var(--ink-38);
+  white-space: nowrap;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .dots-row {
   margin-top: 14px;
   animation: msg-in 900ms var(--ease) both;
@@ -1824,6 +1913,65 @@ button.primary:hover:not(:disabled) {
   font-size: 12.5px;
   line-height: 1.55;
   white-space: pre;
+}
+
+/* ---------- highlighted ABAP / CDS ----------
+   Shiki renders its own <pre class="shiki">, so this wrapper carries what
+   `.markdown pre` carries for every other fence: the box, and the horizontal
+   scroll that keeps a wide SELECT from stretching the bubble. */
+.markdown-code {
+  margin: 0 0 10px;
+  overflow-x: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+/* Both states put a <pre> in the same place with the same metrics: the
+   highlighted one Shiki builds, and the plain one shown until the highlighter
+   has loaded. Identical padding and line-height is what lets one replace the
+   other without the box changing size. */
+.markdown-code pre.shiki,
+.markdown-code pre.markdown-code-plain {
+  margin: 0;
+  padding: 12px 14px;
+  /* Shiki paints a ground from the theme it was built with, and `.markdown pre`
+     paints one for the plain fallback. The wrapper above already has one, in
+     the app's own colours. */
+  background: transparent !important;
+  border: 0;
+  border-radius: 0;
+  font-family: ui-monospace, "Cascadia Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+/* The wrapper scrolls; the inner box must not add a second scroller. */
+.markdown-code-inner {
+  min-width: 0;
+}
+
+/* One render serves both themes: `defaultColor: false` puts --shiki-light and
+   --shiki-dark on every span and no colour, and these three rules choose. The
+   shape matches the theme blocks at the top of this file, including the
+   :not([data-theme="light"]) guard — without it a reader on a dark machine who
+   picks light gets dark code on a light bubble. */
+.markdown-code .shiki,
+.markdown-code .shiki span {
+  color: var(--shiki-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .markdown-code .shiki,
+  :root:not([data-theme="light"]) .markdown-code .shiki span {
+    color: var(--shiki-dark);
+  }
+}
+
+:root[data-theme="dark"] .markdown-code .shiki,
+:root[data-theme="dark"] .markdown-code .shiki span {
+  color: var(--shiki-dark);
 }
 
 /* Wide tables scroll inside the bubble rather than stretching it. */

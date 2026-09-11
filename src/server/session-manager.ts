@@ -30,6 +30,9 @@ import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
 import {
   buildToolPolicy,
+  isSapReadTool,
+  needsHookApproval,
+  QUESTION_TOOL,
   SAP_TOOL_PREFIX,
   type ToolPolicy,
 } from "./tool-policy.ts";
@@ -67,8 +70,6 @@ const PERMISSION_TIMEOUT_MS = Number(
   process.env.SC4SAP_PERMISSION_TIMEOUT_MS ?? 5 * 60_000,
 );
 
-/** The tool through which the model asks the user a multiple-choice question. */
-const QUESTION_TOOL = "AskUserQuestion";
 
 export type SessionStatus = "starting" | "idle" | "busy" | "closed" | "error";
 
@@ -113,6 +114,8 @@ export type SessionEvent =
   | { type: "message"; message: SDKMessage }
   | { type: "permission_request"; request: PendingApproval }
   | { type: "permission_resolved"; reqId: string; decision: PermissionDecision }
+  /** The session's auto-approve switch changed, so every watcher agrees on it. */
+  | { type: "auto_approve"; enabled: boolean }
   | { type: "status"; status: SessionStatus }
   | { type: "turn_start" }
   | { type: "turn_end" }
@@ -139,6 +142,14 @@ export type SessionRecord = {
    * state a freshly created session is in.
    */
   title: string | null;
+  /**
+   * Wave SAP read-class tool calls through without asking, for this session.
+   *
+   * Off by default and never persisted: it is a decision about the session in
+   * front of someone, so a revived conversation starts by asking again rather
+   * than inheriting a switch nobody remembers flipping.
+   */
+  autoApproveSapReads: boolean;
 };
 
 type Subscriber = (event: SequencedEvent) => void;
@@ -444,6 +455,59 @@ export class SessionManager {
         // rely on it alone.
         canUseTool: (toolName, input, context) =>
           this.#requestApproval(id, toolName, input, context),
+        /**
+         * The chokepoint `canUseTool` is not.
+         *
+         * Built-in tools reach the model's hands without the callback above
+         * ever being consulted — verified by running a `Bash` call to
+         * completion with `allowedTools` empty and no request raised. So the
+         * tools that can change or leave this machine are gated here instead,
+         * where the SDK does stop and wait, and the answer comes from the
+         * same queue and the same dialog as everything else.
+         *
+         * The matcher takes everything and `needsHookApproval` decides, rather
+         * than naming tools in a pattern: a built-in that a later SDK adds
+         * then arrives gated instead of quietly slipping past a list that was
+         * written before it existed.
+         */
+        hooks: {
+          PreToolUse: [
+            {
+              // Outlives the queue's own 5-minute deadline, so a forgotten
+              // dialog is denied by the timeout that reports it as such
+              // rather than killed by this one, which would not.
+              timeout: PERMISSION_TIMEOUT_MS / 1000 + 30,
+              hooks: [
+                async (input, toolUseID, { signal }) => {
+                  if (input.hook_event_name !== "PreToolUse") return {};
+                  if (!needsHookApproval(input.tool_name)) return {};
+
+                  const result = await this.#requestApproval(
+                    id,
+                    input.tool_name,
+                    (input.tool_input ?? {}) as Record<string, unknown>,
+                    {
+                      signal,
+                      toolUseID: toolUseID ?? input.tool_use_id,
+                    },
+                  );
+
+                  return {
+                    hookSpecificOutput: {
+                      hookEventName: "PreToolUse" as const,
+                      permissionDecision:
+                        result.behavior === "allow" ? "allow" : "deny",
+                      permissionDecisionReason:
+                        result.behavior === "allow"
+                          ? "Allowed by the operator."
+                          : (result.message ?? "Denied by the operator."),
+                    },
+                  };
+                },
+              ],
+            },
+          ],
+        },
       },
     });
 
@@ -459,6 +523,7 @@ export class SessionManager {
         turns: priorTurns,
         totalCostUsd: priorCostUsd,
         title: null,
+        autoApproveSapReads: false,
       },
       pump,
       session,
@@ -622,6 +687,24 @@ export class SessionManager {
     return [...live.pending.values()].map((entry) => entry.request);
   }
 
+  /**
+   * Turn the session's "allow all SAP reads" switch on or off.
+   *
+   * Turning it on does not settle what is already on screen. The dialog the
+   * operator is looking at is a decision they are in the middle of making, and
+   * answering it for them would mean the button they pressed had two effects —
+   * so the caller allows the current request itself, and this governs the
+   * ones after it.
+   */
+  setAutoApprove(id: string, enabled: boolean): "ok" | "unknown-session" {
+    const live = this.#sessions.get(id);
+    if (!live) return "unknown-session";
+    if (live.record.autoApproveSapReads === enabled) return "ok";
+    live.record.autoApproveSapReads = enabled;
+    this.#emit(live, { type: "auto_approve", enabled });
+    return "ok";
+  }
+
   /** Settles one pending approval. The turn resumes as soon as this returns. */
   respondToPermission(
     id: string,
@@ -679,6 +762,21 @@ export class SessionManager {
         behavior: "deny",
         message: "Session is gone.",
       });
+    }
+
+    // The switch, applied before a request is ever raised. Nothing reaches the
+    // dialog, so there is no flicker of a modal that answers itself — and the
+    // eligibility test is the policy's own, which is what keeps this from
+    // being a second, looser definition of "safe to read".
+    //
+    // A question is never covered: `AskUserQuestion` is the model asking the
+    // operator to choose, and there is no answer to give on their behalf.
+    if (
+      live.record.autoApproveSapReads &&
+      toolName !== QUESTION_TOOL &&
+      isSapReadTool(toolName)
+    ) {
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
 
     const reqId = randomUUID();

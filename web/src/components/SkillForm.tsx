@@ -535,6 +535,31 @@ export function SkillForm({
   }
 
   /**
+   * Allow this one and stop asking about SAP reads for the rest of the run.
+   *
+   * Worth more here than in chat: a skill run is the case that raises the most
+   * prompts — `analyze-code` walks a program's includes before it has anything
+   * to say — and this screen is watched rather than worked in.
+   *
+   * The switch is set before the request is settled so the calls queued behind
+   * it meet a session that no longer asks.
+   */
+  async function allowAllSapReads(): Promise<void> {
+    if (!sessionId || !approval) return;
+    setSettling(true);
+    try {
+      await api.setAutoApprove(sessionId, true);
+      await api.respondToPermission(sessionId, approval.reqId, {
+        behavior: "allow",
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSettling(false);
+    }
+  }
+
+  /**
    * Hand the conversation over to the chat screen.
    *
    * The run is already stored, so this only has to say which one to open. It
@@ -880,7 +905,9 @@ export function SkillForm({
           key={approval.reqId}
           request={approval}
           busy={settling}
+          autoApprove={stream.autoApprove}
           onSettle={(response) => void settle(response)}
+          onAllowAll={() => void allowAllSapReads()}
         />
       )}
     </>

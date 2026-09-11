@@ -34,15 +34,54 @@ function questionsOf(request: PendingApproval): Question[] {
   return Array.isArray(request.questions) ? (request.questions as Question[]) : [];
 }
 
+/**
+ * The SAP MCP prefix, and the read-class test — the browser half of
+ * `isSapReadTool` in `src/server/tool-policy.ts`.
+ *
+ * Duplicated rather than imported for the same reason `types.ts` re-declares
+ * the wire types: that module is Node's. The copy decides only whether to
+ * *offer* the button; the backend runs its own test before waving anything
+ * through, so a copy that drifts shows a useless button rather than granting
+ * something it should not.
+ */
+const SAP_PREFIX = "mcp__plugin_sc4sap_sap__";
+const WRITE_CLASS =
+  /^(Create|Update|Delete|Patch|Write|Activate|RuntimeRun|RuntimeCreate)|^RunUnitTest$|^ReloadProfile$/;
+const ROW_EXTRACTION = new Set(["GetTableContents", "GetSqlQuery"]);
+const READ_PREFIXES = ["Get", "Read", "Search", "List", "Describe"];
+
+function isSapReadTool(toolName: string): boolean {
+  if (!toolName.startsWith(SAP_PREFIX)) return false;
+  const bare = toolName.slice(SAP_PREFIX.length);
+  if (WRITE_CLASS.test(bare) || ROW_EXTRACTION.has(bare)) return false;
+  return READ_PREFIXES.some((prefix) => bare.startsWith(prefix));
+}
+
 type Props = {
   request: PendingApproval;
   busy: boolean;
+  /** True once the session is already waving SAP reads through. */
+  autoApprove: boolean;
   onSettle: (response: PermissionResponse) => void;
+  /** Allow this one and stop asking about SAP reads for the rest of the session. */
+  onAllowAll: () => void;
 };
 
-export function ApprovalModal({ request, busy, onSettle }: Props) {
+export function ApprovalModal({
+  request,
+  busy,
+  autoApprove,
+  onSettle,
+  onAllowAll,
+}: Props) {
   const questions = questionsOf(request);
   const isQuestion = request.kind === "question" && questions.length > 0;
+
+  // Offered only where it would take effect. On a Bash call or a row
+  // extraction the switch would not cover the next one either, and a button
+  // that reads "allow all" beside a request it does not cover is a promise
+  // the backend will refuse to keep.
+  const offerAll = !isQuestion && !autoApprove && isSapReadTool(request.toolName);
 
   // Selected labels per question. Multi-select keeps several; the wire format
   // is one string per question, so they are joined on submit.
@@ -193,6 +232,11 @@ export function ApprovalModal({ request, busy, onSettle }: Props) {
               >
                 Deny
               </button>
+              {offerAll && (
+                <button disabled={busy} onClick={onAllowAll}>
+                  Allow all SAP reads
+                </button>
+              )}
               <button
                 className="primary"
                 disabled={busy}
@@ -206,8 +250,9 @@ export function ApprovalModal({ request, busy, onSettle }: Props) {
         </footer>
 
         <p className="modal-note">
-          Unanswered requests are denied after 5 minutes, so a forgotten tab
-          cannot wedge the session.
+          {offerAll
+            ? "“Allow all SAP reads” covers read-only SAP lookups for the rest of this session. Writes stay unreachable, and table and SQL extraction still ask every time."
+            : "Unanswered requests are denied after 5 minutes, so a forgotten tab cannot wedge the session."}
         </p>
       </div>
     </div>,

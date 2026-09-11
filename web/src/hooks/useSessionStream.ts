@@ -20,6 +20,7 @@
  */
 import { useEffect, useMemo, useReducer } from "react";
 import { api } from "@/lib/client";
+import type { Activity, ActivityKind } from "@/lib/activity";
 import type {
   AttachmentMeta,
   PendingApproval,
@@ -34,6 +35,23 @@ type State = {
   status: SessionStatus | null;
   /** Approvals blocking the turn. 3-3 renders these; 3-2 only tracks them. */
   pending: PendingApproval[];
+  /**
+   * Whether SAP reads are being waved through.
+   *
+   * Read from the stream rather than from the button that set it, so a second
+   * tab watching the same session shows the switch someone flipped in the
+   * first one instead of its own stale idea of it.
+   */
+  autoApprove: boolean;
+  /**
+   * What the turn is doing, or null between turns.
+   *
+   * Kept here rather than derived in the view because it is a fold over the
+   * stream — the newest signal wins — and the view only ever sees the current
+   * items. Every transition below is driven by an event that arrived; none of
+   * them is a guess made from a clock.
+   */
+  activity: Activity | null;
   error: string | null;
   /**
    * How many errors have arrived.
@@ -55,6 +73,8 @@ const EMPTY: State = {
   items: [],
   status: null,
   pending: [],
+  autoApprove: false,
+  activity: null,
   error: null,
   errorSeq: 0,
   connected: false,
@@ -66,6 +86,31 @@ type Action =
   | { kind: "reset" }
   | { kind: "connected"; connected: boolean }
   | { kind: "event"; event: SessionEvent };
+
+/**
+ * Move to an activity, carrying the clock across.
+ *
+ * `since` is set once, when the turn first shows any activity, and every
+ * transition after that keeps it. It measures the wait, not the step — which
+ * is the number being asked for. Restarting it per step was tried and is
+ * useless in practice: a turn that calls `Read` eight times in four seconds
+ * re-enters the same state eight times, and the display never leaves 0s at
+ * exactly the moment someone is wondering whether anything is happening.
+ *
+ * `status` clearing it on anything but `busy` is what ends the clock.
+ */
+function moveTo(
+  state: State,
+  kind: ActivityKind,
+  detail?: string,
+): State {
+  const current = state.activity;
+  if (current && current.kind === kind && current.detail === detail) return state;
+  return {
+    ...state,
+    activity: { kind, detail, since: current?.since ?? Date.now() },
+  };
+}
 
 /** Text blocks of an SDK assistant/user message, joined. */
 function textOf(message: SdkMessage): string {
@@ -166,17 +211,30 @@ function reduce(state: State, action: Action): State {
 
   const event = action.event;
   switch (event.type) {
-    case "status":
-      return { ...state, status: event.status };
+    case "status": {
+      // Anything that is not a running turn has no activity to report, and
+      // leaving a stale label up would be the exact lie this is here to stop.
+      if (event.status !== "busy") {
+        return { ...state, status: event.status, activity: null };
+      }
+      /*
+       * Busy arrives before `turn_start` — the backend accepts the prompt, and
+       * the model's first `message_start` comes later, sometimes much later if
+       * a skill is loading. That gap is the most anxious moment in the whole
+       * turn and it was the one with no label at all, so it gets the generic
+       * one until something more specific arrives.
+       */
+      return moveTo({ ...state, status: event.status }, "working");
+    }
 
     case "turn_start":
-      return { ...state, serial: state.serial + 1 };
+      return moveTo({ ...state, serial: state.serial + 1 }, "working");
 
     case "text_delta":
-      return appendDelta(state, "assistant", event.text);
+      return moveTo(appendDelta(state, "assistant", event.text), "writing");
 
     case "thinking_delta":
-      return appendDelta(state, "thinking", event.text);
+      return moveTo(appendDelta(state, "thinking", event.text), "thinking");
 
     case "tool_start": {
       // A chunked read fires the same tool many times in a row; folding a run
@@ -186,13 +244,21 @@ function reduce(state: State, action: Action): State {
       if (last && last.kind === "tool" && last.name === event.name) {
         const items = state.items.slice(0, -1);
         items.push({ ...last, calls: last.calls + 1, active: last.active + 1 });
-        return {
-          ...state,
-          items,
-          toolIdByIndex: { ...state.toolIdByIndex, [event.index]: last.id },
-        };
+        // A folded run keeps its clock: thirty chunked reads of one program
+        // are one wait, and restarting the count on each would say nothing is
+        // taking long when the whole read is.
+        return moveTo(
+          {
+            ...state,
+            items,
+            toolIdByIndex: { ...state.toolIdByIndex, [event.index]: last.id },
+          },
+          "tool",
+          event.name,
+        );
       }
-      return {
+      return moveTo(
+        {
         ...state,
         toolIdByIndex: { ...state.toolIdByIndex, [event.index]: event.toolUseId },
         items: [
@@ -205,24 +271,35 @@ function reduce(state: State, action: Action): State {
             active: 1,
           },
         ],
-      };
+        },
+        "tool",
+        event.name,
+      );
     }
 
     case "tool_end": {
       const id = state.toolIdByIndex[event.index];
       if (!id) return state;
-      return {
+      // Back to the generic label rather than leaving the tool's name up: the
+      // call is over, and the model is between things until it says otherwise.
+      return moveTo({
         ...state,
         items: state.items.map((item) =>
           item.kind === "tool" && item.id === id
             ? { ...item, active: Math.max(0, item.active - 1) }
             : item,
         ),
-      };
+      }, "working");
     }
 
     case "turn_end":
-      return closeOpenBubbles(state);
+      /*
+       * Not the end of the turn — the end of one assistant *message*. A turn
+       * that calls a tool emits several, and clearing here blanked the label
+       * for seconds at a stretch while the work carried on. Only `status`
+       * leaving `busy` ends the activity.
+       */
+      return moveTo(closeOpenBubbles(state), "working");
 
     case "message": {
       const message = event.message;
@@ -283,18 +360,46 @@ function reduce(state: State, action: Action): State {
       }
 
       if (message.type === "result") return closeOpenBubbles(state);
+
+      /*
+       * The SDK says out loud when the API refused it and it is going to try
+       * again: `system` / `api_retry`, carrying the attempt and the ceiling.
+       * That is the difference between an agent in trouble and an agent that
+       * died, and without it a 529 storm is indistinguishable from a hang —
+       * which is the whole reason this line exists.
+       */
+      if (message.type === "system" && message.subtype === "api_retry") {
+        const attempt = Number(message.attempt);
+        const max = Number(message.max_retries);
+        const detail =
+          Number.isFinite(attempt) && Number.isFinite(max)
+            ? `attempt ${attempt} of ${max}`
+            : undefined;
+        return moveTo(state, "retrying", detail);
+      }
+
       // system/init and hook responses are diagnostics, not conversation.
       return state;
     }
 
     case "permission_request":
-      return { ...state, pending: [...state.pending, event.request] };
+      // Parked on a person, which is not the same as parked on nothing — and
+      // it is the one wait the reader can end themselves.
+      return moveTo(
+        { ...state, pending: [...state.pending, event.request] },
+        "waiting",
+      );
 
-    case "permission_resolved":
-      return {
-        ...state,
-        pending: state.pending.filter((request) => request.reqId !== event.reqId),
-      };
+    case "permission_resolved": {
+      const pending = state.pending.filter((r) => r.reqId !== event.reqId);
+      return moveTo(
+        { ...state, pending },
+        pending.length > 0 ? "waiting" : "working",
+      );
+    }
+
+    case "auto_approve":
+      return { ...state, autoApprove: event.enabled };
 
     case "error":
       return { ...state, error: event.error, errorSeq: state.errorSeq + 1 };
@@ -309,6 +414,7 @@ const EVENT_TYPES: SessionEvent["type"][] = [
   "message",
   "permission_request",
   "permission_resolved",
+  "auto_approve",
   "status",
   "turn_start",
   "turn_end",
@@ -323,6 +429,10 @@ export type SessionStream = {
   items: TranscriptItem[];
   status: SessionStatus | null;
   pending: PendingApproval[];
+  /** True while SAP read-class calls are being waved through. */
+  autoApprove: boolean;
+  /** What the turn is doing, or null between turns. */
+  activity: Activity | null;
   error: string | null;
   /** Changes on every error, so two identical ones are still two. */
   errorSeq: number;
@@ -373,6 +483,8 @@ export function useSessionStream(sessionId: string | null): SessionStream {
     items: state.items,
     status: state.status,
     pending: state.pending,
+    autoApprove: state.autoApprove,
+    activity: state.activity,
     error: state.error,
     errorSeq: state.errorSeq,
     connected: state.connected,

@@ -832,6 +832,39 @@ export function Chat({
   };
 
   /**
+   * Allow this request and stop asking about SAP reads for the session.
+   *
+   * Order matters. The switch is set first and awaited, so by the time the
+   * turn resumes the calls queued behind this one already meet a session that
+   * no longer asks — setting it after would let the next one raise a dialog
+   * before the switch landed.
+   */
+  const allowAllSapReads = async (): Promise<void> => {
+    if (!backendId || !approval) return;
+    setSettling(true);
+    try {
+      await api.setAutoApprove(backendId, true);
+      await api.respondToPermission(backendId, approval.reqId, {
+        behavior: "allow",
+      });
+    } catch (err) {
+      fail((err as Error).message);
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  /** Back to asking. Nothing already waved through is undone by this. */
+  const stopAutoApprove = async (): Promise<void> => {
+    if (!backendId) return;
+    try {
+      await api.setAutoApprove(backendId, false);
+    } catch (err) {
+      fail((err as Error).message);
+    }
+  };
+
+  /**
    * The rail: every stored conversation, plus any live session that has not
    * been stored yet. A revived chat's new backend session is deliberately not
    * a row of its own — it belongs to the chat it was attached to.
@@ -963,6 +996,7 @@ export function Chat({
                 idle={false}
                 busy={status === "busy" || awaitingAck !== null}
                 pending={awaitingAck !== null || stream.items.length === sendMark}
+                activity={stream.activity}
               />
             )}
           </div>
@@ -980,6 +1014,19 @@ export function Chat({
               {firstName ? `Good to see you, ${firstName}!` : "Good to see you!"}
             </h1>
           </div>
+
+          {/* Sits above the composer rather than in a corner: a switch that
+              stops the machine asking permission has to be visible to whoever
+              is about to type the next thing, and turning it back off has to
+              be one press away from where they are looking. */}
+          {stream.autoApprove && (
+            <div className="auto-approve-bar">
+              <span>SAP reads are being allowed without asking.</span>
+              <button type="button" onClick={() => void stopAutoApprove()}>
+                Ask me again
+              </button>
+            </div>
+          )}
 
           <div className="stage-composer">
             <Composer
@@ -1019,7 +1066,9 @@ export function Chat({
           key={approval.reqId}
           request={approval}
           busy={settling}
+          autoApprove={stream.autoApprove}
           onSettle={(response) => void settle(response)}
+          onAllowAll={() => void allowAllSapReads()}
         />
       )}
     </div>

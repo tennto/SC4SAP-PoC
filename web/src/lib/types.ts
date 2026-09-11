@@ -24,6 +24,8 @@ export type Session = {
   totalCostUsd: number;
   /** The first prompt, trimmed to a line. Null until the session is asked something. */
   title: string | null;
+  /** SAP read-class calls are waved through without a dialog. Off by default. */
+  autoApproveSapReads: boolean;
 };
 
 /**
@@ -114,6 +116,7 @@ export type SessionEvent =
   | { type: "message"; message: SdkMessage }
   | { type: "permission_request"; request: PendingApproval }
   | { type: "permission_resolved"; reqId: string; decision: PermissionDecision }
+  | { type: "auto_approve"; enabled: boolean }
   | { type: "status"; status: SessionStatus }
   | { type: "turn_start" }
   | { type: "turn_end" }
