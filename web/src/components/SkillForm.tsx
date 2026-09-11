@@ -335,8 +335,34 @@ export function SkillForm({
     if (autorun || autorunFired.current) return;
     const stored = readStoredRun(slug);
     if (!stored) return;
-    setSessionId(stored.sessionId);
-    setRestored(stored.answer || null);
+
+    // Ask whether the session is still there before attaching to it. The
+    // backend restarts; a remembered run whose session is gone and whose
+    // answer was never stored is nothing — and attaching to it drew a result
+    // panel with dots that never stopped, over a form that could not be run
+    // again without pressing Done first.
+    let cancelled = false;
+    void api
+      .getSession(stored.sessionId)
+      .then(() => {
+        if (!cancelled) setSessionId(stored.sessionId);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (stored.answer) {
+          setSessionId(stored.sessionId);
+          setRestored(stored.answer);
+        } else {
+          try {
+            sessionStorage.removeItem(runKey(slug));
+          } catch {
+            // Storage refused; the run will be asked about again next visit.
+          }
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [slug, autorun]);
 
   /**
