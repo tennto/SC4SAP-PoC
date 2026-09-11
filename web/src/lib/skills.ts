@@ -261,22 +261,10 @@ export const SKILLS: Skill[] = [
       { label: "Transport", kind: "text", placeholder: "Existing request, or blank to create one" },
     ],
   },
-  {
-    slug: "team",
-    command: "/sc4sap:team",
-    title: "Agent Team",
-    icon: "users-three",
-    summary:
-      "N coordinated SAP agents working one shared task list.",
-    group: "build",
-    status: "blocked",
-    blockedReason:
-      "Built on Claude Code native teams, which the Agent SDK does not expose. Substituting SDK subagents is a Post-PoC item.",
-    fields: [
-      { label: "Task list", kind: "textarea", placeholder: "One task per line." },
-      { label: "Agents", kind: "select", options: ["2", "3", "4", "5"] },
-    ],
-  },
+  // No `team` here. It was built on Claude Code's native agent teams, which
+  // the Agent SDK does not expose, and it has been retired rather than
+  // rebuilt on SDK subagents. The heavier skills above dispatch their own
+  // reviewers already.
 
   // ---------- system ----------
   {
