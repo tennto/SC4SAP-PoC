@@ -6576,7 +6576,7 @@ a.ghost.auth-submit {
 .mon-filters-end {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 16px;
   margin-left: auto;
 }
 
@@ -6587,7 +6587,7 @@ a.ghost.auth-submit {
 
 /* Red on hover, because it throws the filters away. The base ghost hover
    lifts to ink; this one says what is about to happen instead. */
-.mon-clear:hover:not(:disabled) {
+button.mon-clear:hover:not(:disabled) {
   border-color: var(--bad);
   color: var(--bad);
   background: transparent;
@@ -6769,19 +6769,52 @@ a.ghost.auth-submit {
   border-color: var(--bad);
 }
 
-.mon-switch {
+/* The MCP-only switch: a ghost button with a tick drawn inside it, sized
+   like Clear beside it. Pressed is `.is-on`, and the tick is what shows it. */
+button.mon-switch {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  padding: 6px 12px;
   font-size: 12px;
-  color: var(--ink-80);
-  cursor: pointer;
   user-select: none;
 }
 
-.mon-switch input {
-  margin: 0;
-  accent-color: var(--ink);
+button.mon-switch.is-on {
+  border-color: var(--ink-38);
+  color: var(--ink);
+}
+
+.check-mark {
+  display: inline-grid;
+  place-content: center;
+  width: 14px;
+  height: 14px;
+  background: var(--panel);
+  border: 1px solid var(--ink-38);
+  border-radius: 4px;
+  transition:
+    background var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.check-mark::before {
+  content: "";
+  width: 8px;
+  height: 4px;
+  border-left: 2px solid var(--on-ink);
+  border-bottom: 2px solid var(--on-ink);
+  transform: translateY(-1px) rotate(-45deg) scale(0);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.mon-switch.is-on .check-mark {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.mon-switch.is-on .check-mark::before {
+  transform: translateY(-1px) rotate(-45deg) scale(1);
 }
 
 .mon-empty {

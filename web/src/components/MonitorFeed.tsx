@@ -415,28 +415,31 @@ export function MonitorFeed({
         </div>
 
         <div className="mon-filters-end">
-          <label className="mon-switch">
-            <input
-              type="checkbox"
-              className="check"
-              checked={filters.mcpOnly}
-              onChange={(event) => set("mcpOnly", event.target.checked)}
-            />
-            <span>MCP only</span>
-          </label>
+          {/* A button drawn like Clear beside it, with the tick inside. A
+              pressed-state button rather than a checkbox: the two sit as a
+              pair, and a bare tick next to a framed button read as a stray. */}
+          <button
+            type="button"
+            className={`ghost mon-switch${filters.mcpOnly ? " is-on" : ""}`}
+            aria-pressed={filters.mcpOnly}
+            onClick={() => set("mcpOnly", !filters.mcpOnly)}
+          >
+            <span className="check-mark" aria-hidden="true" />
+            MCP only
+          </button>
 
-          {filtered ? (
-            <button
-              type="button"
-              className="ghost mon-clear"
-              onClick={() => {
-                setSearch("");
-                setFilters(DEFAULT_FILTERS);
-              }}
-            >
-              <Icon name="trash" /> Clear
-            </button>
-          ) : null}
+          {/* Always here. Clearing puts every filter back to how the page
+              opens, MCP only included, so there is never nothing to clear. */}
+          <button
+            type="button"
+            className="ghost mon-clear"
+            onClick={() => {
+              setSearch("");
+              setFilters(DEFAULT_FILTERS);
+            }}
+          >
+            <Icon name="trash" /> Clear
+          </button>
         </div>
       </div>
 
