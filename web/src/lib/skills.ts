@@ -55,6 +55,26 @@ export type Skill = {
   /** Why it cannot run yet. Required when `status` is `blocked`. */
   blockedReason?: string;
   fields: SkillField[];
+  /**
+   * The run is worth a word before it starts.
+   *
+   * Set on a skill that dispatches a heavier reviewer — one whose single
+   * press can cost dollars rather than cents. The screen puts up a dialog
+   * with `note`, a budget ceiling the backend enforces, and the switch that
+   * keeps sub-agents on Sonnet. Absent on skills cheap enough to just run.
+   */
+  cost?: {
+    note: string;
+    defaultBudgetUsd: number;
+  };
+  /**
+   * The skill answers in rounds and asks back.
+   *
+   * Its report ends with questions, and the reply goes to the same session
+   * — so the screen keeps a composer under the result for as long as the
+   * run is open, instead of sending the reader to chat to answer.
+   */
+  followUp?: boolean;
 };
 
 export type SkillGroup = {
@@ -141,6 +161,11 @@ export const SKILLS: Skill[] = [
       "Root-cause analysis for a dump, error or slowdown — inspects dumps, transports and where-used, then narrows hypotheses.",
     group: "analyze",
     status: "ready",
+    // The skill's own intake, in the skill's own words: the exact error, then
+    // where it happens, then how it reproduces — and it asks for whatever is
+    // missing, up to three questions a round, each round a reviewer dispatch.
+    // So the form asks for the three up front. A screenshot carries the
+    // first; the other two are not on any screen.
     fields: [
       {
         label: "Symptom type",
@@ -149,15 +174,48 @@ export const SKILLS: Skill[] = [
         // dump, no message, no failed job — and the run has to find the shape
         // before it can find the cause.
         options: ["Short dump", "Error message", "Wrong result", "Performance", "Transport failure", "Unknown"],
+        hint: "Performance: profiling runs are not allowed from this app, so the analysis works from dumps, transports and code.",
+      },
+      {
+        label: "Where it happened",
+        kind: "text",
+        placeholder: "VA01 · ZSD_ORDER_REPORT · job ZBILLING_RUN · a Fiori app",
+        hint: "Transaction, program, job or app. Optional when the screenshot shows it.",
+      },
+      {
+        label: "How often",
+        kind: "select",
+        // "Not sure" first and default: an honest answer that leaves the
+        // reviewer to ask, rather than a guess it would build on.
+        options: [
+          "Not sure",
+          "Every time",
+          "Intermittent",
+          "Only some users or data",
+          "Since a recent change",
+          "First time",
+        ],
+        hint: "Which of the eight cause categories the analysis leans toward starts here.",
+      },
+      {
+        label: "Since when",
+        kind: "text",
+        placeholder: "Yesterday afternoon · after the SP upgrade · not known",
+        hint: "Sets the window for the transport search.",
       },
       {
         label: "What you observed",
         kind: "textarea",
-        placeholder: "The dump or message, where it happened, when it started, what changed recently.",
+        placeholder: "The dump or message, what was being done, what changed recently.",
         hint: "Paste or drop a screenshot of the dump or job log — the image goes to the analysis with your notes.",
         images: true,
       },
     ],
+    cost: {
+      note: "Each round dispatches a reviewer agent against the SAP system — dumps, transports, code. On Opus, as the skill asks, a round is a few dollars; on Sonnet it is a fraction of that.",
+      defaultBudgetUsd: 3,
+    },
+    followUp: true,
   },
   {
     slug: "analyze-cbo-obj",

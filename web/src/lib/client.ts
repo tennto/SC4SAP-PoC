@@ -96,6 +96,11 @@ export const api = {
   createSession: async (
     resume?: string,
     prior?: { turns: number; totalCostUsd: number },
+    /**
+     * How the run is allowed to spend. A skill screen sets these from its
+     * pre-run dialog; the chat leaves them out. Zero budget means none.
+     */
+    spend?: { maxBudgetUsd?: number; economy?: boolean },
   ): Promise<Session> =>
     (
       await request<{ session: Session }>("/sessions", {
@@ -105,6 +110,8 @@ export const api = {
           ...(prior
             ? { priorTurns: prior.turns, priorCostUsd: prior.totalCostUsd }
             : {}),
+          ...(spend?.maxBudgetUsd ? { maxBudgetUsd: spend.maxBudgetUsd } : {}),
+          ...(spend?.economy !== undefined ? { economy: spend.economy } : {}),
         }),
       })
     ).session,

@@ -26,6 +26,10 @@ export type Session = {
   title: string | null;
   /** SAP read-class calls are waved through without a dialog. Off by default. */
   autoApproveSapReads: boolean;
+  /** The USD ceiling the session was opened with, or `null` for none. */
+  maxBudgetUsd: number | null;
+  /** Sub-agents run on Sonnet whatever the skill asked for. */
+  economy: boolean;
 };
 
 /**

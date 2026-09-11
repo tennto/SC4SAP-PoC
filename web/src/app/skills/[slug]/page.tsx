@@ -124,6 +124,8 @@ export default async function SkillPage({
           fields={skill.fields}
           blocked={showsNotice}
           autorun={autorun}
+          cost={skill.cost ?? null}
+          followUp={skill.followUp === true}
         />
       </section>
     </div>

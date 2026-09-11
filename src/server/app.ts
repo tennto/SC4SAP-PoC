@@ -69,17 +69,26 @@ export function buildApp(manager: SessionManager): FastifyInstance {
 
   app.post<{
     Body:
-      | { resume?: string; priorTurns?: number; priorCostUsd?: number }
+      | {
+          resume?: string;
+          priorTurns?: number;
+          priorCostUsd?: number;
+          /** A USD ceiling for the run. Zero or absent means none. */
+          maxBudgetUsd?: number;
+          /** Sub-agents on Sonnet whatever the skill asked for. */
+          economy?: boolean;
+        }
       | undefined;
   }>("/sessions", async (request, reply) => {
     // The running totals of the conversation this session is picking up, sent
     // by the web app when it revives a stored chat. Only a finite number is
     // worth carrying: a bad one would be added to every later figure, so it
     // is refused here rather than poisoning the count downstream.
-    const { priorTurns, priorCostUsd } = request.body ?? {};
+    const { priorTurns, priorCostUsd, maxBudgetUsd, economy } = request.body ?? {};
     for (const [name, value] of [
       ["priorTurns", priorTurns],
       ["priorCostUsd", priorCostUsd],
+      ["maxBudgetUsd", maxBudgetUsd],
     ] as const) {
       if (value === undefined) continue;
       if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
@@ -88,11 +97,16 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           .send({ error: `body.${name} must be a non-negative number` });
       }
     }
+    if (economy !== undefined && typeof economy !== "boolean") {
+      return reply.code(400).send({ error: "body.economy must be a boolean" });
+    }
 
     const session = manager.create({
       resume: request.body?.resume,
       priorTurns,
       priorCostUsd,
+      maxBudgetUsd: maxBudgetUsd ? maxBudgetUsd : undefined,
+      economy,
       userId: userOf(request.headers),
     });
     return reply.code(201).send({ session });

@@ -135,6 +135,11 @@ export const LOCAL_AUTO_ALLOW: readonly string[] = [
   // allowing what it goes on to do.
   "Agent",
   "SlashCommand",
+  // Loads a skill's instructions into the turn — the plugin's own skills
+  // call each other this way (`analyze-symptom` starts by invoking
+  // `trust-session`). It reads markdown and nothing else, and a dialog on
+  // it was the first thing every symptom run put in front of the reader.
+  "Skill",
   "BashOutput",
   "ExitPlanMode",
   // Reads the schemas of tools the session has not loaded yet. It reaches
