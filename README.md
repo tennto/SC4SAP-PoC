@@ -1,7 +1,5 @@
 # SC4SAP Web PoC
 
-<img width="1080" height="1400" alt="맞춤형 크기 – 6" src="https://github.com/user-attachments/assets/84895bc3-c5b5-49df-9b42-e994eafdb49d" />
-
 Runs the [sc4sap](../Poc%20Web) Claude Code plugin headlessly via the **Claude Agent SDK**, as the backend for a browser UI. Execution plan lives in the plugin repo's `README.md`.
 
 Current state: **Phase 2 complete, Phase 3 started.** All six Phase 2 items (2-1 Fastify
