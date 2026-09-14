@@ -13,6 +13,8 @@ import { requireAccount } from "@/lib/auth/session";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { findSkill } from "@/lib/skills";
+import { readLocale, readMessages } from "@/lib/i18n/server";
+import { skillDisplay } from "@/lib/i18n/skills";
 import { Icon } from "@/components/Icon";
 import { SkillForm } from "@/components/SkillForm";
 
@@ -35,7 +37,8 @@ export async function generateMetadata({
   params: Promise<Params>;
 }): Promise<Metadata> {
   const skill = findSkill((await params).slug);
-  return { title: skill ? `${skill.title} · SC4SAP` : "SC4SAP Web PoC" };
+  if (!skill) return { title: "SC4SAP Web PoC" };
+  return { title: `${skillDisplay(await readLocale(), skill).title} · SC4SAP` };
 }
 
 /**
@@ -58,6 +61,9 @@ export default async function SkillPage({
   await requireAccount();
   const skill = findSkill((await params).slug);
   if (!skill) notFound();
+  const { locale, t: messages } = await readMessages();
+  const t = messages.skillPage;
+  const shown = skillDisplay(locale, skill);
 
   // `?autorun=1&context=...` is a run the dashboard's Reconnect is sending
   // here, with what it found. Read on the server so the form mounts already
@@ -69,7 +75,7 @@ export default async function SkillPage({
       ? { context: context.slice(0, 2000) }
       : null;
 
-  const showsNotice = skill.status === "blocked" && Boolean(skill.blockedReason);
+  const showsNotice = skill.status === "blocked" && Boolean(shown.blockedReason);
   const panelDelay = showsNotice ? STEP * 2 : STEP;
 
   return (
@@ -85,13 +91,13 @@ export default async function SkillPage({
             <p className="eyebrow">
               <code>{skill.command}</code>
             </p>
-            <h1>{skill.title}</h1>
-            <p className="page-lede">{skill.summary}</p>
+            <h1>{shown.title}</h1>
+            <p className="page-lede">{shown.summary}</p>
           </div>
         </div>
 
         <span className={`badge ${skill.status === "ready" ? "idle" : "closed"}`}>
-          {skill.status === "ready" ? "runnable" : "not in PoC"}
+          {skill.status === "ready" ? t.runnable : t.notInPoc}
         </span>
       </header>
 
@@ -101,7 +107,7 @@ export default async function SkillPage({
           style={{ "--delay": `${STEP}ms` } as React.CSSProperties}
           role="note"
         >
-          <strong>Not runnable here.</strong> {skill.blockedReason}
+          <strong>{t.notRunnableHere}</strong> {shown.blockedReason}
         </p>
       )}
 
@@ -110,11 +116,8 @@ export default async function SkillPage({
         style={{ "--delay": `${panelDelay}ms` } as React.CSSProperties}
       >
         <div className="panel-head">
-          <h2>Inputs</h2>
-          <p className="panel-note">
-            Running opens a session against the connected system, the same way
-            chat does. The answer is kept, so it can be picked up there.
-          </p>
+          <h2>{t.inputs}</h2>
+          <p className="panel-note">{t.inputsNote}</p>
         </div>
 
         <SkillForm

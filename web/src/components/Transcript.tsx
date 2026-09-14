@@ -6,6 +6,7 @@ import type { Activity } from "@/lib/activity";
 import { describeActivity } from "@/lib/activity";
 import { Markdown } from "@/components/Markdown";
 import { FileChip } from "@/components/FileChip";
+import { useLocale } from "@/lib/i18n/client";
 
 type Props = {
   items: TranscriptItem[];
@@ -306,6 +307,8 @@ export function useSmoothText(
  * small label above the text.
  */
 export function Transcript({ items, idle, busy, pending, activity }: Props) {
+  const { t: messages } = useLocale();
+  const t = messages.transcript;
   const bottom = useRef<HTMLDivElement>(null);
   const [everything, setEverything] = useState(false);
   useEffect(() => {
@@ -384,7 +387,7 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
   if (idle) {
     return (
       <div className="transcript placeholder">
-        <p>Create or select a session to start.</p>
+        <p>{t.placeholder}</p>
       </div>
     );
   }
@@ -401,7 +404,7 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
    * a screen reader interrupting itself once a second is worse than silence.
    */
   const elapsed = useElapsed(activity?.since ?? null);
-  const said = activity ? describeActivity(activity, elapsed) : null;
+  const said = activity ? describeActivity(activity, elapsed, messages.activity) : null;
 
   const dots = (
     <span className="activity">
@@ -419,7 +422,7 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
           <span className="activity-meta">{said.meta}</span>
         </span>
       ) : (
-        <span className="sr-only">Working</span>
+        <span className="sr-only">{t.working}</span>
       )}
     </span>
   );
@@ -435,9 +438,7 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
           className={`ghost transcript-everything${everything ? " is-on" : ""}`}
           aria-pressed={everything}
           title={
-            everything
-              ? "Showing everything the agent said. Click for final answers only."
-              : "Showing final answers only. Click to see everything the agent said."
+            everything ? t.showingEverything : t.showingFinal
           }
           onClick={() => {
             const next = !everything;
@@ -445,12 +446,12 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
             writeShowEverything(next);
           }}
         >
-          {everything ? "Everything" : "Final only"}
+          {everything ? t.everything : t.finalOnly}
         </button>
       )}
 
       {rows.length === 0 && !waiting && (
-        <p className="empty">Ask the SC4SAP agent something.</p>
+        <p className="empty">{t.empty}</p>
       )}
 
       {rows.map((row, index) => {
@@ -467,7 +468,7 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
         if (row.kind === "user") {
           return (
             <article key={row.id} className="msg user msg-in">
-              <span className="who">You</span>
+              <span className="who">{t.you}</span>
               {/* What went with the prompt, above it: the material first and
                   the question about it second, the order it was sent in. */}
               {row.attachments && row.attachments.length > 0 && (
@@ -486,7 +487,7 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
 
         return (
           <article key={row.id} className="msg assistant msg-in">
-            <span className="who">Agent</span>
+            <span className="who">{t.agent}</span>
             <div className="text">
               <Markdown>{isLast ? smoothed : row.text}</Markdown>
               {row.streaming && <span className="caret" aria-hidden />}
@@ -500,7 +501,7 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
 
       {waiting && !waitingInline && (
         <article className="msg assistant waiting msg-in">
-          <span className="who">Agent</span>
+          <span className="who">{t.agent}</span>
           <div className="text">{dots}</div>
         </article>
       )}

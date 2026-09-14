@@ -36,6 +36,7 @@ import { Transcript, toRows } from "@/components/Transcript";
 import { Composer } from "@/components/Composer";
 import { ApprovalModal } from "@/components/ApprovalModal";
 import { toAttachment, type Draft } from "@/lib/attachments";
+import { useLocale } from "@/lib/i18n/client";
 
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
@@ -287,6 +288,9 @@ export function Chat({
     () => [...historyItems, ...stream.items],
     [historyItems, stream.items],
   );
+
+  const { t: messages } = useLocale();
+  const t = messages.chat;
 
   /** Something went wrong and the reader has to dismiss it. */
   const fail = useCallback((message: string): void => {
@@ -793,7 +797,7 @@ export function Chat({
     // request is refused because the answer landed first, the reader still
     // needs to know their press did something.
     setPassing(true);
-    setError("Stopped.");
+    setError(t.stopped);
     try {
       await api.stopSession(backendId);
     } catch {
@@ -993,7 +997,7 @@ export function Chat({
               setError(null);
               setPassing(false);
             }}
-            aria-label="Dismiss"
+            aria-label={t.dismiss}
             // Not reachable by keyboard while the bar is closed, where it is
             // a button on a message that is not there.
             tabIndex={error ? 0 : -1}
@@ -1029,7 +1033,7 @@ export function Chat({
                 Falls back to the greeting without a name rather than to a
                 blank one: an account can exist with no name on it. */}
             <h1>
-              {firstName ? `Good to see you, ${firstName}!` : "Good to see you!"}
+              {firstName ? t.greeting(firstName) : t.greetingAnonymous}
             </h1>
           </div>
 
@@ -1039,9 +1043,9 @@ export function Chat({
               be one press away from where they are looking. */}
           {stream.autoApprove && (
             <div className="auto-approve-bar">
-              <span>SAP reads are being allowed without asking.</span>
+              <span>{t.autoApproveOn}</span>
               <button type="button" onClick={() => void stopAutoApprove()}>
-                Ask me again
+                {t.askAgain}
               </button>
             </div>
           )}
@@ -1057,11 +1061,7 @@ export function Chat({
               running={status === "busy" || awaitingAck !== null}
               onStop={() => void stop()}
               seed={seed}
-              hint={
-                hero
-                  ? "Ask anything about your SAP system…"
-                  : "Ask the SC4SAP agent…  (Enter to send, Shift+Enter for a newline)"
-              }
+              hint={hero ? t.hintHero : t.hintChat}
               // The empty state can be a selected-but-unasked chat as well as
               // no chat at all, so the branch is on whether one exists — not
               // on which screen is showing.

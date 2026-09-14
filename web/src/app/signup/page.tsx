@@ -22,20 +22,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { GoogleMark } from "@/components/GoogleMark";
-import {
-  PASSWORD_MISMATCH,
-  PASSWORD_RULE,
-  isPasswordValid,
-} from "@/lib/password";
-import {
-  RESERVED_EMAIL_MESSAGE,
-  RESERVED_NAME_MESSAGE,
-  isReservedEmail,
-  isReservedName,
-} from "@/lib/reserved-accounts";
+import { isPasswordValid } from "@/lib/password";
+import { isReservedEmail, isReservedName } from "@/lib/reserved-accounts";
+import { useLocale } from "@/lib/i18n/client";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 export default function SignUpPage() {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.auth;
   const [lastName, setLastName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [email, setEmail] = useState("");
@@ -108,7 +103,7 @@ export default function SignUpPage() {
         const body = (await response.json().catch(() => null)) as
           | { error?: string; field?: string }
           | null;
-        setError(body?.error ?? `Sign-up failed (${response.status}).`);
+        setError(body?.error ?? t.signUpFailed(response.status));
         setErrorField(body?.field ?? null);
         // 409 is the endpoint's one verdict for an address that is taken.
         setDuplicate(response.status === 409);
@@ -120,7 +115,7 @@ export default function SignUpPage() {
       router.replace("/");
       router.refresh();
     } catch (err) {
-      setError(`Could not reach the server: ${(err as Error).message}`);
+      setError(t.couldNotReach((err as Error).message));
     } finally {
       setBusy(false);
     }
@@ -140,6 +135,7 @@ export default function SignUpPage() {
 
   return (
     <main className="auth">
+      <LanguageSwitch />
       <div className="auth-card rise">
         <Link className="auth-brand" href="/">
           <span className="rail-wordmark">
@@ -148,22 +144,19 @@ export default function SignUpPage() {
         </Link>
 
         <header className="auth-head">
-          <h1>Create an account</h1>
-          <p className="auth-lede">
-            One account per operator. The SAP connection profile is attached
-            afterwards, in settings.
-          </p>
+          <h1>{t.signUpTitle}</h1>
+          <p className="auth-lede">{t.signUpLede}</p>
         </header>
 
         <form className="auth-form" onSubmit={submit}>
           <div className="field-pair">
             <label className="field">
-              <span className="field-label">Last name</span>
+              <span className="field-label">{t.lastName}</span>
               <input
                 type="text"
                 name="lastName"
                 autoComplete="family-name"
-                placeholder="Kim"
+                placeholder={t.lastNamePlaceholder}
                 value={lastName}
                 onChange={(event) => setLastName(event.target.value)}
                 disabled={busy}
@@ -172,12 +165,12 @@ export default function SignUpPage() {
             </label>
 
             <label className="field">
-              <span className="field-label">First name</span>
+              <span className="field-label">{t.firstName}</span>
               <input
                 type="text"
                 name="firstName"
                 autoComplete="given-name"
-                placeholder="Sihoon"
+                placeholder={t.firstNamePlaceholder}
                 value={firstName}
                 onChange={(event) => setFirstName(event.target.value)}
                 disabled={busy}
@@ -191,12 +184,12 @@ export default function SignUpPage() {
               as often as the right one. */}
           {nameReserved || serverError("lastName") ? (
             <span className="field-error" role="alert">
-              {nameReserved ? RESERVED_NAME_MESSAGE : serverError("lastName")}
+              {nameReserved ? t.reservedName : serverError("lastName")}
             </span>
           ) : null}
 
           <label className="field">
-            <span className="field-label">Email</span>
+            <span className="field-label">{t.email}</span>
             <input
               className={
                 errorField === "email" || showEmailReserved
@@ -226,7 +219,7 @@ export default function SignUpPage() {
             />
             {showEmailReserved ? (
               <span className="field-error" role="alert">
-                {RESERVED_EMAIL_MESSAGE}
+                {t.reservedEmail}
               </span>
             ) : serverError("email") ? (
               <span className="field-error" role="alert">
@@ -237,7 +230,7 @@ export default function SignUpPage() {
                   <>
                     {" "}
                     <Link className="field-error-link" href="/signin">
-                      Go to sign in
+                      {t.goToSignIn}
                     </Link>
                   </>
                 ) : null}
@@ -246,13 +239,13 @@ export default function SignUpPage() {
           </label>
 
           <label className="field">
-            <span className="field-label">Password</span>
+            <span className="field-label">{t.password}</span>
             <input
               className={showPasswordError ? "is-invalid" : undefined}
               type="password"
               name="password"
               autoComplete="new-password"
-              placeholder="At least 10 characters"
+              placeholder={t.passwordPlaceholder}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               onBlur={() => setPasswordTouched(true)}
@@ -262,23 +255,21 @@ export default function SignUpPage() {
             />
             {showPasswordError || serverError("password") ? (
               <span className="field-error" role="alert">
-                {showPasswordError ? PASSWORD_RULE : serverError("password")}
+                {showPasswordError ? t.passwordRule : serverError("password")}
               </span>
             ) : (
-              <span className="field-hint">
-                Letters, digits and one symbol. At least 10 characters.
-              </span>
+              <span className="field-hint">{t.passwordHint}</span>
             )}
           </label>
 
           <label className="field">
-            <span className="field-label">Confirm password</span>
+            <span className="field-label">{t.confirmPassword}</span>
             <input
               className={showConfirmError ? "is-invalid" : undefined}
               type="password"
               name="confirmPassword"
               autoComplete="new-password"
-              placeholder="Repeat the password"
+              placeholder={t.confirmPlaceholder}
               value={confirm}
               onChange={(event) => setConfirm(event.target.value)}
               onBlur={() => setConfirmTouched(true)}
@@ -288,7 +279,7 @@ export default function SignUpPage() {
             />
             {showConfirmError ? (
               <span className="field-error" role="alert">
-                {PASSWORD_MISMATCH}
+                {t.passwordMismatch}
               </span>
             ) : null}
           </label>
@@ -299,7 +290,7 @@ export default function SignUpPage() {
             disabled={!complete || busy}
           >
             <Icon name={busy ? "circle-notch" : "user-plus"} />
-            {busy ? "Creating account…" : "Create account"}
+            {busy ? t.creatingAccount : t.createAccount}
           </button>
 
           {/* Only what the server did not pin to a field — a 503, a network
@@ -312,7 +303,7 @@ export default function SignUpPage() {
           ) : null}
 
           <div className="auth-sep">
-            <span>or</span>
+            <span>{t.or}</span>
           </div>
 
           {/* A link, not a button: `/api/auth/google` answers with a redirect
@@ -320,7 +311,7 @@ export default function SignUpPage() {
               also means the flow survives with JavaScript still loading. */}
           <a className="ghost auth-submit" href="/api/auth/google">
             <GoogleMark />
-            Continue with Google
+            {t.continueWithGoogle}
           </a>
         </form>
       </div>
@@ -329,9 +320,9 @@ export default function SignUpPage() {
         className="auth-foot rise"
         style={{ "--delay": "160ms" } as React.CSSProperties}
       >
-        <Link href="/signin">Sign in</Link>
+        <Link href="/signin">{t.signIn}</Link>
         <span aria-hidden="true">·</span>
-        <Link href="/terms">Terms</Link>
+        <Link href="/terms">{t.terms}</Link>
       </p>
     </main>
   );

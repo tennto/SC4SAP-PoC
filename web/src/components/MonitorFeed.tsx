@@ -34,6 +34,8 @@ import { Select } from "@/components/Select";
 import { DateRangePicker } from "@/components/DateRangePicker";
 import { ToolCallModal } from "@/components/ToolCallModal";
 import type { ToolCall } from "@/lib/types";
+import { useLocale } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 
 /** How many calls the list keeps once live ones start piling up. */
 const LIST_LIMIT = 1000;
@@ -63,16 +65,17 @@ const DEFAULT_FILTERS: Filters = {
   order: "newest",
 };
 
-const STATUS_OPTIONS: { value: Status; label: string }[] = [
-  { value: "all", label: "Any status" },
-  { value: "ok", label: "Succeeded" },
-  { value: "failed", label: "Failed or refused" },
-  { value: "running", label: "Running" },
+/** `label` names the key in `monitor`, so the rows read in the page's language. */
+const STATUS_OPTIONS: { value: Status; label: keyof Messages["monitor"] }[] = [
+  { value: "all", label: "anyStatus" },
+  { value: "ok", label: "succeeded" },
+  { value: "failed", label: "failed" },
+  { value: "running", label: "running" },
 ];
 
-const ORDER_OPTIONS: { value: Order; label: string }[] = [
-  { value: "newest", label: "Newest first" },
-  { value: "oldest", label: "Oldest first" },
+const ORDER_OPTIONS: { value: Order; label: keyof Messages["monitor"] }[] = [
+  { value: "newest", label: "newestFirst" },
+  { value: "oldest", label: "oldestFirst" },
 ];
 
 /**
@@ -130,12 +133,6 @@ function stateOf(call: ToolCall): "running" | "ok" | "bad" {
   return call.ok ? "ok" : "bad";
 }
 
-const DECISION_LABEL: Record<NonNullable<ToolCall["decision"]>, string> = {
-  auto: "auto-approved",
-  allowed: "approved",
-  denied: "denied",
-  expired: "unanswered",
-};
 
 /** Local midnight at the start of a `YYYY-MM-DD` day, as an ISO instant. */
 function dayStart(date: string): string {
@@ -200,6 +197,8 @@ export function MonitorFeed({
   /** Mongo answered on the server. When it did not, "load older" is not offered. */
   historyAvailable: boolean;
 }) {
+  const { t: messages } = useLocale();
+  const t = messages.monitor;
   const [calls, setCalls] = useState<Map<string, ToolCall>>(
     () => new Map(initial.map((call) => [call.id, call])),
   );
@@ -292,7 +291,7 @@ export function MonitorFeed({
           error?: string;
         };
         if (!response.ok) {
-          throw new Error(body.error ?? `The server answered ${response.status}.`);
+          throw new Error(body.error ?? messages.settings.serverAnswered(response.status));
         }
         if (seq !== fetchSeq.current) return;
         const page = body.calls ?? [];
@@ -357,34 +356,28 @@ export function MonitorFeed({
       <div className="panel-head panel-head-row">
         <div>
           <h2 id="monitor-feed">
-            <Icon name="pulse" /> Calls
+            <Icon name="pulse" /> {t.calls}
           </h2>
           <p className="panel-note">
-            {feed === "live"
-              ? "Live. New calls appear as the agent makes them."
-              : feed === "connecting"
-                ? "Connecting to the agent backend…"
-                : "The agent backend is not answering. The list is what was loaded; it will resume on its own."}
-            {persistent === false
-              ? " The backend has no database configured, so only its recent memory is shown."
-              : ""}
+            {feed === "live" ? t.live : feed === "connecting" ? t.connecting : t.offline}
+            {persistent === false ? t.noDatabase : ""}
           </p>
         </div>
         <span className={`mon-feed is-${feed}`}>
           <span className="mon-feed-dot" aria-hidden="true" />
-          {feed}
+          {t.feed[feed]}
         </span>
       </div>
 
-      <div className="mon-filters" role="search" aria-label="Filter calls">
+      <div className="mon-filters" role="search" aria-label={t.filterCalls}>
         <label className="mon-search">
           <Icon name="magnifying-glass" />
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Tool name or input, e.g. GetTypeInfo or MARA"
-            aria-label="Search calls by tool name or input"
+            placeholder={t.searchPlaceholder}
+            aria-label={t.searchLabel}
             spellCheck={false}
             autoComplete="off"
           />
@@ -394,7 +387,10 @@ export function MonitorFeed({
           <Select
             name="status"
             value={filters.status}
-            options={STATUS_OPTIONS}
+            options={STATUS_OPTIONS.map((option) => ({
+              value: option.value,
+              label: t[option.label] as string,
+            }))}
             onChange={(next) => set("status", next as Status)}
           />
         </div>
@@ -412,7 +408,10 @@ export function MonitorFeed({
           <Select
             name="order"
             value={filters.order}
-            options={ORDER_OPTIONS}
+            options={ORDER_OPTIONS.map((option) => ({
+              value: option.value,
+              label: t[option.label] as string,
+            }))}
             onChange={(next) => set("order", next as Order)}
           />
         </div>
@@ -428,7 +427,7 @@ export function MonitorFeed({
             onClick={() => set("mcpOnly", !filters.mcpOnly)}
           >
             <span className="check-mark" aria-hidden="true" />
-            MCP only
+            {t.mcpOnly}
           </button>
 
           {/* Always here. Clearing puts every filter back to how the page
@@ -441,7 +440,7 @@ export function MonitorFeed({
               setFilters(DEFAULT_FILTERS);
             }}
           >
-            <Icon name="trash" /> Clear
+            <Icon name="trash" /> {t.clear}
           </button>
         </div>
       </div>
@@ -449,12 +448,12 @@ export function MonitorFeed({
       {visible.length === 0 ? (
         <p className="mon-empty">
           {loading
-            ? "Searching…"
+            ? t.searching
             : calls.size === 0
-              ? "Nothing yet. Run a skill or ask something in chat, and the calls it makes will show up here."
+              ? t.nothingYet
               : filtered
-                ? "No calls match these filters."
-                : "No MCP calls in what is loaded. Switch the filter off to see the agent's own reads."}
+                ? t.noMatch
+                : t.noMcpLoaded}
         </p>
       ) : (
         <ol className="mon-list">
@@ -465,7 +464,7 @@ export function MonitorFeed({
                 <button
                   type="button"
                   className={`mon-row is-${state}${arrived.current.has(call.id) ? " is-new" : ""}`}
-                  title={`${stamp(call.startedAt)} · session ${call.sessionId}`}
+                  title={`${stamp(call.startedAt)} · ${t.session(call.sessionId)}`}
                   onClick={() => setOpenId(call.id)}
                 >
                 <span className="mon-dot" aria-hidden="true" />
@@ -478,16 +477,16 @@ export function MonitorFeed({
                   {call.kind === "mcp" ? (
                     <span className="mon-server">{call.server?.replace(/^plugin_/, "")}</span>
                   ) : (
-                    <span className="mon-server">built-in</span>
+                    <span className="mon-server">{t.builtIn}</span>
                   )}
                 </span>
                 <span className="mon-input">{call.inputPreview}</span>
                 <span className="mon-meta">
                   {call.decision && call.decision !== "auto" ? (
-                    <span className="mon-decision">{DECISION_LABEL[call.decision]}</span>
+                    <span className="mon-decision">{t.decisionShort[call.decision]}</span>
                   ) : null}
                   {state === "running" ? (
-                    <span className="mon-running">running</span>
+                    <span className="mon-running">{t.runningRow}</span>
                   ) : (
                     <>
                       <span>{duration(call.durationMs)}</span>
@@ -514,7 +513,7 @@ export function MonitorFeed({
             disabled={loading || exhausted || oldestShown === null}
           >
             <Icon name={loading ? "circle-notch" : "arrow-down"} />
-            {exhausted ? "That is everything kept" : loading ? "Loading…" : "Load older"}
+            {exhausted ? t.everythingKept : loading ? t.loading : t.loadOlder}
           </button>
         </div>
       ) : null}

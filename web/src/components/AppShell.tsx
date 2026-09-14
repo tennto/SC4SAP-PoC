@@ -24,6 +24,9 @@ import { SkillNav } from "@/components/SkillNav";
 import { AccountMenu } from "@/components/AccountMenu";
 import type { Account } from "@/lib/account";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n/client";
+import { syncTheme } from "@/lib/theme";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 /** Must match the `@media (max-width: …)` breakpoint in globals.css. */
 const NARROW = "(max-width: 900px)";
@@ -68,6 +71,8 @@ export function AppShell({
   children: React.ReactNode;
   account: Account | null;
 }) {
+  const { t: messages } = useLocale();
+  const t = messages.nav;
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [narrow, setNarrow] = useState(false);
@@ -96,6 +101,13 @@ export function AppShell({
   useEffect(() => {
     setDrawerOpen(false);
   }, [pathname]);
+
+  // Screens with no theme control are always light — see `LIGHT_ONLY_ROUTES`
+  // in `lib/theme.ts`. The boot script handles a full load; this handles the
+  // router landing on one, and signing out, which turns the legal pages bare.
+  useEffect(() => {
+    syncTheme(pathname, account !== null);
+  }, [pathname, account]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -160,6 +172,9 @@ export function AppShell({
   if (legalStandalone) {
     return (
       <div className="legal-shell">
+        {/* Same corner as on the sign-in screen: no rail here either, so no
+            account menu to change the language from. */}
+        <LanguageSwitch />
         <header className="legal-shell-head">
           <Link className="legal-shell-brand" href="/signin">
             <span className="rail-wordmark">
@@ -168,7 +183,7 @@ export function AppShell({
           </Link>
 
           <Link className="link-button" href="/signin">
-            <Icon name="arrow-left" /> Back to sign in
+            <Icon name="arrow-left" /> {messages.auth.backToSignIn}
           </Link>
         </header>
 
@@ -178,14 +193,22 @@ export function AppShell({
             shell's content column. */}
         <main className="legal-shell-body">{children}</main>
 
+        {/* The document being read is not offered as somewhere to go: a link
+            to the page you are on is a link to nowhere. */}
         <footer className="legal-shell-foot">
-          <Link href="/signin">Sign in</Link>
-          <span aria-hidden="true">·</span>
-          <Link href="/signup">Sign up</Link>
-          <span aria-hidden="true">·</span>
-          <Link href="/terms">Terms</Link>
-          <span aria-hidden="true">·</span>
-          <Link href="/privacy">Privacy</Link>
+          {[
+            { href: "/signin", label: messages.auth.signIn },
+            { href: "/signup", label: messages.auth.signUp },
+            { href: "/terms", label: messages.auth.terms },
+            { href: "/privacy", label: messages.auth.privacy },
+          ]
+            .filter((link) => !matches([link.href]))
+            .map((link, index) => (
+              <span className="legal-shell-foot-item" key={link.href}>
+                {index > 0 ? <span aria-hidden="true">·</span> : null}
+                <Link href={link.href}>{link.label}</Link>
+              </span>
+            ))}
         </footer>
       </div>
     );
@@ -207,7 +230,7 @@ export function AppShell({
           <Link
             className="rail-brand"
             href="/"
-            aria-label="Super-Claude for SAP — go to home"
+            aria-label={t.goHome}
             onClick={() => setDrawerOpen(false)}
           >
             <span className="rail-wordmark">
@@ -219,8 +242,8 @@ export function AppShell({
             className="rail-toggle"
             onClick={toggle}
             aria-expanded={expanded}
-            aria-label={expanded ? "Collapse the menu" : "Expand the menu"}
-            title={expanded ? "Collapse the menu" : "Expand the menu"}
+            aria-label={expanded ? t.collapseMenu : t.expandMenu}
+            title={expanded ? t.collapseMenu : t.expandMenu}
           >
             <Icon name={toggleIcon} />
           </button>
@@ -241,7 +264,7 @@ export function AppShell({
         className="rail-backdrop"
         aria-hidden={!drawerOpen}
         tabIndex={drawerOpen ? 0 : -1}
-        aria-label="Close the menu"
+        aria-label={t.closeMenu}
         onClick={() => setDrawerOpen(false)}
       />
 
@@ -251,8 +274,8 @@ export function AppShell({
       <button
         className="rail-fab"
         onClick={() => setDrawerOpen(true)}
-        aria-label="Open the menu"
-        title="Open the menu"
+        aria-label={t.openMenu}
+        title={t.openMenu}
       >
         <Icon name="list" />
       </button>

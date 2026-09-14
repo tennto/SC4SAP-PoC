@@ -14,6 +14,9 @@ import { usePathname } from "next/navigation";
 import { SKILLS_BY_GROUP } from "@/lib/skills";
 import { useFavorites } from "@/lib/favorites";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n/client";
+import { groupDisplay, skillDisplay } from "@/lib/i18n/skills";
+import type { Messages } from "@/lib/i18n/messages";
 
 type Props = {
   collapsed: boolean;
@@ -21,14 +24,12 @@ type Props = {
   onNavigate: () => void;
 };
 
-const FIXED = [
-  { href: "/", icon: "house", label: "Home", hint: "Account, system, credits" },
-  {
-    href: "/chat",
-    icon: "chats-circle",
-    label: "Chat",
-    hint: "Free-form prompting",
-  },
+/** `label` and `hint` name keys in `nav`, so the rows read in the menu's language. */
+type NavKey = keyof Messages["nav"];
+
+const FIXED: { href: string; icon: string; label: NavKey; hint: NavKey }[] = [
+  { href: "/", icon: "house", label: "home", hint: "homeHint" },
+  { href: "/chat", icon: "chats-circle", label: "chat", hint: "chatHint" },
 ];
 
 /**
@@ -39,19 +40,17 @@ const FIXED = [
  * command. Not in `lib/skills.ts` because nothing there fits it: no command,
  * no fields, no run. Listed after the group's skills.
  */
-const PAGES: { group: string; href: string; icon: string; label: string; hint: string }[] = [
-  {
-    group: "system",
-    href: "/monitor",
-    icon: "pulse",
-    label: "MCP Monitor",
-    hint: "Every tool call the agent makes, as it happens",
-  },
+const PAGES: { group: string; href: string; icon: string; label: NavKey; hint: NavKey }[] = [
+  { group: "system", href: "/monitor", icon: "pulse", label: "monitor", hint: "monitorHint" },
 ];
 
 export function SkillNav({ collapsed, onNavigate }: Props) {
   const pathname = usePathname();
   const { isFavorite, toggle } = useFavorites();
+  const { locale, t: messages } = useLocale();
+  const t = messages.nav;
+  /** Every dictionary key in `nav` is a string; the typed indexer says so. */
+  const word = (key: NavKey): string => t[key] as string;
 
   const entry = (
     href: string,
@@ -91,12 +90,8 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
             className="nav-fav"
             data-on={starred ? "true" : "false"}
             aria-pressed={starred}
-            aria-label={
-              starred
-                ? `Remove ${label} from favourites`
-                : `Add ${label} to favourites`
-            }
-            title={starred ? "Remove from favourites" : "Add to favourites"}
+            aria-label={starred ? t.removeFavorite(label) : t.addFavorite(label)}
+            title={starred ? t.removeFavoriteTitle : t.addFavoriteTitle}
             onClick={() => toggle(favouriteSlug)}
           >
             <Icon name="star" weight={starred ? "fill" : "regular"} />
@@ -107,42 +102,56 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
   };
 
   return (
-    <nav className="nav" aria-label="Skills">
+    <nav className="nav" aria-label={t.skills}>
       <div className="nav-group">
         {FIXED.map((item) =>
-          entry(item.href, item.icon, item.label, `${item.label} — ${item.hint}`),
+          entry(
+            item.href,
+            item.icon,
+            word(item.label),
+            `${word(item.label)} — ${word(item.hint)}`,
+          ),
         )}
       </div>
 
-      {SKILLS_BY_GROUP.map(({ group, skills }) => (
-        <div className="nav-group" key={group.id}>
-          <p className="nav-heading">
-            <span>{group.label}</span>
-            <span className="nav-heading-hint">{group.hint}</span>
-          </p>
-          {skills.map((skill) =>
-            entry(
-              `/skills/${skill.slug}`,
-              skill.icon,
-              skill.title,
-              `${skill.title} — ${skill.summary}`,
-              skill.status === "blocked" ? (
-                <span
-                  className="nav-flag"
-                  title={skill.blockedReason}
-                  aria-label="Not runnable in this PoC"
-                >
-                  ·
-                </span>
-              ) : null,
-              skill.slug,
-            ),
-          )}
-          {PAGES.filter((page) => page.group === group.id).map((page) =>
-            entry(page.href, page.icon, page.label, `${page.label} — ${page.hint}`),
-          )}
-        </div>
-      ))}
+      {SKILLS_BY_GROUP.map(({ group, skills }) => {
+        const heading = groupDisplay(locale, group);
+        return (
+          <div className="nav-group" key={group.id}>
+            <p className="nav-heading">
+              <span>{heading.label}</span>
+              <span className="nav-heading-hint">{heading.hint}</span>
+            </p>
+            {skills.map((skill) => {
+              const shown = skillDisplay(locale, skill);
+              return entry(
+                `/skills/${skill.slug}`,
+                skill.icon,
+                shown.title,
+                `${shown.title} — ${shown.summary}`,
+                skill.status === "blocked" ? (
+                  <span
+                    className="nav-flag"
+                    title={shown.blockedReason}
+                    aria-label={t.notRunnable}
+                  >
+                    ·
+                  </span>
+                ) : null,
+                skill.slug,
+              );
+            })}
+            {PAGES.filter((page) => page.group === group.id).map((page) =>
+              entry(
+                page.href,
+                page.icon,
+                word(page.label),
+                `${word(page.label)} — ${word(page.hint)}`,
+              ),
+            )}
+          </div>
+        );
+      })}
     </nav>
   );
 }

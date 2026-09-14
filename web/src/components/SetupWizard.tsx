@@ -29,12 +29,10 @@ import { Icon } from "@/components/Icon";
 import { WorkingMark } from "@/components/WorkingMark";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Select } from "@/components/Select";
+import { useLocale } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 import {
-  ABAP_RELEASE_RULE,
-  ADT_URL_RULE,
-  API_KEY_RULE,
   BLOCKLIST_PROFILES,
-  CLIENT_RULE,
   EMPTY_DRAFT,
   INDUSTRIES,
   LANGUAGES,
@@ -52,13 +50,16 @@ import {
  * The rail across the foot. `title` is the card's heading as well, so the two
  * cannot drift; `short` is what fits in a five-up rail on a phone.
  */
+/** The words for each step are `setup.steps` in the dictionary, same order. */
 const STEPS = [
-  { short: "System", title: "Where is the system", icon: "link-simple" },
-  { short: "Sign-in", title: "How do you log in", icon: "user-circle" },
-  { short: "Release", title: "What is the system", icon: "database" },
-  { short: "Scope", title: "What is it for", icon: "shield-check" },
-  { short: "API key", title: "What thinks for it", icon: "key" },
+  { icon: "link-simple" },
+  { icon: "user-circle" },
+  { icon: "database" },
+  { icon: "shield-check" },
+  { icon: "key" },
 ] as const;
+
+type SetupText = Messages["setup"];
 
 /**
  * The lede under each heading, as lines rather than as one string.
@@ -69,26 +70,6 @@ const STEPS = [
  * middle of a line. Each entry is rendered as its own block; see
  * `.setup-lede-line`.
  */
-const LEDES: readonly (readonly string[])[] = [
-  [
-    "The ADT endpoint of the ABAP stack this account works against.",
-    "Scheme, host and port — the same address an ADT connection in Eclipse points at.",
-  ],
-  [
-    "The logon this session runs as. Everything the agent reads, it reads as this user, so its authorisations are the ceiling on what any skill can reach.",
-  ],
-  [
-    "Which release, and which client. Both decide what is in scope: the release picks the table and TCode catalogue, the client picks the data.",
-  ],
-  [
-    "The industry the consultant agents read up on before they answer, and how firmly the MCP server refuses to hand back rows from sensitive tables.",
-    "Both have sensible defaults. They can be changed later in Settings, which is also where tables can be allowed through the blocklist.",
-  ],
-  [
-    "The key the agent thinks with. It bills to your own Console account, and it is the one credential here that is not SAP's.",
-  ],
-];
-
 /**
  * The headline, while the checks run.
  *
@@ -98,11 +79,8 @@ const LEDES: readonly (readonly string[])[] = [
  * happening" without claiming progress that has not been made — none of them
  * names a step, which is what the line under the spinner is for.
  */
-const CONNECTING_LINES = [
-  "Connecting to your system",
-  "This should take less than a minute",
-  "Please wait a moment",
-] as const;
+/** How many sentences the connecting card cycles through — see `setup.connectingLines`. */
+const CONNECTING_LINE_COUNT = 3;
 
 /**
  * How long each headline holds before the next one takes over.
@@ -136,30 +114,32 @@ const LINE_MS = 8000;
  * be quick: a mock that finishes in a second makes a waiting screen impossible
  * to judge, and the headline is on an eight-second cycle.
  */
+/** Labelled by `setup.checks` in the dictionary, same order. */
 const CHECKS: readonly {
-  label: string;
-  run: (draft: SetupDraft) => Promise<void>;
+  run: (draft: SetupDraft, t: SetupText) => Promise<void>;
   mock: number;
 }[] = [
   {
-    label: "Connecting to the SAP system",
-    run: (draft) =>
-      post("/api/setup/check/sap", {
-        adtUrl: draft.adtUrl,
-        sapUser: draft.sapUser,
-        sapPassword: draft.sapPassword,
-        client: draft.client,
-      }),
+    run: (draft, t) =>
+      post(
+        "/api/setup/check/sap",
+        {
+          adtUrl: draft.adtUrl,
+          sapUser: draft.sapUser,
+          sapPassword: draft.sapPassword,
+          client: draft.client,
+        },
+        t,
+      ),
     mock: 4200,
   },
   {
-    label: "Checking the MCP connection",
-    run: () => post("/api/setup/check/mcp"),
+    run: (_draft, t) => post("/api/setup/check/mcp", undefined, t),
     mock: 3400,
   },
   {
-    label: "Verifying your Claude Console details",
-    run: (draft) => post("/api/setup/check/claude", { apiKey: draft.apiKey }),
+    run: (draft, t) =>
+      post("/api/setup/check/claude", { apiKey: draft.apiKey }, t),
     mock: 2600,
   },
 ];
@@ -183,7 +163,7 @@ const FAILED_STEP = [1, 4, 4] as const;
  * user and password" names the step to go back to, where a status code does
  * not — so wrapping them in a sentence of our own would only bury them.
  */
-async function post(path: string, body?: unknown): Promise<void> {
+async function post(path: string, body: unknown, t: SetupText): Promise<void> {
   const response = await fetch(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -194,7 +174,7 @@ async function post(path: string, body?: unknown): Promise<void> {
     const payload = (await response.json().catch(() => null)) as
       | { error?: string }
       | null;
-    throw new Error(payload?.error ?? `That step failed (${response.status}).`);
+    throw new Error(payload?.error ?? t.stepFailed(response.status));
   }
 }
 
@@ -218,16 +198,11 @@ const FREE_NAV = process.env.NODE_ENV !== "production";
  * on a card that has one, because a help button that opens a restatement of
  * the lede beside it teaches the reader to stop pressing it.
  */
-const HELPS: readonly (string | null)[] = [
-  "In SAP GUI, run transaction SICF and use its ADT test function. The SAP URL it opens is the one to paste here.",
-  null,
-  null,
-  "Standard refuses HR, payroll and finance line-item tables as well as anything holding credentials. Pick Strict for a system with production data in it; Minimal only for a sandbox.",
-  null,
-];
 
 export function SetupWizard({ firstName }: { firstName: string }) {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.setup;
   const [draft, setDraft] = useState<SetupDraft>(EMPTY_DRAFT);
   const [step, setStep] = useState(0);
   /**
@@ -323,7 +298,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
         if (mock) {
           await new Promise((resolve) => setTimeout(resolve, check.mock));
         } else {
-          await check.run(draft);
+          await check.run(draft, t);
         }
       } catch (err) {
         // Back to the card, carrying the reason. The alternative — a failure
@@ -345,7 +320,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
 
     if (!mock) {
       try {
-        await post("/api/setup", draft);
+        await post("/api/setup", draft, t);
       } catch (err) {
         setError((err as Error).message);
         setDir("back");
@@ -423,7 +398,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
   useEffect(() => {
     if (stage !== "connecting") return;
     const timer = setInterval(
-      () => setLine((current) => (current + 1) % CONNECTING_LINES.length),
+      () => setLine((current) => (current + 1) % CONNECTING_LINE_COUNT),
       LINE_MS,
     );
     return () => clearInterval(timer);
@@ -460,14 +435,14 @@ export function SetupWizard({ firstName }: { firstName: string }) {
           <WorkingMark />
 
           {/* Keyed, so each line arrives rather than being swapped in place. */}
-          <p className="setup-connecting-line" key={CONNECTING_LINES[line]}>
-            {CONNECTING_LINES[line]}
+          <p className="setup-connecting-line" key={t.connectingLines[line]}>
+            {t.connectingLines[line]}
           </p>
 
-          <p className="setup-check" key={CHECKS[checked]?.label ?? "last"}>
+          <p className="setup-check" key={t.checks[checked] ?? "last"}>
             {/* The last check has no successor to name, so while it finishes
                 the line stays on it rather than blanking. */}
-            {(CHECKS[checked] ?? CHECKS[CHECKS.length - 1]).label}
+            {t.checks[checked] ?? t.checks[t.checks.length - 1]}
           </p>
         </section>
       </div>
@@ -485,12 +460,8 @@ export function SetupWizard({ firstName }: { firstName: string }) {
           </span>
 
           <header className="setup-head">
-            <h2>All settings have been saved</h2>
-            <p className="setup-lede">
-              All three checks came back clean and the connection is stored
-              against this account. The password and the key are encrypted; the
-              rest is what the dashboard shows back.
-            </p>
+            <h2>{t.doneTitle}</h2>
+            <p className="setup-lede">{t.doneLede}</p>
           </header>
 
           {/* The dashboard's own definition list, unchanged — this panel is
@@ -498,39 +469,39 @@ export function SetupWizard({ firstName }: { firstName: string }) {
               second style for it would only drift. */}
           <dl className="facts setup-summary">
             <div>
-              <dt>ADT endpoint</dt>
+              <dt>{t.adtEndpoint}</dt>
               <dd>
                 <code>{draft.adtUrl.trim()}</code>
               </dd>
             </div>
             <div>
-              <dt>Sign-in</dt>
+              <dt>{t.signIn}</dt>
               <dd>
-                {draft.sapUser.trim()} · client {draft.client.trim()} ·{" "}
+                {draft.sapUser.trim()} · {t.client(draft.client.trim())} ·{" "}
                 {draft.language}
               </dd>
             </div>
             <div>
-              <dt>Release</dt>
+              <dt>{t.release}</dt>
               <dd>
                 {SAP_VERSIONS.find((v) => v.value === draft.sapVersion)?.label} ·
                 ABAP {draft.abapRelease.trim()}
               </dd>
             </div>
             <div>
-              <dt>Scope</dt>
+              <dt>{t.scope}</dt>
               <dd>
-                {INDUSTRIES.find((i) => i.value === draft.industry)?.label} ·{" "}
-                {BLOCKLIST_PROFILES.find((p) => p.value === draft.blocklist)?.label}{" "}
-                blocklist
+                {t.industries[draft.industry] ?? draft.industry} ·{" "}
+                {t.blocklist[draft.blocklist]?.label ?? draft.blocklist}{" "}
+                {t.blocklistSuffix}
               </dd>
             </div>
             {/* The key itself is never echoed — not even a tail. A masked
                 secret is still a secret leaking its shape, and this panel is
                 served to a browser. */}
             <div>
-              <dt>Claude API key</dt>
-              <dd>Held for this account</dd>
+              <dt>{t.apiKey}</dt>
+              <dd>{t.heldForAccount}</dd>
             </div>
           </dl>
 
@@ -553,7 +524,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                 router.refresh();
               }}
             >
-              Start Now
+              {t.startNow}
             </button>
           </div>
         </section>
@@ -568,14 +539,16 @@ export function SetupWizard({ firstName }: { firstName: string }) {
       <form className="setup-card" key={step} onSubmit={submit}>
         <div className="setup-kind">
           <Icon name={STEPS[step].icon} />
-          Step {step + 1} of {STEPS.length}
-          {HELPS[step] ? <StepHelp step={step} text={HELPS[step]} /> : null}
+          {t.stepOf(step + 1, STEPS.length)}
+          {t.helps[step] ? (
+            <StepHelp step={step} text={t.helps[step]} label={t.whereToFind} />
+          ) : null}
         </div>
 
         <header className="setup-head">
-          <h2>{STEPS[step].title}</h2>
+          <h2>{t.steps[step].title}</h2>
           <p className="setup-lede">
-            {LEDES[step].map((line) => (
+            {t.ledes[step].map((line) => (
               <span className="setup-lede-line" key={line}>
                 {line}
               </span>
@@ -586,7 +559,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
         <div className="setup-fields">
           {step === 0 ? (
             <label className="field">
-              <span className="field-label">SAP ADT URL</span>
+              <span className="field-label">{t.adtUrl}</span>
               <input
                 className={
                   seen && !isAdtUrlValid(draft.adtUrl) ? "is-invalid" : undefined
@@ -609,7 +582,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                     : "field-hint"
                 }
               >
-                {ADT_URL_RULE}
+                {t.adtUrlRule}
               </span>
             </label>
           ) : null}
@@ -617,7 +590,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
           {step === 1 ? (
             <>
               <label className="field">
-                <span className="field-label">SAP GUI user</span>
+                <span className="field-label">{t.sapGuiUser}</span>
                 <input
                   type="text"
                   name="sapUser"
@@ -637,7 +610,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
               </label>
 
               <label className="field">
-                <span className="field-label">Password</span>
+                <span className="field-label">{t.password}</span>
                 <span className="field-secret">
                   <input
                     type={secretType("sapPassword")}
@@ -652,9 +625,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                     type="button"
                     onClick={() => toggleReveal("sapPassword")}
                     aria-label={
-                      revealed.has("sapPassword")
-                        ? "Hide the password"
-                        : "Show the password"
+                      revealed.has("sapPassword") ? t.hidePassword : t.showPassword
                     }
                   >
                     <Icon
@@ -662,9 +633,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                     />
                   </button>
                 </span>
-                <span className="field-hint">
-                  The same two you would type at the SAP GUI logon screen.
-                </span>
+                <span className="field-hint">{t.sameAsGui}</span>
               </label>
             </>
           ) : null}
@@ -677,7 +646,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                     nothing. `aria-labelledby` does the association instead. */}
                 <div className="field">
                   <span className="field-label" id="setup-release-label">
-                    Release
+                    {t.release}
                   </span>
                   <Select
                     name="sapVersion"
@@ -695,7 +664,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                 </div>
 
                 <label className="field">
-                  <span className="field-label">ABAP release</span>
+                  <span className="field-label">{t.abapRelease}</span>
                   <input
                     className={
                       seen && !isAbapReleaseValid(draft.abapRelease)
@@ -719,14 +688,14 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                         : "field-hint"
                     }
                   >
-                    {ABAP_RELEASE_RULE}
+                    {t.abapReleaseRule}
                   </span>
                 </label>
               </div>
 
               <div className="field-pair">
                 <label className="field">
-                  <span className="field-label">Client</span>
+                  <span className="field-label">{t.clientLabel}</span>
                   <input
                     className={
                       seen && !isClientValid(draft.client)
@@ -750,13 +719,13 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                         : "field-hint"
                     }
                   >
-                    {CLIENT_RULE}
+                    {t.clientRule}
                   </span>
                 </label>
 
                 <div className="field">
                   <span className="field-label" id="setup-language-label">
-                    Logon language
+                    {t.logonLanguage}
                   </span>
                   <Select
                     name="language"
@@ -778,7 +747,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
               <div className="field-pair">
                 <div className="field">
                   <span className="field-label" id="setup-industry-label">
-                    Industry
+                    {t.industry}
                   </span>
                   <Select
                     name="industry"
@@ -786,19 +755,17 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                     value={draft.industry}
                     options={INDUSTRIES.map((industry) => ({
                       value: industry.value,
-                      label: industry.label,
+                      label: t.industries[industry.value] ?? industry.label,
                     }))}
                     onChange={(next) => set("industry", next)}
                     autoFocus
                   />
-                  <span className="field-hint">
-                    Which reference the consultant agents read first.
-                  </span>
+                  <span className="field-hint">{t.industryHint}</span>
                 </div>
 
                 <div className="field">
                   <span className="field-label" id="setup-blocklist-label">
-                    Blocklist profile
+                    {t.blocklistProfile}
                   </span>
                   <Select
                     name="blocklist"
@@ -806,12 +773,12 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                     value={draft.blocklist}
                     options={BLOCKLIST_PROFILES.map((profile) => ({
                       value: profile.value,
-                      label: profile.label,
+                      label: t.blocklist[profile.value]?.label ?? profile.label,
                     }))}
                     onChange={(next) => set("blocklist", next as BlocklistProfile)}
                   />
                   <span className="field-hint">
-                    {BLOCKLIST_PROFILES.find((p) => p.value === draft.blocklist)?.hint}
+                    {t.blocklist[draft.blocklist]?.hint}
                   </span>
                 </div>
               </div>
@@ -820,7 +787,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
 
           {step === 4 ? (
             <label className="field">
-              <span className="field-label">Claude Console API key</span>
+              <span className="field-label">{t.consoleKey}</span>
               <span className="field-secret">
                 <input
                   className={
@@ -840,7 +807,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                   type="button"
                   onClick={() => toggleReveal("apiKey")}
                   aria-label={
-                    revealed.has("apiKey") ? "Hide the key" : "Show the key"
+                    revealed.has("apiKey") ? t.hideKey : t.showKey
                   }
                 >
                   <Icon name={revealed.has("apiKey") ? "eye-slash" : "eye"} />
@@ -853,10 +820,10 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                     : "field-hint"
                 }
               >
-                {API_KEY_RULE}
+                {t.apiKeyRule}
               </span>
               <p className="setup-aside">
-                Issued from{" "}
+                {t.issuedFrom}{" "}
                 <a
                   href="https://console.anthropic.com/settings/keys"
                   target="_blank"
@@ -864,9 +831,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                 >
                   console.anthropic.com
                 </a>
-                . A Claude Code or claude.ai login cannot be used here —
-                Anthropic does not permit one for third-party SDK apps. Set a
-                spend cap on the key while you are there.
+                {t.keyAside}
               </p>
             </label>
           ) : null}
@@ -901,7 +866,7 @@ export function SetupWizard({ firstName }: { firstName: string }) {
             onClick={() => setConfirmLeave(true)}
             disabled={busy}
           >
-            Not now
+            {t.notNow}
           </button>
 
           <span className="setup-spacer" />
@@ -912,21 +877,21 @@ export function SetupWizard({ firstName }: { firstName: string }) {
                 busy ? "circle-notch" : last ? "plugs-connected" : "arrow-right"
               }
             />
-            {busy ? "Connecting…" : last ? "Connect" : "Next"}
+            {busy ? t.connecting : last ? t.connect : t.next}
           </button>
         </div>
       </form>
 
-      <SetupRail step={step} onJump={go} firstName={firstName} />
+      <SetupRail step={step} onJump={go} firstName={firstName} t={t} />
 
       {confirmLeave && (
         <ConfirmModal
-          kind="Leave setup"
-          heading="Leave setup and sign out?"
-          description="There is nothing to run until this is finished, so leaving it ends the session. Nothing typed here is kept — the four answers are asked again next time you sign in."
-          confirmLabel="Sign out"
+          kind={t.leaveKind}
+          heading={t.leaveHeading}
+          description={t.leaveBody}
+          confirmLabel={t.signOut}
           confirmIcon="sign-out"
-          cancelLabel="Keep going"
+          cancelLabel={t.keepGoing}
           onConfirm={() => void leave()}
           onCancel={() => setConfirmLeave(false)}
           busy={busy}
@@ -953,14 +918,23 @@ export function SetupWizard({ firstName }: { firstName: string }) {
  * announced as the button's description rather than read as a stray paragraph
  * in the middle of the form.
  */
-function StepHelp({ step, text }: { step: number; text: string }) {
+function StepHelp({
+  step,
+  text,
+  label,
+}: {
+  step: number;
+  text: string;
+  /** The button's accessible name — "Where to find this". */
+  label: string;
+}) {
   const id = `setup-help-${step}`;
   return (
     <span className="setup-help">
       <button
         className="setup-help-button"
         type="button"
-        aria-label="Where to find this"
+        aria-label={label}
         aria-describedby={id}
       >
         <Icon name="question" />
@@ -992,10 +966,12 @@ function SetupRail({
   step,
   onJump,
   firstName,
+  t,
 }: {
   step: number;
   onJump: (to: number) => void;
   firstName: string;
+  t: SetupText;
 }) {
   return (
     <div className="setup-rail">
@@ -1009,7 +985,7 @@ function SetupRail({
           const state =
             index === step ? "current" : index < step ? "done" : "upcoming";
           return (
-            <li key={entry.short} className={`setup-dot is-${state}`}>
+            <li key={entry.icon} className={`setup-dot is-${state}`}>
               <button
                 type="button"
                 onClick={() => onJump(index)}
@@ -1019,16 +995,14 @@ function SetupRail({
                 <span className="setup-dot-mark" aria-hidden="true">
                   {index < step ? <Icon name="check" /> : index + 1}
                 </span>
-                <span className="setup-dot-label">{entry.short}</span>
+                <span className="setup-dot-label">{t.steps[index].short}</span>
               </button>
             </li>
           );
         })}
       </ol>
 
-      <p className="setup-rail-note">
-        {firstName}, this is asked once. Everything after it is the app.
-      </p>
+      <p className="setup-rail-note">{t.railNote(firstName)}</p>
     </div>
   );
 }

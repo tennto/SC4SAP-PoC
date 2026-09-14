@@ -125,7 +125,7 @@ export const SKILLS: Skill[] = [
     title: "Ask a Consultant",
     icon: "chat-teardrop-text",
     summary:
-      "Operational Q&A routed to the matching module consultant, answered against the configured SAP environment.",
+      "Operational Q&A routed to the matching module consultant, answered against the configured SAP environment",
     group: "analyze",
     status: "ready",
     fields: [
@@ -139,7 +139,7 @@ export const SKILLS: Skill[] = [
     title: "Analyze Code",
     icon: "code",
     summary:
-      "Static review of an ABAP object — AST, semantic analysis and where-used, run through sap-code-reviewer.",
+      "Static review of an ABAP object — AST, semantic analysis and where-used, run through sap-code-reviewer",
     group: "analyze",
     status: "ready",
     fields: [
@@ -158,7 +158,7 @@ export const SKILLS: Skill[] = [
     title: "Analyze a Symptom",
     icon: "bug",
     summary:
-      "Root-cause analysis for a dump, error or slowdown — inspects dumps, transports and where-used, then narrows hypotheses.",
+      "Root-cause analysis for a dump, error or slowdown — inspects dumps, transports and where-used, then narrows hypotheses",
     group: "analyze",
     status: "ready",
     // The skill's own intake, in the skill's own words: the exact error, then
@@ -223,7 +223,7 @@ export const SKILLS: Skill[] = [
     title: "Inventory a CBO Package",
     icon: "package",
     summary:
-      "Walks a custom package and catalogs the Z objects worth reusing, so later runs prefer existing elements over new ones.",
+      "Walks a custom package and catalogs the Z objects worth reusing, so later runs prefer existing elements over new ones",
     group: "analyze",
     status: "ready",
     fields: [
@@ -238,7 +238,7 @@ export const SKILLS: Skill[] = [
     title: "Compare Programs",
     icon: "git-diff",
     summary:
-      "Side-by-side business comparison of 2–5 programs that share a scenario but diverge by module, country or persona.",
+      "Side-by-side business comparison of 2–5 programs that share a scenario but diverge by module, country or persona",
     group: "analyze",
     status: "ready",
     fields: [
@@ -255,7 +255,7 @@ export const SKILLS: Skill[] = [
     title: "Program → Spec",
     icon: "file-text",
     summary:
-      "Reverse-engineers a program into a functional or technical specification, with selection-screen and ALV mockups.",
+      "Reverse-engineers a program into a functional or technical specification, with selection-screen and ALV mockups",
     group: "analyze",
     status: "ready",
     fields: [
@@ -271,7 +271,7 @@ export const SKILLS: Skill[] = [
     title: "Package → Process",
     icon: "flow-arrow",
     summary:
-      "Turns a CBO package into an end-to-end business process document with flowcharts, sequence diagrams and step tables.",
+      "Turns a CBO package into an end-to-end business process document with flowcharts, sequence diagrams and step tables",
     group: "analyze",
     status: "ready",
     fields: [
@@ -289,7 +289,7 @@ export const SKILLS: Skill[] = [
     title: "Create a Program",
     icon: "file-plus",
     summary:
-      "Full Phase 0–8 pipeline: Report / CRUD / ALV / Batch, Main+Include structure, OOP or procedural, with a QA pass.",
+      "Full Phase 0–8 pipeline: Report / CRUD / ALV / Batch, Main+Include structure, OOP or procedural, with a QA pass",
     group: "build",
     status: "blocked",
     blockedReason: WRITE_BLOCKED,
@@ -308,7 +308,7 @@ export const SKILLS: Skill[] = [
     title: "Create an Object",
     icon: "cube",
     summary:
-      "Single-object creation — confirm transport and package, create, activate.",
+      "Single-object creation — confirm transport and package, create, activate",
     group: "build",
     status: "blocked",
     blockedReason: WRITE_BLOCKED,
@@ -331,7 +331,7 @@ export const SKILLS: Skill[] = [
     title: "SAP Doctor",
     icon: "stethoscope",
     summary:
-      "Diagnoses plugin health, MCP server connectivity and the SAP connection itself.",
+      "Diagnoses plugin health, MCP server connectivity and the SAP connection itself",
     group: "system",
     status: "ready",
     fields: [],

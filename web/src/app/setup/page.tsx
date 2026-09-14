@@ -21,22 +21,29 @@ import type { Metadata } from "next";
 import { requireSignedIn } from "@/lib/auth/session";
 import { SetupWizard } from "@/components/SetupWizard";
 import { Sc4Mark } from "@/components/Sc4Mark";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
+import { readMessages } from "@/lib/i18n/server";
 
-export const metadata: Metadata = { title: "Set up the connection · SC4SAP" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await readMessages();
+  return { title: `${t.setup.tabTitle} · SC4SAP` };
+}
 
 export default async function SetupPage() {
   // `requireSignedIn`, not `requireAccount`: this screen is where an account
   // with no connection is sent, and the stricter guard would send it here.
   const account = await requireSignedIn();
+  const { t } = await readMessages();
 
   return (
     <main className="setup">
+      <LanguageSwitch />
       {/* The screen's h1 lives here rather than on the card, so the four cards
           can swap without the page's one top-level heading swapping with
           them. Each card carries an h2 — the question it is asking. */}
       <div className="setup-brand">
         <Sc4Mark className="setup-logo" />
-        <h1 className="setup-title">Complete setup to start the service</h1>
+        <h1 className="setup-title">{t.setup.title}</h1>
       </div>
 
       {/* The same split the dashboard's greeting makes — `toAccount` builds

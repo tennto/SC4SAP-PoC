@@ -49,6 +49,10 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 import { Icon } from "@/components/Icon";
 import { NoticeModal } from "@/components/NoticeModal";
+import { useLocale } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
+
+type Strings = Messages["reconnect"];
 
 /** What the press found. Every press produces exactly one of these. */
 type Outcome =
@@ -70,7 +74,9 @@ type Outcome =
  * Not on `api`, which is the door to the backend: this is a route of the web
  * app's own, and the one place in the app that can reach the sealed password.
  */
-async function checkSap(): Promise<{ ok: true } | { ok: false; detail: string }> {
+async function checkSap(
+  t: Strings,
+): Promise<{ ok: true } | { ok: false; detail: string }> {
   const response = await fetch("/api/account/connection/check", {
     method: "POST",
   });
@@ -81,7 +87,7 @@ async function checkSap(): Promise<{ ok: true } | { ok: false; detail: string }>
   if (response.ok) return { ok: true };
   return {
     ok: false,
-    detail: body.error ?? `the check answered ${response.status}`,
+    detail: body.error ?? t.checkAnswered(response.status),
   };
 }
 
@@ -101,6 +107,8 @@ export function ReconnectButton({
   wasConnected: boolean;
 }) {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.reconnect;
   const [checking, setChecking] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -113,7 +121,7 @@ export function ReconnectButton({
       // sentence either way.
       const [healthResult, sapResult] = await Promise.allSettled([
         api.health(true),
-        checkSap(),
+        checkSap(t),
       ]);
 
       const problems: string[] = [];
@@ -125,46 +133,40 @@ export function ReconnectButton({
         // status. Nothing else can be reported about the backend's rows when
         // the backend is not there to ask.
         problems.push(
-          `the agent backend did not answer — ${(healthResult.reason as Error).message}`,
+          t.backendDidNotAnswer((healthResult.reason as Error).message),
         );
         // The doctor runs on that backend, so offering it here would offer
         // a run with nowhere to run. Starting the server is the only step.
-        remedy =
-          "The doctor runs on the agent backend, so there is nothing to diagnose until it is started with `npm run server`.";
+        remedy = t.backendRemedy;
       } else {
         const health = healthResult.value;
         if (health.claudeApi.state === "down") {
-          problems.push(`the Claude API key was refused — ${health.claudeApi.detail}`);
+          problems.push(t.keyRefused(health.claudeApi.detail));
           // Pressing this again will keep returning the same answer, however
           // many times it is pressed, and neither this button nor the doctor
           // can change a key the backend reads from its own environment at
           // startup. The way out is named here rather than left to be
           // guessed at.
-          remedy =
-            "Neither this button nor the doctor can replace it: the key is read from the backend's .env when the server starts, and there is no screen in this app that sets one yet. A valid key has to be put there and `npm run server` restarted.";
+          remedy = t.keyRemedy;
         } else if (health.claudeApi.state === "unknown") {
           // Not a refusal — the question went unanswered, and asking again is
           // a reasonable thing to do about that.
-          problems.push(
-            `the Claude API key could not be checked — ${health.claudeApi.detail}`,
-          );
+          problems.push(t.keyUnchecked(health.claudeApi.detail));
         }
       }
 
       if (sapResult.status === "rejected") {
-        problems.push(
-          `the SAP connection could not be checked — ${(sapResult.reason as Error).message}`,
-        );
+        problems.push(t.sapUnchecked((sapResult.reason as Error).message));
       } else if (!sapResult.value.ok) {
-        problems.push(`the SAP system did not accept the connection — ${sapResult.value.detail}`);
+        problems.push(t.sapRefused(sapResult.value.detail));
       }
 
       if (problems.length === 0) {
         setOutcome({ kind: wasConnected ? "connected" : "reconnected" });
       } else if (healthResult.status === "rejected" && sapResult.status === "rejected") {
-        setOutcome({ kind: "unreachable", detail: problems.join(", and ") });
+        setOutcome({ kind: "unreachable", detail: problems.join(t.joiner) });
       } else {
-        setOutcome({ kind: "problems", detail: problems.join(", and "), remedy });
+        setOutcome({ kind: "problems", detail: problems.join(t.joiner), remedy });
       }
     } finally {
       setChecking(false);
@@ -193,7 +195,7 @@ export function ReconnectButton({
     router.push(`/skills/sap-doctor?${query.toString()}`);
   };
 
-  const dialog = outcome ? describe(outcome) : null;
+  const dialog = outcome ? describe(outcome, t) : null;
 
   return (
     <>
@@ -211,20 +213,21 @@ export function ReconnectButton({
                 : "plugs-connected"
           }
         />
-        {checking ? "Checking…" : online ? "Reconnect" : "Connect to server"}
+        {checking ? t.checking : online ? t.reconnect : t.connect}
       </button>
 
       {dialog && outcome ? (
         <NoticeModal
-          kind="Connection"
+          kind={t.kind}
           icon={dialog.icon}
           heading={dialog.heading}
           description={dialog.description}
+          dismissLabel={t.ok}
           onDismiss={() => setOutcome(null)}
           action={
             dialog.diagnose
               ? {
-                  label: "Run SAP Doctor",
+                  label: t.runDoctor,
                   icon: "stethoscope",
                   onClick: () => diagnose(dialog.diagnose as string),
                 }
@@ -244,7 +247,10 @@ export function ReconnectButton({
  * would walk every layer and arrive at the same sentence the dialog already
  * holds.
  */
-function describe(outcome: Outcome): {
+function describe(
+  outcome: Outcome,
+  t: Strings,
+): {
   icon: string;
   heading: string;
   description: string;
@@ -254,37 +260,35 @@ function describe(outcome: Outcome): {
     case "connected":
       return {
         icon: "check-circle",
-        heading: "Everything is connected",
-        description:
-          "Re-checked just now: the agent backend is answering, its Claude API key was accepted, and the SAP system accepted the stored logon. Nothing needed reconnecting. Run diagnostics if you want the detail behind that.",
+        heading: t.connectedHeading,
+        description: t.connectedBody,
         diagnose: null,
       };
     case "reconnected":
       return {
         icon: "check-circle",
-        heading: "Reconnected",
-        description:
-          "Something was failing a moment ago and is answering again: the agent backend responded, its Claude API key was accepted, and the SAP system accepted the stored logon. The connection panel behind this has caught up.",
+        heading: t.reconnectedHeading,
+        description: t.reconnectedBody,
         diagnose: null,
       };
     case "problems":
       return {
         icon: "warning-circle",
-        heading: "Still not connected",
+        heading: t.problemsHeading,
         // The row already carries this, but the row does not change when the
         // answer does not — so the press says it too, and says it as the
         // result of the press rather than as a standing fact.
-        description: `Re-checked just now, and ${outcome.detail}. ${
-          outcome.remedy ??
-          "SAP Doctor can walk the plugin, the MCP server and the SAP connection layer by layer and say what to fix."
-        }`,
+        description: t.problemsBody(
+          outcome.detail,
+          outcome.remedy ?? t.doctorRemedy,
+        ),
         diagnose: outcome.remedy ? null : outcome.detail,
       };
     case "unreachable":
       return {
         icon: "warning-circle",
-        heading: "The check could not be run",
-        description: `Nothing answered, so nothing about the connection can be reported either way: ${outcome.detail}`,
+        heading: t.unreachableHeading,
+        description: t.unreachableBody(outcome.detail),
         // The doctor runs on the backend. With the backend not answering
         // there is nowhere for it to run.
         diagnose: null,

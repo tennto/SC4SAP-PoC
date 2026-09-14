@@ -30,8 +30,12 @@ import { ConnectionSettings } from "@/components/settings/ConnectionSettings";
 import { ScopeSettings } from "@/components/settings/ScopeSettings";
 import { SettingRow } from "@/components/settings/EditModal";
 import { ApprovalSettings } from "@/components/settings/ApprovalSettings";
+import { readMessages } from "@/lib/i18n/server";
 
-export const metadata: Metadata = { title: "Settings · SC4SAP" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await readMessages();
+  return { title: `${t.settings.title} · SC4SAP` };
+}
 
 // The forms below write, so a cached render of this page would show someone
 // their own change not having happened.
@@ -63,21 +67,21 @@ export default async function SettingsPage() {
   // The row itself, not the `Account` built from it: this screen needs the two
   // name parts apart, which `Account` joins, and whether a password exists at
   // all, which `Account` deliberately does not carry.
-  const [doc, connection, model] = await Promise.all([
+  const [doc, connection, model, { t: messages }] = await Promise.all([
     findById(account.id),
     readConnection(account.id),
     loadModel(),
+    readMessages(),
   ]);
+  const t = messages.settings;
 
   return (
     <div className="page settings">
       <header className="page-head rise">
         <div>
-          <p className="eyebrow">Account</p>
-          <h1>Settings</h1>
-          <p className="page-lede">
-            Your details, and the system this account is pointed at.
-          </p>
+          <p className="eyebrow">{t.eyebrow}</p>
+          <h1>{t.title}</h1>
+          <p className="page-lede">{t.lede}</p>
         </div>
       </header>
 
@@ -104,13 +108,13 @@ export default async function SettingsPage() {
             <section className="panel">
               <div className="panel-head">
                 <h2>
-                  <Icon name="database" /> SAP connection
+                  <Icon name="database" /> {t.sapConnection}
                 </h2>
               </div>
               <p className="field-note">
-                This account has no stored connection.{" "}
+                {t.noConnection}{" "}
                 <Link className="link-button" href="/setup">
-                  Run setup
+                  {t.runSetup}
                 </Link>
               </p>
             </section>
@@ -133,11 +137,9 @@ export default async function SettingsPage() {
           <section className="panel">
             <div className="panel-head">
               <h2>
-                <Icon name="sliders" /> Sessions
+                <Icon name="sliders" /> {t.sessions}
               </h2>
-              <p className="panel-note">
-                How your sessions run, and what they ask you first.
-              </p>
+              <p className="panel-note">{t.sessionsNote}</p>
             </div>
 
             {/* No pencil, and the hint says why. The SDK takes a model per
@@ -148,9 +150,9 @@ export default async function SettingsPage() {
             <div className="setting-rows">
               <ApprovalSettings approval={account.approval} />
               <SettingRow
-                label="Default model"
-                value={model ?? "Backend not answering"}
-                hint="What chat opens with. A skill that dispatches a reviewer asks which model to use before it runs."
+                label={t.defaultModel}
+                value={model ?? t.backendNotAnswering}
+                hint={t.defaultModelHint}
               />
             </div>
           </section>

@@ -31,7 +31,9 @@ import { GoogleMark } from "@/components/GoogleMark";
 import { Icon } from "@/components/Icon";
 import { Sc4Mark } from "@/components/Sc4Mark";
 import { EditButton, EditModal, SettingRow } from "@/components/settings/EditModal";
-import { isPasswordValid, PASSWORD_MISMATCH, PASSWORD_RULE } from "@/lib/password";
+import { isPasswordValid } from "@/lib/password";
+import { useLocale } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 
 /** What an `/api/account/*` route answers with when it refuses. */
 type Refusal = { error?: string; field?: string };
@@ -40,6 +42,7 @@ async function send(
   url: string,
   method: "POST" | "PATCH",
   body: Record<string, unknown>,
+  serverAnswered: (status: number) => string,
 ): Promise<Refusal | null> {
   const response = await fetch(url, {
     method,
@@ -51,7 +54,7 @@ async function send(
   // certain, so it carries the message when the body cannot.
   return (
     ((await response.json().catch(() => null)) as Refusal | null) ?? {
-      error: `The server answered ${response.status}.`,
+      error: serverAnswered(response.status),
     }
   );
 }
@@ -73,6 +76,8 @@ export function AccountSettings({
   isGoogle: boolean;
 }) {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.settings;
   const [editing, setEditing] = useState<"name" | "password" | null>(null);
   // Held here rather than in the row, so the confirmation survives the dialog
   // that produced it closing.
@@ -89,39 +94,37 @@ export function AccountSettings({
           <Icon name="user" />
         </span>
         <div className="identity-main">
-          <p className="identity-name">{name || "Unnamed account"}</p>
+          <p className="identity-name">{name || t.unnamed}</p>
           <p className="identity-email">{email}</p>
         </div>
       </div>
 
       <div className="setting-rows">
         <SettingRow
-          label="Name"
-          value={name || "Not set"}
-          hint={
-            done === "name" ? "Saved." : `Member since ${memberSince}.`
-          }
+          label={t.name}
+          value={name || t.notSet}
+          hint={done === "name" ? t.saved : t.memberSince(memberSince)}
           action={
-            <EditButton label="Edit name" onClick={() => setEditing("name")} />
+            <EditButton label={t.editName} onClick={() => setEditing("name")} />
           }
         />
 
         <SettingRow
-          label="Password"
+          label={t.password}
           // Never the length of the real one: a mask that matched it would be
           // telling anyone reading over a shoulder how long it is.
-          value={hasPassword ? "••••••••••" : "Not set"}
+          value={hasPassword ? "••••••••••" : t.notSet}
           hint={
             done === "password"
-              ? "Changed. Other sessions signed out."
+              ? t.passwordChanged
               : hasPassword
-                ? "Changing it signs every other session out."
-                : "This account signs in through Google and has no password."
+                ? t.passwordHint
+                : t.noPassword
           }
           action={
             hasPassword ? (
               <EditButton
-                label="Change password"
+                label={t.changePassword}
                 onClick={() => setEditing("password")}
               />
             ) : undefined
@@ -129,9 +132,9 @@ export function AccountSettings({
         />
 
         <SettingRow
-          label="Email"
+          label={t.email}
           value={email}
-          hint="The address you sign in with. Changing it is not a settings change — the new one has to be verified first."
+          hint={t.emailHint}
           // Whose account this is, in the one slot the row has for it. Centred
           // against the value rather than the label, which is where the pencil
           // on the rows above sits.
@@ -145,6 +148,7 @@ export function AccountSettings({
 
       {editing === "name" && (
         <NameDialog
+          t={t}
           lastName={storedLast}
           firstName={storedFirst}
           onDone={() => {
@@ -160,6 +164,9 @@ export function AccountSettings({
 
       {editing === "password" && (
         <PasswordDialog
+          t={t}
+          passwordRule={messages.auth.passwordRule}
+          passwordMismatch={messages.auth.passwordMismatch}
           onDone={() => {
             setEditing(null);
             setDone("password");
@@ -173,11 +180,13 @@ export function AccountSettings({
 }
 
 function NameDialog({
+  t,
   lastName: storedLast,
   firstName: storedFirst,
   onDone,
   onCancel,
 }: {
+  t: Messages["settings"];
   lastName: string;
   firstName: string;
   onDone: () => void;
@@ -195,10 +204,12 @@ function NameDialog({
   async function save(): Promise<void> {
     setBusy(true);
     setError(null);
-    const refusal = await send("/api/account/profile", "PATCH", {
-      lastName: lastName.trim(),
-      firstName: firstName.trim(),
-    });
+    const refusal = await send(
+      "/api/account/profile",
+      "PATCH",
+      { lastName: lastName.trim(), firstName: firstName.trim() },
+      t.serverAnswered,
+    );
     setBusy(false);
     if (refusal) {
       setError(refusal);
@@ -209,10 +220,10 @@ function NameDialog({
 
   return (
     <EditModal
-      kind="Profile"
-      heading="Edit your name"
-      description="Family name first, the order sign-up asks for it in."
-      submitLabel="Save name"
+      kind={t.profileKind}
+      heading={t.editYourName}
+      description={t.nameOrder}
+      submitLabel={t.saveName}
       busy={busy}
       disabled={!changed || !complete}
       error={error?.error ?? null}
@@ -220,7 +231,7 @@ function NameDialog({
       onCancel={onCancel}
     >
       <label className="field">
-        <span className="field-label">Last name</span>
+        <span className="field-label">{t.lastName}</span>
         <input
           type="text"
           value={lastName}
@@ -232,7 +243,7 @@ function NameDialog({
       </label>
 
       <label className="field">
-        <span className="field-label">First name</span>
+        <span className="field-label">{t.firstName}</span>
         <input
           type="text"
           value={firstName}
@@ -252,9 +263,15 @@ function NameDialog({
  * rendered.
  */
 function PasswordDialog({
+  t,
+  passwordRule,
+  passwordMismatch,
   onDone,
   onCancel,
 }: {
+  t: Messages["settings"];
+  passwordRule: string;
+  passwordMismatch: string;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -271,20 +288,22 @@ function PasswordDialog({
 
   async function save(): Promise<void> {
     if (mismatch) {
-      setError({ error: PASSWORD_MISMATCH, field: "confirm" });
+      setError({ error: passwordMismatch, field: "confirm" });
       return;
     }
     if (!isPasswordValid(next)) {
-      setError({ error: PASSWORD_RULE, field: "next" });
+      setError({ error: passwordRule, field: "next" });
       return;
     }
 
     setBusy(true);
     setError(null);
-    const refusal = await send("/api/account/password", "POST", {
-      current,
-      next,
-    });
+    const refusal = await send(
+      "/api/account/password",
+      "POST",
+      { current, next },
+      t.serverAnswered,
+    );
     setBusy(false);
     if (refusal) {
       setError(refusal);
@@ -295,10 +314,10 @@ function PasswordDialog({
 
   return (
     <EditModal
-      kind="Security"
-      heading="Change your password"
-      description="Every other session is signed out when this succeeds. This one stays."
-      submitLabel="Change password"
+      kind={t.securityKind}
+      heading={t.changeYourPassword}
+      description={t.changePasswordBody}
+      submitLabel={t.changePassword}
       busy={busy}
       disabled={!complete || mismatch}
       error={error?.error ?? null}
@@ -306,7 +325,7 @@ function PasswordDialog({
       onCancel={onCancel}
     >
       <label className="field field-wide">
-        <span className="field-label">Current password</span>
+        <span className="field-label">{t.currentPassword}</span>
         <input
           type="password"
           value={current}
@@ -315,14 +334,11 @@ function PasswordDialog({
           autoComplete="current-password"
           disabled={busy}
         />
-        <span className="field-hint">
-          A signed-in tab says this browser was signed in at some point, which
-          an unattended laptop also says. This is what says it is you.
-        </span>
+        <span className="field-hint">{t.currentPasswordHint}</span>
       </label>
 
       <label className="field">
-        <span className="field-label">New password</span>
+        <span className="field-label">{t.newPassword}</span>
         <input
           type="password"
           value={next}
@@ -331,11 +347,11 @@ function PasswordDialog({
           autoComplete="new-password"
           disabled={busy}
         />
-        <span className="field-hint">{PASSWORD_RULE}</span>
+        <span className="field-hint">{passwordRule}</span>
       </label>
 
       <label className="field">
-        <span className="field-label">Confirm</span>
+        <span className="field-label">{t.confirm}</span>
         <input
           type="password"
           value={confirm}
@@ -346,7 +362,7 @@ function PasswordDialog({
           autoComplete="new-password"
           disabled={busy}
         />
-        {mismatch && <span className="field-error">{PASSWORD_MISMATCH}</span>}
+        {mismatch && <span className="field-error">{passwordMismatch}</span>}
       </label>
     </EditModal>
   );

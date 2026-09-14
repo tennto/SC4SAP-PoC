@@ -27,30 +27,36 @@ import { Icon } from "@/components/Icon";
 import { FeedbackModal } from "@/components/FeedbackModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { applyTheme, readTheme, type Theme } from "@/lib/theme";
+import { useLocale } from "@/lib/i18n/client";
+import { LOCALES } from "@/lib/i18n/locale";
+import type { Messages } from "@/lib/i18n/messages";
 
 /**
  * `system` first, because it is the default and the one most people should
  * stay on — the app following the machine is not a compromise between the
  * other two, it is the answer for anyone whose machine already knows.
+ *
+ * `label` names the dictionary key rather than the word, so the row reads in
+ * whatever language the menu is in.
  */
-const APPEARANCES: { value: Theme; label: string; icon: string }[] = [
-  { value: "system", label: "System", icon: "circle-half" },
-  { value: "light", label: "Light", icon: "sun" },
-  { value: "dark", label: "Dark", icon: "moon" },
+const APPEARANCES: {
+  value: Theme;
+  label: keyof Messages["account"];
+  icon: string;
+}[] = [
+  { value: "system", label: "system", icon: "circle-half" },
+  { value: "light", label: "light", icon: "sun" },
+  { value: "dark", label: "dark", icon: "moon" },
 ];
 
-const LANGUAGES = [
-  { code: "KR", label: "한국어" },
-  { code: "EN", label: "English" },
-  { code: "JP", label: "日本語" },
-] as const;
-
-type Language = (typeof LANGUAGES)[number]["code"];
-
-const LEGAL_PAGES = [
-  { href: "/terms", label: "Terms of use", icon: "scroll" },
-  { href: "/privacy", label: "Privacy policy", icon: "shield-check" },
-] as const;
+const LEGAL_PAGES: {
+  href: string;
+  label: keyof Messages["account"];
+  icon: string;
+}[] = [
+  { href: "/terms", label: "termsOfUse", icon: "scroll" },
+  { href: "/privacy", label: "privacyPolicy", icon: "shield-check" },
+];
 
 export function AccountMenu({
   collapsed,
@@ -73,7 +79,14 @@ export function AccountMenu({
   >(null);
   const [feedback, setFeedback] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
-  const [language, setLanguage] = useState<Language>("EN");
+  /**
+   * The language is not this component's state. It lives in a cookie the
+   * server reads, and the provider in the root layout is what owns it —
+   * this menu only shows the current choice and hands over a new one.
+   */
+  const { locale, t: messages, setLocale } = useLocale();
+  const t = messages.account;
+  const current = LOCALES.find((option) => option.code === locale);
   /**
    * Mirrors what is already on the document — the boot script in `app/layout`
    * put it there before React existed. Read after mount rather than during
@@ -161,8 +174,8 @@ export function AccountMenu({
           <Icon name="user" />
         </span>
         <span className="account-main">
-          <span className="account-name">{account?.name ?? "Signed out"}</span>
-          <span className="account-sub">{account?.email ?? "No session"}</span>
+          <span className="account-name">{account?.name ?? t.signedOut}</span>
+          <span className="account-sub">{account?.email ?? t.noSession}</span>
         </span>
         <Icon name="caret-right" />
       </button>
@@ -171,7 +184,7 @@ export function AccountMenu({
         <div className="account-menu" role="menu">
           <Link className="account-item" href="/settings" role="menuitem">
             <Icon name="gear" />
-            Settings
+            {t.settings}
           </Link>
 
           <button
@@ -183,7 +196,7 @@ export function AccountMenu({
             }}
           >
             <Icon name="chat-dots" />
-            Feedback
+            {t.feedback}
           </button>
 
           <div className="account-nest">
@@ -199,29 +212,32 @@ export function AccountMenu({
               }
             >
               <Icon name="translate" />
-              Language
-              <span className="account-value">{language}</span>
+              {t.language}
+              <span className="account-value">{current?.badge}</span>
               <Icon name="caret-right" />
             </button>
 
             {nested === "language" && (
               <div className="account-submenu" role="menu">
-                {LANGUAGES.map((option) => (
+                {LOCALES.map((option) => (
                   <button
                     key={option.code}
                     className="account-item"
                     role="menuitemradio"
-                    aria-checked={language === option.code}
+                    aria-checked={locale === option.code}
+                    // Each name in its own language, whatever the menu is in:
+                    // the row is for the reader who cannot read the rest.
+                    lang={option.code}
                     onClick={() => {
-                      setLanguage(option.code);
+                      setLocale(option.code);
                       setNested(null);
                     }}
                   >
                     <span className="account-check">
-                      {language === option.code && <Icon name="check" />}
+                      {locale === option.code && <Icon name="check" />}
                     </span>
                     {option.label}
-                    <span className="account-value">{option.code}</span>
+                    <span className="account-value">{option.badge}</span>
                   </button>
                 ))}
               </div>
@@ -242,7 +258,7 @@ export function AccountMenu({
               }
             >
               <Icon name="scales" />
-              Legal
+              {t.legal}
               <Icon name="caret-right" />
             </button>
 
@@ -256,7 +272,7 @@ export function AccountMenu({
                     role="menuitem"
                   >
                     <Icon name={page.icon} />
-                    {page.label}
+                    {t[page.label]}
                   </Link>
                 ))}
               </div>
@@ -276,9 +292,9 @@ export function AccountMenu({
               }
             >
               <Icon name="circle-half" />
-              Appearance
+              {t.appearance}
               <span className="account-value">
-                {APPEARANCES.find((option) => option.value === theme)?.label}
+                {t[APPEARANCES.find((option) => option.value === theme)!.label]}
               </span>
               <Icon name="caret-right" />
             </button>
@@ -307,7 +323,7 @@ export function AccountMenu({
                       {theme === option.value && <Icon name="check" />}
                     </span>
                     <Icon name={option.icon} />
-                    {option.label}
+                    {t[option.label]}
                   </button>
                 ))}
               </div>
@@ -327,7 +343,7 @@ export function AccountMenu({
             }}
           >
             <Icon name="sign-out" />
-            Log out
+            {t.logOut}
           </button>
         </div>
       )}
@@ -336,10 +352,11 @@ export function AccountMenu({
 
       {confirmLogout && (
         <ConfirmModal
-          kind="Log out"
-          heading="Log out of SC4SAP?"
-          description="Running sessions keep going on the backend, and their transcripts are waiting when you sign back in."
-          confirmLabel="Log out"
+          kind={t.logOut}
+          heading={t.logOutHeading}
+          description={t.logOutBody}
+          confirmLabel={t.logOut}
+          cancelLabel={t.cancel}
           confirmIcon="sign-out"
           onConfirm={logOut}
           onCancel={() => setConfirmLogout(false)}

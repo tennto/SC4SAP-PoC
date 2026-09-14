@@ -18,17 +18,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import {
-  PASSWORD_MISMATCH,
-  PASSWORD_RULE,
-  isPasswordValid,
-} from "@/lib/password";
+import { isPasswordValid } from "@/lib/password";
+import { useLocale } from "@/lib/i18n/client";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 /** Matches the server's own cooldown, so the button unlocks when the API does. */
 const RESEND_COOLDOWN_SECONDS = 60;
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.auth;
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -74,14 +74,14 @@ export default function ForgotPasswordPage() {
         const body = (await response.json().catch(() => null)) as
           | { error?: string }
           | null;
-        setError(body?.error ?? `Request failed (${response.status}).`);
+        setError(body?.error ?? t.requestFailed(response.status));
         return;
       }
 
       setStep("code");
       setCooldown(RESEND_COOLDOWN_SECONDS);
     } catch (err) {
-      setError(`Could not reach the server: ${(err as Error).message}`);
+      setError(t.couldNotReach((err as Error).message));
     } finally {
       setBusy(false);
     }
@@ -102,7 +102,7 @@ export default function ForgotPasswordPage() {
         const body = (await response.json().catch(() => null)) as
           | { error?: string }
           | null;
-        setError(body?.error ?? `Reset failed (${response.status}).`);
+        setError(body?.error ?? t.resetFailed(response.status));
         return;
       }
 
@@ -111,7 +111,7 @@ export default function ForgotPasswordPage() {
       router.replace("/signin?reset=1");
       router.refresh();
     } catch (err) {
-      setError(`Could not reach the server: ${(err as Error).message}`);
+      setError(t.couldNotReach((err as Error).message));
     } finally {
       setBusy(false);
     }
@@ -119,6 +119,7 @@ export default function ForgotPasswordPage() {
 
   return (
     <main className="auth">
+      <LanguageSwitch />
       <div className="auth-card rise">
         <Link className="auth-brand" href="/">
           <span className="rail-wordmark">
@@ -127,11 +128,9 @@ export default function ForgotPasswordPage() {
         </Link>
 
         <header className="auth-head">
-          <h1>Reset password</h1>
+          <h1>{t.resetTitle}</h1>
           <p className="auth-lede">
-            {step === "email"
-              ? "We will send a six-digit code to the address on the account."
-              : `Enter the code sent to ${email.trim()}, then choose a new password.`}
+            {step === "email" ? t.resetLedeEmail : t.resetLedeCode(email.trim())}
           </p>
         </header>
 
@@ -144,7 +143,7 @@ export default function ForgotPasswordPage() {
             }}
           >
             <label className="field">
-              <span className="field-label">Email</span>
+              <span className="field-label">{t.email}</span>
               <input
                 type="email"
                 name="email"
@@ -163,7 +162,7 @@ export default function ForgotPasswordPage() {
               disabled={!emailOk || busy}
             >
               <Icon name={busy ? "circle-notch" : "paper-plane-tilt"} />
-              {busy ? "Sending…" : "Send code"}
+              {busy ? t.sending : t.sendCode}
             </button>
 
             {error ? (
@@ -184,12 +183,11 @@ export default function ForgotPasswordPage() {
                 whether or not that address has an account — the endpoint does
                 not say, and neither can this. */}
             <p className="auth-status" role="status">
-              <Icon name="envelope-simple" /> If that address has an account, a
-              code is on its way. It expires in 10 minutes.
+              <Icon name="envelope-simple" /> {t.codeSent}
             </p>
 
             <label className="field">
-              <span className="field-label">Six-digit code</span>
+              <span className="field-label">{t.sixDigitCode}</span>
               <input
                 className="code-input"
                 type="text"
@@ -214,13 +212,13 @@ export default function ForgotPasswordPage() {
             </label>
 
             <label className="field">
-              <span className="field-label">New password</span>
+              <span className="field-label">{t.newPassword}</span>
               <input
                 className={showPasswordError ? "is-invalid" : undefined}
                 type="password"
                 name="password"
                 autoComplete="new-password"
-                placeholder="At least 10 characters"
+                placeholder={t.passwordPlaceholder}
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 onBlur={() => setPasswordTouched(true)}
@@ -230,23 +228,21 @@ export default function ForgotPasswordPage() {
               />
               {showPasswordError ? (
                 <span className="field-error" role="alert">
-                  {PASSWORD_RULE}
+                  {t.passwordRule}
                 </span>
               ) : (
-                <span className="field-hint">
-                  Letters, digits and one symbol. At least 10 characters.
-                </span>
+                <span className="field-hint">{t.passwordHint}</span>
               )}
             </label>
 
             <label className="field">
-              <span className="field-label">Confirm new password</span>
+              <span className="field-label">{t.confirmNewPassword}</span>
               <input
                 className={showConfirmError ? "is-invalid" : undefined}
                 type="password"
                 name="confirmPassword"
                 autoComplete="new-password"
-                placeholder="Repeat the password"
+                placeholder={t.confirmPlaceholder}
                 value={confirm}
                 onChange={(event) => setConfirm(event.target.value)}
                 onBlur={() => setConfirmTouched(true)}
@@ -256,7 +252,7 @@ export default function ForgotPasswordPage() {
               />
               {showConfirmError ? (
                 <span className="field-error" role="alert">
-                  {PASSWORD_MISMATCH}
+                  {t.passwordMismatch}
                 </span>
               ) : null}
             </label>
@@ -268,9 +264,7 @@ export default function ForgotPasswordPage() {
                 onClick={() => void requestCode()}
                 disabled={busy || cooldown > 0}
               >
-                {cooldown > 0
-                  ? `Resend code in ${cooldown}s`
-                  : "Resend code"}
+                {cooldown > 0 ? t.resendIn(cooldown) : t.resend}
               </button>
             </div>
 
@@ -280,7 +274,7 @@ export default function ForgotPasswordPage() {
               disabled={!codeOk || !passwordOk || !confirmOk || busy}
             >
               <Icon name={busy ? "circle-notch" : "key"} />
-              {busy ? "Resetting…" : "Reset password"}
+              {busy ? t.resetting : t.resetPassword}
             </button>
 
             {error ? (
@@ -296,9 +290,9 @@ export default function ForgotPasswordPage() {
         className="auth-foot rise"
         style={{ "--delay": "160ms" } as React.CSSProperties}
       >
-        <Link href="/signin">Back to sign in</Link>
+        <Link href="/signin">{t.backToSignIn}</Link>
         <span aria-hidden="true">·</span>
-        <Link href="/signup">Sign up</Link>
+        <Link href="/signup">{t.signUp}</Link>
       </p>
     </main>
   );

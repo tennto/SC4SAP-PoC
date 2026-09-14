@@ -20,17 +20,21 @@
  */
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n/client";
 
-/** Worst to best, which is also the order they are rendered in. */
+/** Worst to best, which is also the order they are rendered in. The words
+    are `feedback.ratings` in the dictionary, in the same order. */
 const RATINGS = [
-  { value: 1, icon: "smiley-angry", label: "Very poor" },
-  { value: 2, icon: "smiley-sad", label: "Poor" },
-  { value: 3, icon: "smiley-meh", label: "Okay" },
-  { value: 4, icon: "smiley", label: "Good" },
-  { value: 5, icon: "smiley-wink", label: "Very good" },
+  { value: 1, icon: "smiley-angry" },
+  { value: 2, icon: "smiley-sad" },
+  { value: 3, icon: "smiley-meh" },
+  { value: 4, icon: "smiley" },
+  { value: 5, icon: "smiley-wink" },
 ] as const;
 
 export function FeedbackModal({ onClose }: { onClose: () => void }) {
+  const { t: messages } = useLocale();
+  const t = messages.feedback;
   const [rating, setRating] = useState<number | null>(null);
   const [text, setText] = useState("");
 
@@ -51,22 +55,22 @@ export function FeedbackModal({ onClose }: { onClose: () => void }) {
         aria-labelledby="feedback-heading"
       >
         <div className="modal-head">
-          <span className="modal-kind">Feedback</span>
+          <span className="modal-kind">{t.kind}</span>
         </div>
 
         <h2 id="feedback-heading" className="feedback-question">
-          How has this been to use?
+          {t.question}
         </h2>
 
-        <div className="rating" role="radiogroup" aria-label="Overall experience">
+        <div className="rating" role="radiogroup" aria-label={t.overall}>
           {RATINGS.map((option) => (
             <button
               key={option.value}
               type="button"
               role="radio"
               aria-checked={rating === option.value}
-              aria-label={option.label}
-              title={option.label}
+              aria-label={t.ratings[option.value - 1]}
+              title={t.ratings[option.value - 1]}
               className={`rating-face${rating === option.value ? " picked" : ""}`}
               onClick={() => setRating(option.value)}
             >
@@ -76,22 +80,22 @@ export function FeedbackModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <label className="field">
-          <span className="field-label">Anything else</span>
+          <span className="field-label">{t.anythingElse}</span>
           <textarea
             rows={5}
             value={text}
-            placeholder="What worked, what did not, what you expected instead."
+            placeholder={t.placeholder}
             onChange={(event) => setText(event.target.value)}
           />
         </label>
 
         <div className="modal-actions">
-          <p className="modal-note">Not wired up yet.</p>
+          <p className="modal-note">{t.notWired}</p>
           <button className="ghost" onClick={onClose}>
-            Cancel
+            {t.cancel}
           </button>
           <button className="primary" disabled={rating === null && !text.trim()}>
-            Send
+            {t.send}
           </button>
         </div>
       </div>

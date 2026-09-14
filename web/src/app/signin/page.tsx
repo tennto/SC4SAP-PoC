@@ -19,11 +19,14 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { GoogleMark } from "@/components/GoogleMark";
 import { LoopingVideo } from "@/components/LoopingVideo";
-import { PASSWORD_RULE, isPasswordValid } from "@/lib/password";
-import { googleErrorMessage } from "@/lib/auth/google-errors";
+import { isPasswordValid } from "@/lib/password";
+import { useLocale } from "@/lib/i18n/client";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
 
 export default function SignInPage() {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.auth;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordTouched, setPasswordTouched] = useState(false);
@@ -31,6 +34,8 @@ export default function SignInPage() {
   const [error, setError] = useState<string | null>(null);
   /** Arrived here from a completed password reset. */
   const [afterReset, setAfterReset] = useState(false);
+  /** The `?error=` code, kept as a code so the sentence follows the language. */
+  const [googleCode, setGoogleCode] = useState<string | null>(null);
 
   // Read after mount rather than through `useSearchParams`, which would need a
   // Suspense boundary around the form to prerender. Neither notice is
@@ -40,9 +45,12 @@ export default function SignInPage() {
     setAfterReset(params.get("reset") === "1");
     // Google sign-in can only report back through the URL — see
     // `api/auth/google/callback`.
-    const failure = googleErrorMessage(params.get("error"));
-    if (failure) setError(failure);
+    setGoogleCode(params.get("error"));
   }, []);
+
+  const googleFailure = googleCode
+    ? (t.google[googleCode] ?? t.googleFallback)
+    : null;
 
   // Sign-in holds the entered password to the same rule sign-up sets, so a
   // password that could never have been registered is caught here rather than
@@ -70,7 +78,7 @@ export default function SignInPage() {
         const body = (await response.json().catch(() => null)) as
           | { error?: string }
           | null;
-        setError(body?.error ?? `Sign-in failed (${response.status}).`);
+        setError(body?.error ?? t.signInFailed(response.status));
         return;
       }
 
@@ -83,7 +91,7 @@ export default function SignInPage() {
       router.replace(next?.startsWith("/") ? next : "/");
       router.refresh();
     } catch (err) {
-      setError(`Could not reach the server: ${(err as Error).message}`);
+      setError(t.couldNotReach((err as Error).message));
     } finally {
       setBusy(false);
     }
@@ -91,6 +99,7 @@ export default function SignInPage() {
 
   return (
     <main className="auth auth-split">
+      <LanguageSwitch />
       {/* Decoration, not content: muted, looping, and hidden from the
           accessibility tree, so nothing here is announced or focusable. */}
       <div className="auth-media" aria-hidden="true">
@@ -106,15 +115,13 @@ export default function SignInPage() {
           </Link>
 
           <header className="auth-head">
-            <h1>Sign in</h1>
-            <p className="auth-lede">
-              Use the account your SAP connection profile is registered to.
-            </p>
+            <h1>{t.signInTitle}</h1>
+            <p className="auth-lede">{t.signInLede}</p>
           </header>
 
           <form className="auth-form" onSubmit={submit}>
             <label className="field">
-              <span className="field-label">Email</span>
+              <span className="field-label">{t.email}</span>
               <input
                 type="email"
                 name="email"
@@ -133,7 +140,7 @@ export default function SignInPage() {
             </label>
 
             <label className="field">
-              <span className="field-label">Password</span>
+              <span className="field-label">{t.password}</span>
               <input
                 className={showPasswordError ? "is-invalid" : undefined}
                 type="password"
@@ -149,14 +156,14 @@ export default function SignInPage() {
               />
               {showPasswordError ? (
                 <span className="field-error" role="alert">
-                  {PASSWORD_RULE}
+                  {t.passwordRule}
                 </span>
               ) : null}
             </label>
 
             <div className="auth-row">
               <Link className="link-button" href="/forgot">
-                Forgot password
+                {t.forgotPassword}
               </Link>
             </div>
 
@@ -166,22 +173,21 @@ export default function SignInPage() {
               disabled={!complete || busy}
             >
               <Icon name={busy ? "circle-notch" : "sign-in"} />
-              {busy ? "Signing in…" : "Sign in"}
+              {busy ? t.signingIn : t.signIn}
             </button>
 
-            {error ? (
+            {error || googleFailure ? (
               <p className="auth-status is-error" role="alert">
-                <Icon name="warning-circle" /> {error}
+                <Icon name="warning-circle" /> {error ?? googleFailure}
               </p>
             ) : afterReset ? (
               <p className="auth-status" role="status">
-                <Icon name="check-circle" /> Password changed. Everything that was
-                signed in has been signed out — including this browser.
+                <Icon name="check-circle" /> {t.afterReset}
               </p>
             ) : null}
 
             <div className="auth-sep">
-              <span>or</span>
+              <span>{t.or}</span>
             </div>
 
             {/* A link, not a button: `/api/auth/google` answers with a redirect
@@ -189,15 +195,15 @@ export default function SignInPage() {
                 also means the flow survives with JavaScript still loading. */}
             <a className="ghost auth-submit" href="/api/auth/google">
               <GoogleMark />
-              Continue with Google
+              {t.continueWithGoogle}
             </a>
           </form>
         </div>
 
         <p className="auth-foot rise" style={{ "--delay": "160ms" } as React.CSSProperties}>
-          <Link href="/signup">Sign up</Link>
+          <Link href="/signup">{t.signUp}</Link>
           <span aria-hidden="true">·</span>
-          <Link href="/terms">Terms</Link>
+          <Link href="/terms">{t.terms}</Link>
         </p>
       </div>
     </main>

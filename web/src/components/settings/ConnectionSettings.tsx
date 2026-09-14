@@ -27,10 +27,8 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { Icon } from "@/components/Icon";
 import { Select } from "@/components/Select";
 import { EditButton, EditModal, SettingRow } from "@/components/settings/EditModal";
+import { useLocale } from "@/lib/i18n/client";
 import {
-  ABAP_RELEASE_RULE,
-  ADT_URL_RULE,
-  CLIENT_RULE,
   isAbapReleaseValid,
   isAdtUrlValid,
   isClientValid,
@@ -90,6 +88,8 @@ export function ConnectionSettings({
   connection: ConnectionSummary;
 }) {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.settings;
   const [stored, setStored] = useState(connection);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Form>(() => formOf(connection));
@@ -150,7 +150,7 @@ export function ConnectionSettings({
 
     const body = ((await response.json().catch(() => null)) as
       | (Refusal & { detail?: string })
-      | null) ?? { error: `The server answered ${response.status}.` };
+      | null) ?? { error: t.serverAnswered(response.status) };
 
     setBusy(false);
     // The confirmation closes either way; a failure belongs back on the form,
@@ -176,7 +176,7 @@ export function ConnectionSettings({
     };
     setStored(next);
     setEditing(false);
-    setDetail(body.detail ?? "Connected.");
+    setDetail(body.detail ?? t.connected);
     // The dashboard draws the same connection from the server.
     router.refresh();
   }
@@ -185,43 +185,43 @@ export function ConnectionSettings({
     <section className="panel">
       <div className="panel-head panel-head-row">
         <h2>
-          <Icon name="database" /> SAP connection
+          <Icon name="database" /> {t.sapConnection}
         </h2>
-        <EditButton label="Edit SAP connection" onClick={open} />
+        <EditButton label={t.editSapConnection} onClick={open} />
       </div>
 
       <div className="setting-rows">
         <SettingRow
-          label="ADT URL"
+          label={t.adtUrl}
           value={<code>{stored.adtUrl}</code>}
           hint={detail ?? undefined}
         />
-        <SettingRow label="SAP user" value={stored.sapUser} />
-        <SettingRow label="Client" value={stored.client} />
+        <SettingRow label={t.sapUser} value={stored.sapUser} />
+        <SettingRow label={t.client} value={stored.client} />
         <SettingRow
-          label="Release"
+          label={t.release}
           value={`${RELEASE_LABEL[stored.sapVersion]} · ABAP ${stored.abapRelease}`}
         />
         <SettingRow
-          label="Logon language"
+          label={t.logonLanguage}
           value={stored.language}
           // Named so it is not mistaken for the one in the account menu: this
           // is what the SAP system answers in, not what this app is drawn in.
-          hint="What the SAP system logs on with. The app's own language is in the account menu."
+          hint={t.logonLanguageHint}
         />
         <SettingRow
-          label="Last verified"
+          label={t.lastVerified}
           value={stamp(stored.connectedAt)}
-          hint="When a logon last actually succeeded — not when the row was written."
+          hint={t.lastVerifiedHint}
         />
       </div>
 
       {editing && (
         <EditModal
-          kind="Connection"
-          heading="Edit SAP connection"
-          description="Saving tries the logon against the system first. Nothing is stored unless it answers."
-          submitLabel="Save connection"
+          kind={t.connectionKind}
+          heading={t.editSapConnection}
+          description={t.connectionBody}
+          submitLabel={t.saveConnection}
           busy={busy}
           disabled={!changed || !valid}
           error={error?.error ?? null}
@@ -229,7 +229,7 @@ export function ConnectionSettings({
           onCancel={() => setEditing(false)}
         >
           <label className="field field-wide">
-            <span className="field-label">ADT URL</span>
+            <span className="field-label">{t.adtUrl}</span>
             <input
               type="text"
               value={form.adtUrl}
@@ -238,11 +238,11 @@ export function ConnectionSettings({
               spellCheck={false}
               disabled={busy}
             />
-            <span className="field-hint">{ADT_URL_RULE}</span>
+            <span className="field-hint">{messages.setup.adtUrlRule}</span>
           </label>
 
           <label className="field">
-            <span className="field-label">SAP user</span>
+            <span className="field-label">{t.sapUser}</span>
             <input
               type="text"
               value={form.sapUser}
@@ -254,7 +254,7 @@ export function ConnectionSettings({
           </label>
 
           <label className="field">
-            <span className="field-label">Password</span>
+            <span className="field-label">{t.sapPassword}</span>
             <input
               type="password"
               value={form.sapPassword}
@@ -262,18 +262,16 @@ export function ConnectionSettings({
               className={
                 error?.field === "sapPassword" ? "is-invalid" : undefined
               }
-              placeholder="Unchanged"
+              placeholder={t.unchanged}
               autoComplete="off"
               disabled={busy}
             />
-            <span className="field-hint">
-              Leave blank to keep the stored password.
-            </span>
+            <span className="field-hint">{t.keepStored}</span>
           </label>
 
           <div className="field">
             <span className="field-label" id="settings-release-label">
-              Release
+              {t.release}
             </span>
             <Select
               name="sapVersion"
@@ -289,7 +287,7 @@ export function ConnectionSettings({
           </div>
 
           <label className="field">
-            <span className="field-label">ABAP release</span>
+            <span className="field-label">{t.abapRelease}</span>
             <input
               type="text"
               value={form.abapRelease}
@@ -300,11 +298,11 @@ export function ConnectionSettings({
               inputMode="numeric"
               disabled={busy}
             />
-            <span className="field-hint">{ABAP_RELEASE_RULE}</span>
+            <span className="field-hint">{messages.setup.abapReleaseRule}</span>
           </label>
 
           <label className="field">
-            <span className="field-label">Client</span>
+            <span className="field-label">{t.client}</span>
             <input
               type="text"
               value={form.client}
@@ -313,12 +311,12 @@ export function ConnectionSettings({
               inputMode="numeric"
               disabled={busy}
             />
-            <span className="field-hint">{CLIENT_RULE}</span>
+            <span className="field-hint">{messages.setup.clientRule}</span>
           </label>
 
           <div className="field">
             <span className="field-label" id="settings-language-label">
-              Logon language
+              {t.logonLanguage}
             </span>
             <Select
               name="language"
@@ -337,16 +335,12 @@ export function ConnectionSettings({
 
       {asking && (
         <ConfirmModal
-          kind="Connection"
-          heading="Change this connection?"
-          description={
-            form.sapPassword
-              ? "The new logon is tried against the system first. Nothing is stored unless it answers."
-              : "The new details are tried against the system with the stored password first. Nothing is stored unless it answers."
-          }
-          confirmLabel="Check and save"
+          kind={t.connectionKind}
+          heading={t.changeConnection}
+          description={form.sapPassword ? t.changeWithNew : t.changeWithStored}
+          confirmLabel={t.checkAndSave}
           confirmIcon="plugs-connected"
-          note="This can take a few seconds."
+          note={t.fewSeconds}
           busy={busy}
           onConfirm={() => void save()}
           onCancel={() => setAsking(false)}
