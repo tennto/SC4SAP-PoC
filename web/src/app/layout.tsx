@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { THEME_BOOT_SCRIPT } from "@/lib/theme";
+import { themeBootScript } from "@/lib/theme";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 import { FavoritesProvider } from "@/lib/favorites";
+import { LocaleProvider } from "@/lib/i18n/client";
+import { readLocale } from "@/lib/i18n/server";
 import { getAccount } from "@/lib/auth/session";
 
 export const metadata: Metadata = {
@@ -76,13 +78,19 @@ export default async function RootLayout({
    * optimisation.
    */
   const account = await getAccount();
+  /**
+   * The UI language, from its cookie. Read here for the same reason the
+   * account is: `<html lang>` is on this element, and the font stack and
+   * line-breaking rules in globals.css key off it.
+   */
+  const locale = await readLocale();
 
   return (
     // `suppressHydrationWarning` because the script below writes an attribute
     // on this element before React sees it, which is exactly the mismatch the
     // warning is for — and exactly what has to happen for a dark-mode reader
     // not to be flashed a white screen.
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <head>
         {/* First thing in the head, ahead of the stylesheets: it decides which
             palette those rules resolve to, and anything after the first paint
@@ -90,7 +98,7 @@ export default async function RootLayout({
         <script
           // The string is ours, built in `lib/theme.ts` — no user input reaches
           // it, which is the only reason this is allowed to exist.
-          dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }}
+          dangerouslySetInnerHTML={{ __html: themeBootScript(account !== null) }}
         />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
@@ -112,6 +120,14 @@ export default async function RootLayout({
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css"
         />
+        {/* The Japanese cut, which carries kana and the JIS kanji Pretendard
+            proper does not. Same dynamic-subset build, so an English or
+            Korean screen fetches none of it; only `:lang(ja)` in globals.css
+            puts it first in the stack. */}
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-jp-dynamic-subset.css"
+        />
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/@phosphor-icons/web@2.1.1/src/regular/style.css"
@@ -128,14 +144,16 @@ export default async function RootLayout({
       <body spellCheck={false}>
         {/* Above the shell because both the rail and the dashboard read it,
             and neither contains the other. */}
-        <FavoritesProvider
-          initial={account?.favorites ?? []}
-          signedIn={account !== null}
-        >
-          {/* The rail lives in the layout, not in the pages, so it survives
-              navigation instead of remounting on every route change. */}
-          <AppShell account={account}>{children}</AppShell>
-        </FavoritesProvider>
+        <LocaleProvider initial={locale}>
+          <FavoritesProvider
+            initial={account?.favorites ?? []}
+            signedIn={account !== null}
+          >
+            {/* The rail lives in the layout, not in the pages, so it survives
+                navigation instead of remounting on every route change. */}
+            <AppShell account={account}>{children}</AppShell>
+          </FavoritesProvider>
+        </LocaleProvider>
       </body>
     </html>
   );

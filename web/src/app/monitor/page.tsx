@@ -22,10 +22,15 @@ import { listToolCalls, summarizeToolCalls, type ToolCallSummary } from "@/lib/m
 import type { ToolCall } from "@/lib/types";
 import { Icon } from "@/components/Icon";
 import { MonitorFeed } from "@/components/MonitorFeed";
+import { readMessages } from "@/lib/i18n/server";
+import { localeTag } from "@/lib/i18n/locale";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = { title: "MCP Monitor · SC4SAP" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await readMessages();
+  return { title: `${t.monitor.title} · SC4SAP` };
+}
 
 const PAGE = 50;
 
@@ -38,6 +43,9 @@ function duration(ms: number | null): string {
 
 export default async function MonitorPage() {
   const account = await requireAccount();
+  const { locale, t: messages } = await readMessages();
+  const t = messages.monitor;
+  const tag = localeTag(locale);
 
   let summary: ToolCallSummary | null = null;
   let history: ToolCall[] = [];
@@ -55,13 +63,9 @@ export default async function MonitorPage() {
     <div className="page monitor">
       <header className="page-head rise">
         <div>
-          <p className="eyebrow">System</p>
-          <h1>MCP Monitor</h1>
-          <p className="page-lede">
-            Every tool the agent calls on your behalf, as it happens. MCP calls
-            are the ones that reach the SAP system; the rest are the agent
-            reading its own workspace.
-          </p>
+          <p className="eyebrow">{t.eyebrow}</p>
+          <h1>{t.title}</h1>
+          <p className="page-lede">{t.lede}</p>
         </div>
       </header>
 
@@ -72,12 +76,11 @@ export default async function MonitorPage() {
       >
         <div className="panel-head">
           <h2 id="monitor-week">
-            <Icon name="calendar-dots" /> Last 7 days
+            <Icon name="calendar-dots" /> {t.last7Days}
           </h2>
           {summary === null ? (
             <p className="panel-note">
-              History is unavailable: {historyError ?? "the database did not answer"}.
-              The live feed below still works.
+              {t.historyUnavailable(historyError ?? t.dbDidNotAnswer)}
             </p>
           ) : null}
         </div>
@@ -85,36 +88,36 @@ export default async function MonitorPage() {
         {summary ? (
           <div className="mon-tiles">
             <div className="mon-tile">
-              <span className="mon-tile-value">{summary.week.toLocaleString("en-US")}</span>
-              <span className="mon-tile-label">calls this week</span>
+              <span className="mon-tile-value">{summary.week.toLocaleString(tag)}</span>
+              <span className="mon-tile-label">{t.callsThisWeek}</span>
               <span className="mon-tile-detail">
-                {summary.today.toLocaleString("en-US")} in the last 24 hours
+                {t.inLast24h(summary.today.toLocaleString(tag))}
               </span>
             </div>
             <div className={`mon-tile${summary.failedWeek > 0 ? " is-bad" : ""}`}>
-              <span className="mon-tile-value">{summary.failedWeek.toLocaleString("en-US")}</span>
-              <span className="mon-tile-label">failed or refused</span>
+              <span className="mon-tile-value">{summary.failedWeek.toLocaleString(tag)}</span>
+              <span className="mon-tile-label">{t.failedOrRefused}</span>
               <span className="mon-tile-detail">
                 {summary.week > 0
-                  ? `${Math.round((summary.failedWeek / summary.week) * 100)}% of the week's calls`
-                  : "nothing ran this week"}
+                  ? t.percentOfWeek(Math.round((summary.failedWeek / summary.week) * 100))
+                  : t.nothingThisWeek}
               </span>
             </div>
             <div className="mon-tile">
               <span className="mon-tile-value">{duration(summary.medianMs)}</span>
-              <span className="mon-tile-label">median duration</span>
-              <span className="mon-tile-detail">from call to result</span>
+              <span className="mon-tile-label">{t.medianDuration}</span>
+              <span className="mon-tile-detail">{t.callToResult}</span>
             </div>
             <div className="mon-tile mon-tile-list">
-              <span className="mon-tile-label">most called</span>
+              <span className="mon-tile-label">{t.mostCalled}</span>
               {summary.topTools.length === 0 ? (
-                <span className="mon-tile-detail">no MCP calls yet</span>
+                <span className="mon-tile-detail">{t.noMcpYet}</span>
               ) : (
                 <ol className="mon-top">
                   {summary.topTools.map((entry) => (
                     <li key={entry.tool}>
                       <code>{entry.tool}</code>
-                      <span>{entry.calls.toLocaleString("en-US")}</span>
+                      <span>{entry.calls.toLocaleString(tag)}</span>
                     </li>
                   ))}
                 </ol>

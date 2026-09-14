@@ -15,8 +15,11 @@ import { useState } from "react";
 import { Select } from "@/components/Select";
 import { SettingRow } from "@/components/settings/EditModal";
 import { APPROVAL_LEVELS, type ApprovalLevel } from "@/lib/account";
+import { useLocale } from "@/lib/i18n/client";
 
 export function ApprovalSettings({ approval }: { approval: ApprovalLevel }) {
+  const { t: messages } = useLocale();
+  const t = messages.settings;
   const [level, setLevel] = useState<ApprovalLevel>(approval);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -35,9 +38,9 @@ export function ApprovalSettings({ approval }: { approval: ApprovalLevel }) {
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `The server answered ${response.status}.`);
+        throw new Error(body?.error ?? t.serverAnswered(response.status));
       }
-      setNote("Saved. Applies to the next session you open.");
+      setNote(t.approvalSaved);
     } catch (err) {
       setLevel(previous);
       setNote((err as Error).message);
@@ -46,17 +49,20 @@ export function ApprovalSettings({ approval }: { approval: ApprovalLevel }) {
     }
   }
 
-  const current = APPROVAL_LEVELS.find((entry) => entry.value === level);
+  const current = t.approval[level];
 
   return (
     <SettingRow
-      label="Approvals"
+      label={t.approvals}
       value={
         <div className="approval-pick">
           <Select
             name="approval"
             value={level}
-            options={APPROVAL_LEVELS.map((entry) => ({ value: entry.value, label: entry.label }))}
+            options={APPROVAL_LEVELS.map((entry) => ({
+              value: entry.value,
+              label: t.approval[entry.value]?.label ?? entry.label,
+            }))}
             onChange={(next) => void pick(next as ApprovalLevel)}
             disabled={busy}
           />

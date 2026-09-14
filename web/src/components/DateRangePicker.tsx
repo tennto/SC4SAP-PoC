@@ -18,15 +18,14 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n/client";
+import type { Messages } from "@/lib/i18n/messages";
 
 /** `YYYY-MM-DD`, or empty for an open end. */
 export type DateRange = { from: string; to: string };
 
-const DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
+/** The day and month names, and every sentence, in the reader's language. */
+type Text = Messages["dateRange"];
 
 const two = (value: number): string => String(value).padStart(2, "0");
 
@@ -46,23 +45,26 @@ function shiftDays(date: string, days: number): string {
 }
 
 /** `Sep 12` — enough to read a range at a glance; the year is the current one. */
-function short(date: string): string {
+function short(date: string, t: Text): string {
   const [, month, day] = date.split("-");
-  return `${MONTHS[Number(month) - 1].slice(0, 3)} ${Number(day)}`;
+  return t.short(Number(month) - 1, Number(day), t.months);
 }
 
-function label(range: DateRange): string {
-  if (!range.from && !range.to) return "Any date";
+function label(range: DateRange, t: Text): string {
+  if (!range.from && !range.to) return t.anyDate;
   if (range.from && range.to) {
-    return range.from === range.to ? short(range.from) : `${short(range.from)} – ${short(range.to)}`;
+    return range.from === range.to
+      ? short(range.from, t)
+      : `${short(range.from, t)} – ${short(range.to, t)}`;
   }
-  return range.from ? `From ${short(range.from)}` : `Until ${short(range.to)}`;
+  return range.from ? t.from(short(range.from, t)) : t.until(short(range.to, t));
 }
 
-const PRESETS: { label: string; range: () => DateRange }[] = [
-  { label: "Today", range: () => ({ from: todayIso(), to: todayIso() }) },
-  { label: "Last 7 days", range: () => ({ from: shiftDays(todayIso(), -6), to: todayIso() }) },
-  { label: "Last 30 days", range: () => ({ from: shiftDays(todayIso(), -29), to: todayIso() }) },
+/** `label` names the key in `dateRange`. */
+const PRESETS: { label: "today" | "last7" | "last30"; range: () => DateRange }[] = [
+  { label: "today", range: () => ({ from: todayIso(), to: todayIso() }) },
+  { label: "last7", range: () => ({ from: shiftDays(todayIso(), -6), to: todayIso() }) },
+  { label: "last30", range: () => ({ from: shiftDays(todayIso(), -29), to: todayIso() }) },
 ];
 
 /** The 6×7 grid of a month: leading and trailing days of the neighbours included. */
@@ -87,6 +89,8 @@ export function DateRangePicker({
   onChange: (range: DateRange) => void;
 }) {
   const id = useId();
+  const { t: messages } = useLocale();
+  const t = messages.dateRange;
   const [open, setOpen] = useState(false);
   /** The month on show. Starts on the range's end, or on today. */
   const [view, setView] = useState(() => {
@@ -163,7 +167,7 @@ export function DateRangePicker({
         onClick={() => (open ? close() : setOpen(true))}
       >
         <Icon name="calendar-blank" className="daterange-icon" />
-        <span className="select-value">{label(value)}</span>
+        <span className="select-value">{label(value, t)}</span>
         <Icon name="caret-down" className="select-caret" />
       </button>
 
@@ -172,7 +176,7 @@ export function DateRangePicker({
           id={`${id}-panel`}
           className="daterange-panel"
           role="dialog"
-          aria-label="Pick a date range"
+          aria-label={t.pickRange}
         >
           <div className="daterange-presets">
             {PRESETS.map((preset) => (
@@ -185,7 +189,7 @@ export function DateRangePicker({
                   close();
                 }}
               >
-                {preset.label}
+                {t[preset.label]}
               </button>
             ))}
             {active ? (
@@ -197,7 +201,7 @@ export function DateRangePicker({
                   close();
                 }}
               >
-                Any date
+                {t.anyDate}
               </button>
             ) : null}
           </div>
@@ -206,18 +210,18 @@ export function DateRangePicker({
             <button
               type="button"
               className="daterange-nav"
-              aria-label="Previous month"
+              aria-label={t.previousMonth}
               onClick={() => step(-1)}
             >
               <Icon name="caret-left" />
             </button>
             <span className="daterange-month">
-              {MONTHS[view.month]} {view.year}
+              {t.monthTitle(t.months[view.month], view.year)}
             </span>
             <button
               type="button"
               className="daterange-nav"
-              aria-label="Next month"
+              aria-label={t.nextMonth}
               onClick={() => step(1)}
             >
               <Icon name="caret-right" />
@@ -225,7 +229,7 @@ export function DateRangePicker({
           </div>
 
           <div className="daterange-grid" role="grid" onMouseLeave={() => setHover(null)}>
-            {DAYS.map((day) => (
+            {t.days.map((day) => (
               <span key={day} className="daterange-dow" role="columnheader">
                 {day}
               </span>
@@ -262,9 +266,7 @@ export function DateRangePicker({
           </div>
 
           <p className="daterange-hint">
-            {pending
-              ? `From ${short(pending)} — pick the last day.`
-              : "Pick the first day, then the last."}
+            {pending ? t.pickLast(short(pending, t)) : t.pickFirst}
           </p>
         </div>
       ) : null}

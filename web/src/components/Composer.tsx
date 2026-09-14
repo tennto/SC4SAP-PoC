@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { FileChip } from "@/components/FileChip";
+import { useLocale } from "@/lib/i18n/client";
 import {
   ACCEPT,
   LIMITS,
@@ -68,6 +69,8 @@ export function Composer({
   onReject,
   seed = null,
 }: Props) {
+  const { t: messages } = useLocale();
+  const t = messages.composer;
   const [text, setText] = useState("");
 
   useEffect(() => {
@@ -300,7 +303,7 @@ export function Composer({
               <span className="file-chip-glyph">
                 <Icon name="circle-notch" />
               </span>
-              <span className="file-chip-name">Reading…</span>
+              <span className="file-chip-name">{t.reading}</span>
             </span>
           ))}
         </div>
@@ -341,10 +344,8 @@ export function Composer({
         <div className="drop-veil" aria-hidden>
           <div className="drop-veil-card">
             <Icon name="upload-simple" />
-            <span className="drop-veil-title">Drop files here</span>
-            <span className="drop-veil-hint">
-              Images, PDF or text files · up to {LIMITS.maxFiles} per message
-            </span>
+            <span className="drop-veil-title">{t.dropTitle}</span>
+            <span className="drop-veil-hint">{t.dropHint(LIMITS.maxFiles)}</span>
           </div>
         </div>
       )}
@@ -369,12 +370,10 @@ export function Composer({
             className={`composer-attach${menu ? " open" : ""}`}
             disabled={disabled || running || full}
             onClick={() => setMenu((current) => !current)}
-            aria-label="Add"
+            aria-label={t.add}
             aria-haspopup="menu"
             aria-expanded={menu}
-            title={
-              full ? `At most ${LIMITS.maxFiles} files per message` : "Add"
-            }
+            title={full ? t.atMostFiles(LIMITS.maxFiles) : t.add}
           >
             <Icon name="plus" />
           </button>
@@ -388,10 +387,8 @@ export function Composer({
               >
                 <Icon name="paperclip" />
                 <span className="composer-menu-text">
-                  <span className="composer-menu-label">Add files or photos</span>
-                  <span className="composer-menu-hint">
-                    Images, PDF or text files
-                  </span>
+                  <span className="composer-menu-label">{t.addFiles}</span>
+                  <span className="composer-menu-hint">{t.addFilesHint}</span>
                 </span>
               </button>
             </div>
@@ -411,8 +408,8 @@ export function Composer({
           className={`composer-send${running ? " is-stop" : ""}`}
           type="submit"
           disabled={running ? false : !canSend || reading > 0}
-          aria-label={running ? "Stop" : "Send"}
-          title={running ? "Stop this answer" : undefined}
+          aria-label={running ? t.stop : t.send}
+          title={running ? t.stopTitle : undefined}
         >
           <Icon name={running ? "stop" : "arrow-up"} weight={running ? "fill" : "regular"} />
         </button>

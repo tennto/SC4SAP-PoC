@@ -3328,6 +3328,125 @@ button.primary:hover:not(:disabled) {
   color: var(--ink-38);
 }
 
+/* ---------- language ----------
+   `<html lang>` is set from the language cookie, so these key off the root.
+   Two kinds of rule. The first is the Japanese face: Pretendard proper has
+   Latin and Hangul but no kana, and without this a Japanese screen would set
+   its text in whatever the OS falls through to — Yu Gothic on Windows, which
+   is not the face the rest of the app is drawn in. Pretendard JP is the same
+   design with the Japanese glyphs added, and it goes first only for a
+   Japanese reader; the `:lang(ja)` element rule is for the one Japanese word
+   on a Korean or English screen, the language menu's own row.
+
+   The second is fit. The small-caps labels — panel headings, fact labels, the
+   status word beside each dot — are 10–11px tracked Latin, and a Hangul or
+   kanji glyph at that size is a smudge. Each steps up a point and loosens
+   its tracking, which is what tracked CJK wants anyway. Korean also asks
+   for `keep-all`: a Korean word broken mid-syllable reads as a typo, where
+   `overflow-wrap: anywhere` keeps a host name or an email from overflowing
+   its cell. Japanese breaks between any two characters and needs neither. */
+
+:root {
+  --font-sans-ja:
+    "Pretendard JP Variable", "Pretendard JP", "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", Meiryo,
+    "Noto Sans JP", sans-serif;
+}
+
+:root:lang(ja) {
+  --font-sans: var(--font-sans-ja);
+}
+
+[lang="ja"]:not(:root) {
+  font-family: var(--font-sans-ja);
+}
+
+:root:lang(ko) .page-lede,
+:root:lang(ko) .panel-note,
+:root:lang(ko) .conn-detail,
+:root:lang(ko) .conn-label,
+:root:lang(ko) .facts dd,
+:root:lang(ko) .fixture-note,
+:root:lang(ko) .fav-summary,
+:root:lang(ko) .modal-description,
+:root:lang(ko) .account-item {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+:root:is(:lang(ko), :lang(ja)) .panel-head h2 {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+:root:is(:lang(ko), :lang(ja)) .facts dt {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+/* Japanese fact labels run to thirteen characters where the English longest
+   is fifteen Latin ones — wider glyphs, so a wider column. Fixed, as the
+   English one is, so the values still share one left edge down the card. */
+:root:lang(ja) .facts > div {
+  grid-template-columns: 148px 1fr;
+}
+
+:root:is(:lang(ko), :lang(ja)) .conn-state {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+:root:is(:lang(ko), :lang(ja)) .figure-unit {
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- language switch on the bare screens ---------- */
+
+/* Pinned to the corner, where a language control conventionally sits, on
+   the screens that have no rail and so no account menu to hold one. */
+.lang-switch {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--ink-55);
+}
+
+.lang-switch > .ph {
+  margin: 0 4px 0 3px;
+  font-size: 14px;
+  color: var(--ink-38);
+}
+
+.lang-switch .lang-option {
+  border: 0;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-55);
+  font: inherit;
+  cursor: pointer;
+}
+
+.lang-switch .lang-option:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--panel-2);
+}
+
+.lang-switch .lang-option.is-on {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
 /* ---------- skill screen ---------- */
 
 .skill-head {
@@ -3366,8 +3485,12 @@ button.primary:hover:not(:disabled) {
   font-size: 19px;
 }
 
+/* No measure cap here: the summary is one sentence under the title, and the
+   62ch the prose measure allows wrapped it mid-thought on a wide screen with
+   the whole header still empty beside it. It breaks where the window does. */
 .skill .page-lede {
   font-size: 12.5px;
+  max-width: none;
 }
 
 .skill .panel {
@@ -5027,6 +5150,20 @@ button.link-button:disabled {
    headline weight of the thing it is an alternative to. */
 a.ghost.auth-submit {
   font-size: 12px;
+  /* Three columns: the label sits in the middle one, so its midpoint is the
+     button's whatever the language makes of its length, and the mark is
+     pushed to the end of the column before it — flush against the label,
+     one gap away. The padding trick the submit above uses assumes an icon of
+     a known width; this needs no such number. */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+}
+
+a.ghost.auth-submit .google-mark {
+  justify-self: end;
 }
 
 .google-mark {
@@ -5052,6 +5189,11 @@ a.ghost.auth-submit {
   .auth-submit {
     gap: 14px;
     padding: 10px 30px 10px 8px;
+  }
+
+  a.ghost.auth-submit {
+    gap: 8px;
+    padding: 10px 8px;
   }
 
   .field-pair {
@@ -6181,6 +6323,14 @@ a.ghost.auth-submit {
   box-sizing: border-box;
 }
 
+/* Under about a thousand pixels the column meets the corner the language
+   switch is pinned in, so the head steps down out from under it. */
+@media (max-width: 1000px) {
+  .legal-shell {
+    padding-top: 60px;
+  }
+}
+
 .legal-shell-head {
   display: flex;
   align-items: center;
@@ -6228,6 +6378,14 @@ a.ghost.auth-submit {
   border-top: 1px solid var(--line);
   font-size: 12px;
   color: var(--ink-55);
+}
+
+/* A link and the dot before it, so the row keeps its rhythm whichever link
+   the current page has removed. */
+.legal-shell-foot-item {
+  display: inline-flex;
+  align-items: center;
+  gap: inherit;
 }
 
 .legal-shell-foot a {

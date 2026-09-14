@@ -47,7 +47,10 @@ import { ApprovalModal } from "@/components/ApprovalModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { EditModal } from "@/components/settings/EditModal";
 import type { PermissionResponse } from "@/lib/types";
-import type { SkillField } from "@/lib/skills";
+import { findSkill, type SkillField } from "@/lib/skills";
+import { useLocale } from "@/lib/i18n/client";
+import { skillDisplay } from "@/lib/i18n/skills";
+import type { Messages } from "@/lib/i18n/messages";
 import { FileChip } from "@/components/FileChip";
 import {
   IMAGE_TYPES,
@@ -79,9 +82,14 @@ type Spend = { maxBudgetUsd: number; economy: boolean; model: string };
  * here rather than fetched because the dialog opens before any session
  * exists to ask through, and a list of two is not worth a round trip.
  */
-const MODELS: { id: string; label: string; note: string }[] = [
-  { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
-  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about five times the price." },
+const MODELS: {
+  id: string;
+  label: string;
+  /** The dictionary key for the line under the picker. */
+  note: keyof Messages["skillForm"];
+}[] = [
+  { id: "claude-sonnet-5", label: "Sonnet 5", note: "sonnetNote" },
+  { id: "claude-opus-5", label: "Opus 5", note: "opusNote" },
 ];
 
 function initial(fields: readonly SkillField[]): Record<string, Value> {
@@ -262,6 +270,15 @@ export function SkillForm({
   followUp?: boolean;
 }) {
   const router = useRouter();
+  const { locale, t: messages } = useLocale();
+  const t = messages.skillForm;
+  /**
+   * The catalog entry as the reader sees it. `title` and `fields` are the
+   * English the prompt and the stored values are keyed by; this is only what
+   * is drawn. The slug always resolves — this form is only ever mounted by
+   * the skill page, which has already looked it up.
+   */
+  const shownSkill = skillDisplay(locale, findSkill(slug)!);
   const pathname = usePathname();
   const [values, setValues] = useState<Record<string, Value>>(() =>
     initial(fields),
@@ -417,7 +434,7 @@ export function SkillForm({
     try {
       for (const file of list) {
         if (!isImageType(file.type)) {
-          setError(`${file.name}: only images (PNG, JPEG, GIF, WebP) can be attached here.`);
+          setError(t.onlyImages(file.name));
           continue;
         }
         const result = await prepare(file, imagesRef.current);
@@ -536,7 +553,7 @@ export function SkillForm({
         // Named for the skill *and* what it was pointed at. The prompt's first
         // line is a slash command, which makes a poor label in a rail — and so
         // does the skill's name on its own once there are six of them.
-        title: runTitle(title, fields, values),
+        title: runTitle(shownSkill.title, fields, values),
         sdkSessionId: null,
         messages: saved.map((row, index) => ({
           seq: index,
@@ -599,7 +616,7 @@ export function SkillForm({
    * ended is this page's involvement, not the run.
    */
   /** What this run was pointed at, for the dialog to name. */
-  const subject = runTitle(title, fields, values);
+  const subject = runTitle(shownSkill.title, fields, values);
 
   function reset(): void {
     setConfirmDone(false);
@@ -758,6 +775,7 @@ export function SkillForm({
         {fields.map((field, index) => {
           const value = values[field.label];
           const id = `skill-field-${index}`;
+          const shown = shownSkill.field(field);
 
           /**
            * A yes-or-no is one line, not two.
@@ -778,9 +796,9 @@ export function SkillForm({
                   onChange={(event) => set(field.label, event.target.checked)}
                 />
                 <span className="field-switch-main">
-                  <span className="field-switch-label">{field.label}</span>
-                  {field.hint && (
-                    <span className="field-hint">{field.hint}</span>
+                  <span className="field-switch-label">{shown.label}</span>
+                  {shown.hint && (
+                    <span className="field-hint">{shown.hint}</span>
                   )}
                 </span>
               </label>
@@ -793,7 +811,7 @@ export function SkillForm({
                 const area = (
                   <textarea
                     rows={4}
-                    placeholder={field.placeholder}
+                    placeholder={shown.placeholder}
                     value={typeof value === "string" ? value : ""}
                     disabled={started}
                     onChange={(event) => set(field.label, event.target.value)}
@@ -860,7 +878,7 @@ export function SkillForm({
                           <span className="file-chip-glyph">
                             <Icon name="circle-notch" />
                           </span>
-                          <span className="file-chip-name">Reading…</span>
+                          <span className="file-chip-name">{t.reading}</span>
                         </span>
                       ))}
                       {!started && (
@@ -883,20 +901,18 @@ export function SkillForm({
                             disabled={full}
                             onClick={() => imagePicker.current?.click()}
                             title={
-                              full
-                                ? `At most ${LIMITS.maxFiles} images`
-                                : "Add a screenshot — or paste one, or drop it here"
+                              full ? t.atMostImages(LIMITS.maxFiles) : t.addScreenshotTitle
                             }
                           >
                             <Icon name="image" />
-                            {images.length === 0 ? "Add screenshot" : "Add another"}
+                            {images.length === 0 ? t.addScreenshot : t.addAnother}
                           </button>
                         </>
                       )}
                     </div>
                     {dragOver && (
                       <div className="field-images-veil" aria-hidden>
-                        <Icon name="upload-simple" /> Drop the screenshot here
+                        <Icon name="upload-simple" /> {t.dropScreenshot}
                       </div>
                     )}
                   </div>
@@ -907,10 +923,7 @@ export function SkillForm({
                   <Select
                     labelledBy={id}
                     value={typeof value === "string" ? value : ""}
-                    options={(field.options ?? []).map((option) => ({
-                      value: option,
-                      label: option,
-                    }))}
+                    options={shown.options}
                     disabled={started}
                     onChange={(next) => set(field.label, next)}
                   />
@@ -919,7 +932,7 @@ export function SkillForm({
                 return (
                   <input
                     type="text"
-                    placeholder={field.placeholder}
+                    placeholder={shown.placeholder}
                     value={typeof value === "string" ? value : ""}
                     disabled={started}
                     onChange={(event) => set(field.label, event.target.value)}
@@ -938,10 +951,10 @@ export function SkillForm({
           return (
             <Tag className={`field field-${field.kind}`} key={field.label}>
               <span className="field-label" id={id}>
-                {field.label}
+                {shown.label}
               </span>
               {control()}
-              {field.hint && <span className="field-hint">{field.hint}</span>}
+              {shown.hint && <span className="field-hint">{shown.hint}</span>}
             </Tag>
           );
         })}
@@ -952,16 +965,16 @@ export function SkillForm({
 
         {running ? (
           <button className="primary" onClick={() => void stop()}>
-            <Icon name="stop" weight="fill" /> Stop
+            <Icon name="stop" weight="fill" /> {t.stop}
           </button>
         ) : (
           <button
             className="primary"
             onClick={() => start()}
             disabled={blocked}
-            title={blocked ? "This skill cannot run from here" : undefined}
+            title={blocked ? t.cannotRunHere : undefined}
           >
-            {settled ? "Run again" : "Run"}
+            {settled ? t.runAgain : t.run}
           </button>
         )}
 
@@ -970,7 +983,7 @@ export function SkillForm({
         {spend && (
           <span className="skill-spend">
             {MODELS.find((entry) => entry.id === spend.model)?.label ?? spend.model}
-            {spend.maxBudgetUsd > 0 ? ` · up to $${spend.maxBudgetUsd.toFixed(2)}` : " · no ceiling"}
+            {spend.maxBudgetUsd > 0 ? t.upTo(spend.maxBudgetUsd.toFixed(2)) : t.noCeiling}
           </span>
         )}
 
@@ -986,9 +999,9 @@ export function SkillForm({
             className="ghost skill-done"
             onClick={() => setConfirmDone(true)}
             disabled={!drawn}
-            title={drawn ? undefined : "Wait for the report to finish"}
+            title={drawn ? undefined : t.waitForReport}
           >
-            Done
+            {t.done}
           </button>
         )}
       </div>
@@ -996,12 +1009,12 @@ export function SkillForm({
       {started && (
         <section className="panel skill-result rise" ref={result}>
           <div className="panel-head panel-head-row">
-            <h2>Result</h2>
+            <h2>{t.result}</h2>
             {/* Only once there is something to carry over. Before the first
                 answer there is no conversation to open, just an empty one. */}
             {answer.trim() !== "" && (
               <button className="ghost skill-continue" onClick={openInChat}>
-                <Icon name="chat-teardrop-text" /> Continue in chat
+                <Icon name="chat-teardrop-text" /> {t.continueInChat}
               </button>
             )}
           </div>
@@ -1010,7 +1023,7 @@ export function SkillForm({
             // Nothing to read yet. The same mark the rest of the app turns
             // while it waits, rather than a spinner of this screen's own.
             <p className="skill-doc-wait">
-              <span className="dots" aria-label="Working">
+              <span className="dots" aria-label={t.working}>
                 <span />
                 <span />
                 <span />
@@ -1028,18 +1041,14 @@ export function SkillForm({
                   type="button"
                   className={`ghost skill-doc-everything${everything ? " is-on" : ""}`}
                   aria-pressed={everything}
-                  title={
-                    everything
-                      ? "Showing everything the agent said. Click for the report only."
-                      : "Showing the report only. Click to see everything the agent said."
-                  }
+                  title={everything ? t.showingEverythingReport : t.showingReportOnly}
                   onClick={() => {
                     const next = !everything;
                     setEverything(next);
                     writeShowEverything(next);
                   }}
                 >
-                  {everything ? "Everything" : "Final only"}
+                  {everything ? t.everything : t.finalOnly}
                 </button>
                 {/* Not while the run is going. A half-written report saved to
                     disk is indistinguishable from a whole one afterwards, and
@@ -1050,13 +1059,9 @@ export function SkillForm({
                   disabled={running}
                   // The full answer, not the paced one — what is saved is the
                   // report, not how much of it has been typed out so far.
-                  title={
-                    running
-                      ? "Available when the run finishes"
-                      : "Save this report as a .md file"
-                  }
+                  title={running ? t.availableWhenDone : t.saveReport}
                 >
-                  <Icon name="download-simple" /> Download .md
+                  <Icon name="download-simple" /> {t.downloadMd}
                 </button>
               </div>
 
@@ -1066,7 +1071,7 @@ export function SkillForm({
                     report is on its way. Under the document rather than inside
                     it, because it is not part of what was written. */}
                 {running && (
-                  <span className="dots skill-doc-more" aria-label="Working">
+                  <span className="dots skill-doc-more" aria-label={t.working}>
                     <span />
                     <span />
                     <span />
@@ -1091,7 +1096,7 @@ export function SkillForm({
                 className="skill-reply-text"
                 rows={2}
                 value={reply}
-                placeholder="Answer the questions above, or add what you know. Enter to send, Shift+Enter for a newline."
+                placeholder={t.replyPlaceholder}
                 onChange={(event) => setReply(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
@@ -1105,7 +1110,7 @@ export function SkillForm({
                 onClick={() => void sendReply()}
                 disabled={reply.trim() === ""}
               >
-                <Icon name="paper-plane-tilt" /> Reply
+                <Icon name="paper-plane-tilt" /> {t.reply}
               </button>
             </div>
           )}
@@ -1114,10 +1119,10 @@ export function SkillForm({
 
       {askingCost && cost && (
         <EditModal
-          kind="Cost"
-          heading={`Run ${title}?`}
-          description={cost.note}
-          submitLabel="Run"
+          kind={t.costKind}
+          heading={t.runQuestion(shownSkill.title)}
+          description={shownSkill.costNote ?? cost.note}
+          submitLabel={t.run}
           disabled={!Number.isFinite(Number(costForm.budget)) || Number(costForm.budget) < 0}
           onSubmit={() => {
             const chosen: Spend = {
@@ -1140,7 +1145,7 @@ export function SkillForm({
         >
           <div className="field">
             <span className="field-label" id="cost-model-label">
-              Model
+              {t.model}
             </span>
             <Select
               name="model"
@@ -1150,13 +1155,13 @@ export function SkillForm({
               onChange={(next) => setCostForm((current) => ({ ...current, model: next }))}
             />
             <span className="field-hint">
-              {MODELS.find((entry) => entry.id === costForm.model)?.note} The run and any
-              reviewer it dispatches use this.
+              {t[MODELS.find((entry) => entry.id === costForm.model)!.note] as string}{" "}
+              {t.modelHint}
             </span>
           </div>
 
           <label className="field">
-            <span className="field-label">Budget ceiling (USD)</span>
+            <span className="field-label">{t.budget}</span>
             <input
               type="text"
               inputMode="decimal"
@@ -1170,19 +1175,17 @@ export function SkillForm({
                   : undefined
               }
             />
-            <span className="field-hint">
-              The run stops when it reaches this, and says so. 0 for no ceiling.
-            </span>
+            <span className="field-hint">{t.budgetHint}</span>
           </label>
         </EditModal>
       )}
 
       {confirmDone && (
         <ConfirmModal
-          kind="Run"
-          heading={`Close the ${subject} analysis?`}
-          description="The report goes off this page. It is kept as a conversation, so it can still be opened in chat."
-          confirmLabel="Close it"
+          kind={t.runKind}
+          heading={t.closeQuestion(subject)}
+          description={t.closeBody}
+          confirmLabel={t.closeIt}
           confirmIcon="check"
           onConfirm={reset}
           onCancel={() => setConfirmDone(false)}

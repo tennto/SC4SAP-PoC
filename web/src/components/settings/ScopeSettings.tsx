@@ -28,8 +28,8 @@ import { useState } from "react";
 import { Icon } from "@/components/Icon";
 import { Select } from "@/components/Select";
 import { EditButton, EditModal, SettingRow } from "@/components/settings/EditModal";
+import { useLocale } from "@/lib/i18n/client";
 import {
-  ALLOW_TABLES_RULE,
   BLOCKLIST_PROFILES,
   INDUSTRIES,
   parseAllowTables,
@@ -56,14 +56,18 @@ function formOf(scope: Scope): Form {
   };
 }
 
-const industryLabel = (value: string): string =>
-  INDUSTRIES.find((industry) => industry.value === value)?.label ?? value;
-
-const profile = (value: BlocklistProfile) =>
-  BLOCKLIST_PROFILES.find((entry) => entry.value === value);
-
 export function ScopeSettings({ scope }: { scope: Scope }) {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.settings;
+  const words = messages.setup;
+  const industryLabel = (value: string): string =>
+    words.industries[value] ??
+    INDUSTRIES.find((industry) => industry.value === value)?.label ??
+    value;
+  const profile = (value: BlocklistProfile) =>
+    words.blocklist[value] ??
+    BLOCKLIST_PROFILES.find((entry) => entry.value === value);
   const [stored, setStored] = useState(scope);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState<Form>(() => formOf(scope));
@@ -104,7 +108,7 @@ export function ScopeSettings({ scope }: { scope: Scope }) {
 
     const body = ((await response.json().catch(() => null)) as
       | (Refusal & { allowTables?: string[] })
-      | null) ?? { error: `The server answered ${response.status}.` };
+      | null) ?? { error: t.serverAnswered(response.status) };
 
     setBusy(false);
     if (!response.ok) {
@@ -127,46 +131,43 @@ export function ScopeSettings({ scope }: { scope: Scope }) {
       <div className="panel-head panel-head-row">
         <div>
           <h2>
-            <Icon name="shield-check" /> Scope
+            <Icon name="shield-check" /> {t.scope}
           </h2>
-          <p className="panel-note">
-            Stored for this account. The backend still runs one profile for
-            every session, so these take effect once per-account sessions land.
-          </p>
+          <p className="panel-note">{t.scopeNote}</p>
         </div>
-        <EditButton label="Edit scope" onClick={open} />
+        <EditButton label={t.editScope} onClick={open} />
       </div>
 
       <div className="setting-rows">
         <SettingRow
-          label="Industry"
+          label={t.industry}
           value={industryLabel(stored.industry)}
-          hint="Which reference the consultant agents read before they answer."
+          hint={t.industryHint}
         />
         <SettingRow
-          label="Blocklist profile"
+          label={t.blocklistProfile}
           value={profile(stored.blocklist)?.label ?? stored.blocklist}
           hint={profile(stored.blocklist)?.hint}
         />
         <SettingRow
-          label="Allowed tables"
+          label={t.allowedTables}
           value={
             stored.allowTables.length > 0 ? (
               <code>{stored.allowTables.join(", ")}</code>
             ) : (
-              "None"
+              t.none
             )
           }
-          hint="Let through the blocklist anyway. Every read of one is still audited."
+          hint={t.allowedTablesHint}
         />
       </div>
 
       {editing && (
         <EditModal
-          kind="Scope"
-          heading="Edit scope"
-          description="Nothing here is checked against the SAP system. Saving writes the choice."
-          submitLabel="Save scope"
+          kind={t.scopeKind}
+          heading={t.editScope}
+          description={t.scopeBody}
+          submitLabel={t.saveScope}
           busy={busy}
           disabled={!changed || !valid}
           error={error?.error ?? null}
@@ -175,7 +176,7 @@ export function ScopeSettings({ scope }: { scope: Scope }) {
         >
           <div className="field">
             <span className="field-label" id="settings-industry-label">
-              Industry
+              {t.industry}
             </span>
             <Select
               name="industry"
@@ -183,7 +184,7 @@ export function ScopeSettings({ scope }: { scope: Scope }) {
               value={form.industry}
               options={INDUSTRIES.map((industry) => ({
                 value: industry.value,
-                label: industry.label,
+                label: industryLabel(industry.value),
               }))}
               onChange={(next) => set("industry", next)}
               disabled={busy}
@@ -192,7 +193,7 @@ export function ScopeSettings({ scope }: { scope: Scope }) {
 
           <div className="field">
             <span className="field-label" id="settings-blocklist-label">
-              Blocklist profile
+              {t.blocklistProfile}
             </span>
             <Select
               name="blocklist"
@@ -200,7 +201,7 @@ export function ScopeSettings({ scope }: { scope: Scope }) {
               value={form.blocklist}
               options={BLOCKLIST_PROFILES.map((entry) => ({
                 value: entry.value,
-                label: entry.label,
+                label: profile(entry.value)?.label ?? entry.label,
               }))}
               onChange={(next) => set("blocklist", next as BlocklistProfile)}
               disabled={busy}
@@ -209,7 +210,7 @@ export function ScopeSettings({ scope }: { scope: Scope }) {
           </div>
 
           <label className="field field-wide">
-            <span className="field-label">Allowed tables</span>
+            <span className="field-label">{t.allowedTables}</span>
             <input
               type="text"
               value={form.allowTables}
@@ -223,7 +224,7 @@ export function ScopeSettings({ scope }: { scope: Scope }) {
               disabled={busy}
             />
             <span className={valid ? "field-hint" : "field-error"}>
-              {ALLOW_TABLES_RULE}
+              {words.allowTablesRule}
             </span>
           </label>
         </EditModal>

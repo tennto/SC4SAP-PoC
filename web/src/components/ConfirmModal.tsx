@@ -24,6 +24,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n/client";
 
 export function ConfirmModal({
   kind,
@@ -31,7 +32,7 @@ export function ConfirmModal({
   description,
   confirmLabel,
   confirmIcon,
-  cancelLabel = "Cancel",
+  cancelLabel,
   note,
   busy = false,
   onConfirm,
@@ -56,6 +57,8 @@ export function ConfirmModal({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useLocale();
+  const cancelText = cancelLabel ?? t.modal.cancel;
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -101,7 +104,7 @@ export function ConfirmModal({
         <div className="modal-actions">
           {note ? <p className="modal-note">{note}</p> : null}
           <button className="ghost" onClick={onCancel} disabled={busy}>
-            {cancelLabel}
+            {cancelText}
           </button>
           <button
             className="primary"

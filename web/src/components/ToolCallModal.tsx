@@ -30,6 +30,7 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { Markdown } from "@/components/Markdown";
 import type { ToolCall } from "@/lib/types";
+import { useLocale } from "@/lib/i18n/client";
 
 /** Where the chat screen looks for the conversation to open on load. */
 const ACTIVE_KEY = "sc4sap.activeSession";
@@ -57,12 +58,6 @@ function size(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const DECISION_LABEL: Record<NonNullable<ToolCall["decision"]>, string> = {
-  auto: "Auto-approved by policy",
-  allowed: "Approved by you",
-  denied: "Denied by you",
-  expired: "Unanswered, so denied",
-};
 
 /**
  * The stored preview, pretty-printed when it is whole JSON.
@@ -106,6 +101,8 @@ export function ToolCallModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const { t: messages } = useLocale();
+  const t = messages.monitor;
   const closeRef = useRef<HTMLButtonElement>(null);
   const [leaving, setLeaving] = useState(false);
   /** The copy button just worked, and says so for a moment. */
@@ -194,9 +191,9 @@ export function ToolCallModal({
         aria-labelledby="toolcall-heading"
       >
         <div className="modal-head">
-          <span className="modal-kind">Tool call</span>
+          <span className="modal-kind">{t.toolCall}</span>
           <code className="modal-tool">{call.name}</code>
-          <span className={`toolcall-state is-${state}`}>{state}</span>
+          <span className={`toolcall-state is-${state}`}>{t.state[state]}</span>
         </div>
 
         <h2 id="toolcall-heading" className="toolcall-heading">
@@ -204,33 +201,33 @@ export function ToolCallModal({
           {call.server ? (
             <span className="toolcall-server">{call.server.replace(/^plugin_/, "")}</span>
           ) : (
-            <span className="toolcall-server">built-in</span>
+            <span className="toolcall-server">{t.builtIn}</span>
           )}
         </h2>
 
         <dl className="facts toolcall-facts">
           <div>
-            <dt>Started</dt>
+            <dt>{t.started}</dt>
             <dd>{stamp(call.startedAt)}</dd>
           </div>
           <div>
-            <dt>Duration</dt>
+            <dt>{t.duration}</dt>
             <dd>{duration(call.durationMs)}</dd>
           </div>
           <div>
-            <dt>Result</dt>
+            <dt>{t.result}</dt>
             <dd>
               {call.ok === null
-                ? "Not back yet"
-                : `${call.ok ? "Succeeded" : "Failed"} · ${size(call.resultBytes)} returned`}
+                ? t.notBackYet
+                : t.resultLine(call.ok, size(call.resultBytes))}
             </dd>
           </div>
           <div>
-            <dt>Approval</dt>
-            <dd>{call.decision ? DECISION_LABEL[call.decision] : "Not gated"}</dd>
+            <dt>{t.approval}</dt>
+            <dd>{call.decision ? t.decision[call.decision] : t.notGated}</dd>
           </div>
           <div>
-            <dt>Session</dt>
+            <dt>{t.sessionLabel}</dt>
             <dd>
               <code>{call.sessionId}</code>
             </dd>
@@ -238,12 +235,12 @@ export function ToolCallModal({
         </dl>
 
         <div className="toolcall-input-head">
-          <p className="modal-label">Input</p>
+          <p className="modal-label">{t.input}</p>
           <button
             type="button"
             className="icon-button toolcall-copy"
-            aria-label={copied ? "Copied" : "Copy input"}
-            title={copied ? "Copied" : "Copy input"}
+            aria-label={copied ? t.copied : t.copyInput}
+            title={copied ? t.copied : t.copyInput}
             onClick={() => {
               void navigator.clipboard
                 .writeText(input.text)
@@ -261,15 +258,9 @@ export function ToolCallModal({
           <Markdown>{`\`\`\`json\n${input.text}\n\`\`\``}</Markdown>
         </div>
         {input.truncated ? (
-          <p className="toolcall-note">
-            Cut at 2,000 characters. The log keeps the start of an input, not
-            all of it.
-          </p>
+          <p className="toolcall-note">{t.truncated}</p>
         ) : null}
-        <p className="toolcall-note">
-          The result itself is not kept — only its size and whether it failed.
-          The conversation it ran in still has it.
-        </p>
+        <p className="toolcall-note">{t.resultNotKept}</p>
 
         <div className="modal-actions">
           <button
@@ -278,11 +269,11 @@ export function ToolCallModal({
             ref={closeRef}
             onClick={dismiss}
           >
-            Close
+            {t.close}
           </button>
           {troubled ? (
             <button type="button" className="primary" onClick={askInChat}>
-              <Icon name="chat-teardrop-text" /> Ask in chat
+              <Icon name="chat-teardrop-text" /> {t.askInChat}
             </button>
           ) : null}
         </div>

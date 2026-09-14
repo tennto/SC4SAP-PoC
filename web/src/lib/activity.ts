@@ -12,6 +12,11 @@
  * this line goes away. If it is on screen, something got here.
  */
 
+import type { Messages } from "@/lib/i18n/messages";
+
+/** The words for every state below, in the reader's language. */
+export type ActivityText = Messages["activity"];
+
 export type ActivityKind =
   /** Mid-turn with no more specific signal yet. */
   | "working"
@@ -53,44 +58,47 @@ const SAP_PREFIX = "mcp__plugin_sc4sap_sap__";
  * for the SAP ones, because the people using this can read `GetProgram` and
  * it tells them roughly how long to expect.
  */
-export function describeTool(toolName: string): { label: string; detail?: string } {
+export function describeTool(
+  toolName: string,
+  t: ActivityText,
+): { label: string; detail?: string } {
   if (toolName.startsWith(SAP_PREFIX)) {
     const bare = toolName.slice(SAP_PREFIX.length);
     if (bare === "GetTableContents" || bare === "GetSqlQuery") {
-      return { label: "Reading table rows", detail: bare };
+      return { label: t.readingRows, detail: bare };
     }
-    if (bare.startsWith("Runtime")) return { label: "Reading runtime logs", detail: bare };
-    return { label: "Looking up SAP", detail: bare };
+    if (bare.startsWith("Runtime")) return { label: t.readingRuntime, detail: bare };
+    return { label: t.lookingUpSap, detail: bare };
   }
 
   switch (toolName) {
     case "Agent":
-      return { label: "Handing work to a sub-agent" };
+      return { label: t.subAgent };
     case "SlashCommand":
-      return { label: "Running a skill" };
+      return { label: t.runningSkill };
     case "Bash":
-      return { label: "Running a command" };
+      return { label: t.runningCommand };
     case "BashOutput":
-      return { label: "Checking a command" };
+      return { label: t.checkingCommand };
     case "Read":
     case "Glob":
     case "Grep":
-      return { label: "Reading files" };
+      return { label: t.readingFiles };
     case "Write":
     case "Edit":
     case "NotebookEdit":
-      return { label: "Writing a file" };
+      return { label: t.writingFile };
     case "WebFetch":
     case "WebSearch":
-      return { label: "Searching the web" };
+      return { label: t.searchingWeb };
     case "TodoWrite":
-      return { label: "Planning the steps" };
+      return { label: t.planning };
     case "ToolSearch":
-      return { label: "Loading tools" };
+      return { label: t.loadingTools };
     case "AskUserQuestion":
-      return { label: "Asking you something" };
+      return { label: t.asking };
     default:
-      return { label: "Running a tool", detail: toolName };
+      return { label: t.runningTool, detail: toolName };
   }
 }
 
@@ -98,36 +106,37 @@ export function describeTool(toolName: string): { label: string; detail?: string
 export function describeActivity(
   activity: Activity,
   elapsedMs: number,
+  t: ActivityText,
 ): { label: string; detail?: string; meta: string } {
   const seconds = Math.floor(elapsedMs / 1000);
   const clock = seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
   const stalled = elapsedMs >= STALL_AFTER_MS;
 
   if (activity.kind === "tool") {
-    const { label, detail } = describeTool(activity.detail ?? "");
+    const { label, detail } = describeTool(activity.detail ?? "", t);
     // A tool is the one state where a long wait is ordinary — a package walk
     // takes as long as it takes — so it says "still running" rather than
     // anything that reads like a warning.
-    return { label, detail, meta: stalled ? `${clock} · still running` : clock };
+    return { label, detail, meta: stalled ? t.stillRunning(clock) : clock };
   }
 
   if (activity.kind === "retrying") {
     // The honest "it is in trouble but not dead". Never says "still", because
     // a retry is not a long version of working — it is a failure being
     // absorbed, and the count is the thing worth reading.
-    return { label: "Retrying after an API error", detail: activity.detail, meta: clock };
+    return { label: t.retrying, detail: activity.detail, meta: clock };
   }
 
   if (activity.kind === "waiting") {
-    return { label: "Waiting for your answer", meta: clock };
+    return { label: t.waiting, meta: clock };
   }
 
   const label =
     activity.kind === "thinking"
-      ? "Thinking"
+      ? t.thinking
       : activity.kind === "writing"
-        ? "Writing"
-        : "Working";
+        ? t.writing
+        : t.working;
 
-  return { label, meta: stalled ? `${clock} · still ${label.toLowerCase()}` : clock };
+  return { label, meta: stalled ? t.still(clock, label) : clock };
 }

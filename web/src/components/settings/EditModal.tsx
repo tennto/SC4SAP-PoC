@@ -20,6 +20,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useLocale } from "@/lib/i18n/client";
 
 export function EditModal({
   kind,
@@ -48,6 +49,7 @@ export function EditModal({
   onSubmit: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useLocale();
   // Portals need a DOM, and this is rendered on the server first.
   const [mounted, setMounted] = useState(false);
   const first = useRef<HTMLDivElement>(null);
@@ -107,10 +109,10 @@ export function EditModal({
             onClick={onCancel}
             disabled={busy}
           >
-            Cancel
+            {t.modal.cancel}
           </button>
           <button type="submit" className="primary" disabled={busy || disabled}>
-            {busy ? "Saving…" : submitLabel}
+            {busy ? t.modal.saving : submitLabel}
           </button>
         </div>
       </form>

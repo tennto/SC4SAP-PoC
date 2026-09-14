@@ -26,6 +26,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { PendingApproval, PermissionResponse, Question } from "@/lib/types";
+import { useLocale } from "@/lib/i18n/client";
 
 /** Free-text escape hatch, mirroring the "Other" option the CLI offers. */
 const OTHER = "__other__";
@@ -74,6 +75,8 @@ export function ApprovalModal({
   onSettle,
   onAllowAll,
 }: Props) {
+  const { t: messages } = useLocale();
+  const t = messages.approval;
   const questions = questionsOf(request);
   const isQuestion = request.kind === "question" && questions.length > 0;
 
@@ -133,7 +136,7 @@ export function ApprovalModal({
       <div className="modal">
         <header className="modal-head">
           <span className="modal-kind">
-            {isQuestion ? "Question" : "Approval"}
+            {isQuestion ? t.question : t.approval}
           </span>
           <strong>
             {request.displayName ?? request.title ?? request.toolName}
@@ -178,7 +181,7 @@ export function ApprovalModal({
                       className={`option${chosen.includes(OTHER) ? " picked" : ""}`}
                       onClick={() => toggle(question, OTHER)}
                     >
-                      <span className="option-label">Other…</span>
+                      <span className="option-label">{t.other}</span>
                     </button>
                   </div>
 
@@ -186,7 +189,7 @@ export function ApprovalModal({
                     <input
                       className="option-other"
                       value={other[question.question] ?? ""}
-                      placeholder="Your answer"
+                      placeholder={t.yourAnswer}
                       autoFocus
                       onChange={(event) =>
                         setOther((current) => ({
@@ -198,7 +201,7 @@ export function ApprovalModal({
                   )}
 
                   {question.multiSelect && (
-                    <p className="question-hint">Pick as many as apply.</p>
+                    <p className="question-hint">{t.pickMany}</p>
                   )}
                 </fieldset>
               );
@@ -206,7 +209,7 @@ export function ApprovalModal({
           </div>
         ) : (
           <>
-            <p className="modal-label">Input</p>
+            <p className="modal-label">{t.input}</p>
             <pre className="modal-input">
               {JSON.stringify(request.input, null, 2)}
             </pre>
@@ -220,7 +223,7 @@ export function ApprovalModal({
               disabled={busy || !answerable}
               onClick={submitAnswers}
             >
-              Answer
+              {t.answer}
             </button>
           ) : (
             <>
@@ -230,11 +233,11 @@ export function ApprovalModal({
                   onSettle({ behavior: "deny", message: "Denied by the user." })
                 }
               >
-                Deny
+                {t.deny}
               </button>
               {offerAll && (
                 <button disabled={busy} onClick={onAllowAll}>
-                  Allow all SAP reads
+                  {t.allowAll}
                 </button>
               )}
               <button
@@ -243,16 +246,14 @@ export function ApprovalModal({
                 autoFocus
                 onClick={() => onSettle({ behavior: "allow" })}
               >
-                Allow
+                {t.allow}
               </button>
             </>
           )}
         </footer>
 
         <p className="modal-note">
-          {offerAll
-            ? "“Allow all SAP reads” covers read-only SAP lookups for the rest of this session. Writes stay unreachable, and table and SQL extraction still ask every time."
-            : "Unanswered requests are denied after 5 minutes, so a forgotten tab cannot wedge the session."}
+          {offerAll ? t.noteAllowAll : t.noteTimeout}
         </p>
       </div>
     </div>,

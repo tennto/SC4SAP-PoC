@@ -15,6 +15,29 @@
 
 export const THEMES = ["system", "light", "dark"] as const;
 
+/**
+ * Screens that are always light.
+ *
+ * The rule: a screen with no way to change the theme does not get one
+ * imposed on it, so it is light. Sign-in, sign-up, the password reset and
+ * the setup wizard render without the rail, and the account menu — where
+ * the theme lives — is in the rail; they are light for everyone. The two
+ * legal documents are reachable signed out, in which case they render in
+ * their own frame with no rail either, and are light too; signed in they
+ * sit inside the rail like any other screen and follow the choice. Same
+ * lists as `BARE_ROUTES` and `LEGAL_ROUTES` in `AppShell`, for the same
+ * reason.
+ */
+export const LIGHT_ONLY_ROUTES = ["/signin", "/signup", "/forgot", "/setup"];
+export const LEGAL_ROUTES = ["/terms", "/privacy"];
+
+const under = (pathname: string, routes: string[]): boolean =>
+  routes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+
+export function isLightOnly(pathname: string, signedIn: boolean): boolean {
+  return under(pathname, LIGHT_ONLY_ROUTES) || (!signedIn && under(pathname, LEGAL_ROUTES));
+}
+
 export type Theme = (typeof THEMES)[number];
 
 /** Where the choice is kept. Read by the inline script in `app/layout.tsx`. */
@@ -57,7 +80,28 @@ export function applyTheme(theme: Theme): void {
 }
 
 /**
- * The script that runs before the first paint.
+ * Put the right theme on the document for `pathname`, without changing the
+ * stored choice.
+ *
+ * A light-only route pins the attribute to `light`; every other route puts
+ * back whatever is stored. Called on each client-side navigation, because
+ * the boot script below only runs on a full load — signing out lands on
+ * `/signin` through the router, and finishing setup leaves it the same way.
+ */
+export function syncTheme(pathname: string, signedIn: boolean): void {
+  const root = document.documentElement;
+  if (isLightOnly(pathname, signedIn)) {
+    root.setAttribute("data-theme", "light");
+    return;
+  }
+  const theme = readTheme();
+  if (theme === "system") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", theme);
+}
+
+/**
+ * The script that runs before the first paint, for a reader who is or is not
+ * signed in.
  *
  * Inline and synchronous in `<head>`, because anything later is too late: React
  * hydrates after the first frame, so a theme applied there means a dark-mode
@@ -69,11 +113,20 @@ export function applyTheme(theme: Theme): void {
  * renders light because storage was unavailable is a small disappointment; one
  * that renders nothing because a theme script threw is not.
  */
-export const THEME_BOOT_SCRIPT = `
+export function themeBootScript(signedIn: boolean): string {
+  // The session cookie is httpOnly, so the script cannot see it; the layout,
+  // which has already resolved the session, bakes the answer in.
+  const lightRoutes = signedIn ? LIGHT_ONLY_ROUTES : [...LIGHT_ONLY_ROUTES, ...LEGAL_ROUTES];
+  return `
 try {
-  var t = localStorage.getItem(${JSON.stringify(THEME_KEY)});
+  var p = location.pathname;
+  var light = ${JSON.stringify(lightRoutes)}.some(function (r) {
+    return p === r || p.indexOf(r + "/") === 0;
+  });
+  var t = light ? "light" : localStorage.getItem(${JSON.stringify(THEME_KEY)});
   if (t === "light" || t === "dark") {
     document.documentElement.setAttribute("data-theme", t);
   }
 } catch (e) {}
 `.trim();
+}

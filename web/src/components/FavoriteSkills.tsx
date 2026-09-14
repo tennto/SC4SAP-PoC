@@ -14,9 +14,13 @@ import Link from "next/link";
 import { useFavorites } from "@/lib/favorites";
 import { findSkill } from "@/lib/skills";
 import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n/client";
+import { skillDisplay } from "@/lib/i18n/skills";
 
 export function FavoriteSkills() {
   const { favorites, toggle } = useFavorites();
+  const { locale, t: messages } = useLocale();
+  const t = messages.favorites;
   const skills = favorites
     .map((slug) => findSkill(slug))
     .filter((skill) => skill !== undefined);
@@ -29,43 +33,44 @@ export function FavoriteSkills() {
     >
       <div className="panel-head panel-head-row">
         <div>
-          <h2 id="favorites-heading">Favourites</h2>
+          <h2 id="favorites-heading">{t.heading}</h2>
           <p className="panel-note">
-            {skills.length > 0
-              ? "Starred in the rail. Lost on reload — there is nowhere to keep them yet."
-              : "Star a skill in the rail and it lands here."}
+            {skills.length > 0 ? t.noteStarred : t.noteEmpty}
           </p>
         </div>
       </div>
 
       {skills.length > 0 ? (
         <ul className="fav-list">
-          {skills.map((skill) => (
+          {skills.map((skill) => {
+            const shown = skillDisplay(locale, skill);
+            return (
             <li className="fav-card" key={skill.slug}>
               <Link className="fav-main" href={`/skills/${skill.slug}`}>
                 <span className="fav-icon">
                   <Icon name={skill.icon} />
                 </span>
                 <span className="fav-text">
-                  <span className="fav-title">{skill.title}</span>
-                  <span className="fav-summary">{skill.summary}</span>
+                  <span className="fav-title">{shown.title}</span>
+                  <span className="fav-summary">{shown.summary}</span>
                 </span>
               </Link>
               <button
                 type="button"
                 className="fav-remove"
-                aria-label={`Remove ${skill.title} from favourites`}
-                title="Remove from favourites"
+                aria-label={t.remove(shown.title)}
+                title={t.removeTitle}
                 onClick={() => toggle(skill.slug)}
               >
                 <Icon name="star" weight="fill" />
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : (
         <p className="fav-empty">
-          <Icon name="star" /> Nothing starred yet.
+          <Icon name="star" /> {t.empty}
         </p>
       )}
     </section>

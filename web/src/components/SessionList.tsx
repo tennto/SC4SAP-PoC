@@ -14,6 +14,7 @@ export type RailItem = {
 };
 import { Icon } from "@/components/Icon";
 import { DragScrollBar } from "@/components/DragScrollBar";
+import { useLocale } from "@/lib/i18n/client";
 
 /** Matches the exit animation in `globals.css`. */
 const LEAVE_MS = 420;
@@ -44,6 +45,8 @@ export function SessionList({
   onCreate,
   onClose,
 }: Props) {
+  const { t: messages } = useLocale();
+  const t = messages.sessions;
   /**
    * React unmounts a removed row on the same frame it disappears from props,
    * which leaves nothing for an exit animation to run on. So the row is held
@@ -177,21 +180,21 @@ export function SessionList({
               sessions — runs against the backend, live or revived from
               storage — and a bubble would name the thing inside one rather
               than the several the rail is holding. */}
-          <Icon name="stack" /> Sessions
+          <Icon name="stack" /> {t.heading}
         </h2>
         <button
           className="session-add"
           onClick={onCreate}
           disabled={busy}
-          title="New conversation"
-          aria-label="New conversation"
+          title={t.newConversation}
+          aria-label={t.newConversation}
         >
           <Icon name="plus" />
         </button>
       </div>
 
       <nav className="session-list" ref={listRef}>
-        {rows.length === 0 && <p className="empty">No conversations yet.</p>}
+        {rows.length === 0 && <p className="empty">{t.empty}</p>}
 
         {rows.map(({ session, isLeaving }) => {
           const active = session.id === activeId && !isLeaving;
@@ -211,10 +214,10 @@ export function SessionList({
                 {/* A session created but never asked anything has no first
                     prompt to be named after yet. */}
                 <span className="session-title">
-                  {session.title ?? "New conversation"}
+                  {session.title ?? t.newConversation}
                 </span>
                 <span className="session-meta">
-                  {session.turns} turn{session.turns === 1 ? "" : "s"} ·{" "}
+                  {t.turns(session.turns)} ·{" "}
                   {/* Sub-cent turns are the norm; 4 places keeps them visible. */}
                   ${session.totalCostUsd.toFixed(4)}
                 </span>
@@ -222,8 +225,8 @@ export function SessionList({
               <button
                 className="session-close"
                 onClick={() => onClose(session.id)}
-                title="Delete this conversation"
-                aria-label="Delete this conversation"
+                title={t.delete}
+                aria-label={t.delete}
                 disabled={isLeaving}
               >
                 ×
