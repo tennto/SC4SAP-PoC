@@ -25,9 +25,9 @@
  *
  * Its own component rather than a private one inside the setup wizard, so the
  * next screen that has to say "working" for a minute has this to reach for.
- * The transcript deliberately does not: an answer arriving is a different kind
- * of wait — seconds, inline, in a column of text — and it uses three dots,
- * which is the one place that reading is right.
+ * The transcript's activity line does not: at the height of a line of text
+ * the gradients and masks go soft, and it draws three dots carrying a wave
+ * instead — see `Dots` in `ActivityLine.tsx`.
  */
 export function WorkingMark({
   label = "Working",

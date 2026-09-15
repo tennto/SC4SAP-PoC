@@ -19,8 +19,11 @@ import type { ReactElement, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { HighlighterCore } from "shiki/core";
+import type { Element } from "hast";
 import { highlight, highlighter, langFor, loadedHighlighter } from "@/lib/highlight";
 import { DragScrollBar } from "@/components/DragScrollBar";
+import { Icon } from "@/components/Icon";
+import { useLocale } from "@/lib/i18n/client";
 
 /** The text inside a fence, which react-markdown hands over as nested nodes. */
 function textOf(node: ReactNode): string {
@@ -113,18 +116,93 @@ function CodeBlock({ code, tag }: { code: string; tag?: string }) {
   );
 }
 
+/** How many `<tr>` and header `<th>` a table's hast tree holds. */
+function tableShape(node: Element | undefined): { rows: number; fields: number } {
+  let rows = 0;
+  let fields = 0;
+  const walk = (el: Element): void => {
+    for (const child of el.children) {
+      if (child.type !== "element") continue;
+      if (child.tagName === "tr") {
+        const isHeader = child.children.some(
+          (cell) => cell.type === "element" && cell.tagName === "th",
+        );
+        if (isHeader) {
+          fields = Math.max(
+            fields,
+            child.children.filter((cell) => cell.type === "element").length,
+          );
+        } else {
+          rows += 1;
+        }
+      }
+      walk(child);
+    }
+  };
+  if (node) walk(node);
+  return { rows, fields };
+}
+
+/**
+ * A markdown table drawn the way SE16 draws one.
+ *
+ * The consultant's answers are tables of SAP data — a table's fields, a
+ * config key's rows — and the people reading them spend their day in the
+ * GUI, where a table has a toolbar over it, a selection gutter down the
+ * left, ruled columns, and a count of entries. Giving the same shape here
+ * means the answer reads as a screen they know rather than as prose with
+ * lines through it.
+ *
+ * The gutter is a real cell on every row, added at `tr` from the hast node,
+ * because a column cannot be drawn in from CSS alone. The scroller caps its
+ * height so a long result scrolls under a header that stays put.
+ */
+function DataTable({ node, children: cells }: { node?: Element; children?: ReactNode }) {
+  const { t: messages } = useLocale();
+  const t = messages.transcript;
+  const { rows, fields } = tableShape(node);
+  return (
+    <div className="markdown-table">
+      <div className="markdown-table-bar">
+        <span className="markdown-table-title">
+          <Icon name="table" /> {t.tableTitle}
+        </span>
+        <span className="markdown-table-shape">
+          {t.tableEntries(rows)} · {t.tableFields(fields)}
+        </span>
+      </div>
+      <div className="markdown-table-scroll">
+        <table>{cells}</table>
+      </div>
+    </div>
+  );
+}
+
 export function Markdown({ children }: { children: string }) {
   return (
     <div className="markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Wide tables scroll inside the bubble instead of stretching it.
-          table: ({ children: cells }) => (
-            <div className="markdown-table">
-              <table>{cells}</table>
-            </div>
+          table: ({ node, children: cells }) => (
+            <DataTable node={node}>{cells}</DataTable>
           ),
+          // The selection gutter: SAP's blank first column, on every row.
+          tr: ({ node, children: cells }) => {
+            const header = node?.children.some(
+              (cell) => cell.type === "element" && cell.tagName === "th",
+            );
+            return (
+              <tr>
+                {header ? (
+                  <th className="markdown-table-gutter" aria-hidden="true" />
+                ) : (
+                  <td className="markdown-table-gutter" aria-hidden="true" />
+                )}
+                {cells}
+              </tr>
+            );
+          },
           /*
            * Taken at `pre` rather than at `code` because a highlighted block
            * arrives from Shiki as its own `<pre>`, and replacing the inner

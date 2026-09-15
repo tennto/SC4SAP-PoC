@@ -41,6 +41,10 @@ const FIXED: { href: string; icon: string; label: NavKey; hint: NavKey }[] = [
  * no fields, no run. Listed after the group's skills.
  */
 const PAGES: { group: string; href: string; icon: string; label: NavKey; hint: NavKey }[] = [
+  // The SPRO configuration list, browsed in place. Under Analyze because it
+  // is read, not run: a catalog of what the system is set to, with no
+  // command behind it.
+  { group: "analyze", href: "/config", icon: "sliders-horizontal", label: "configuration", hint: "configurationHint" },
   { group: "system", href: "/monitor", icon: "pulse", label: "monitor", hint: "monitorHint" },
 ];
 

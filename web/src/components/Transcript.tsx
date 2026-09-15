@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AttachmentMeta, TranscriptItem } from "@/lib/types";
 import type { Activity } from "@/lib/activity";
-import { describeActivity } from "@/lib/activity";
+import { ActivityLine } from "@/components/ActivityLine";
 import { Markdown } from "@/components/Markdown";
 import { FileChip } from "@/components/FileChip";
 import { useLocale } from "@/lib/i18n/client";
@@ -30,24 +30,6 @@ type Props = {
    */
   activity: Activity | null;
 };
-
-/**
- * Re-renders once a second while an activity is live, so the clock beside the
- * label counts. Stops itself the moment there is nothing to count — a timer
- * left running behind a finished turn is a wakeup per second for nothing.
- */
-function useElapsed(since: number | null): number {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (since === null) return;
-    setNow(Date.now());
-    const tick = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(tick);
-  }, [since]);
-
-  return since === null ? 0 : Math.max(0, now - since);
-}
 
 /**
  * What actually gets drawn. One agent row per answer, not per SDK message: a
@@ -310,11 +292,9 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
   const { t: messages } = useLocale();
   const t = messages.transcript;
   const bottom = useRef<HTMLDivElement>(null);
-  const [everything, setEverything] = useState(false);
-  useEffect(() => {
-    setEverything(readShowEverything());
-  }, []);
-  const rows = toRows(items, { everything });
+  // The turn always shows its final answer only; the whole-turn toggle was
+  // removed from the chat view.
+  const rows = toRows(items, { everything: false });
   const last = rows[rows.length - 1];
 
   /**
@@ -337,12 +317,28 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
     lastAgent?.streaming ?? false,
   );
 
-  // Measured on what is actually painted, not on what has arrived: the buffer
-  // above can be holding a paragraph the reader cannot see yet, and standing
-  // the mark down against text nobody is looking at is the same bug as
-  // standing it down against an empty bubble.
-  const answering = lastAgent !== null && smoothed.trim() !== "";
-  const waiting = busy && !answering;
+  // When the dots belong on screen.
+  //
+  // The rule is about what the reader is looking at, not about the stream's
+  // low-level state:
+  //   - If answer text is already on screen and the model is only producing
+  //     more of it, the text is the progress. The dots would just flicker
+  //     under it — while it streams, and in the beat between two text blocks
+  //     where `streaming` briefly drops — so they stay down. This is the case
+  //     the reader means by "don't show a loader while the answer is showing".
+  //   - Real background work still shows them, even with an intro line already
+  //     on screen: a tool running, an approval waiting, a retry, the session
+  //     booting. That is the SAP-fetch wait the dots exist to cover.
+  //   - With no answer text yet — an empty bubble, or a tool before the agent
+  //     has said anything — they show, so the screen is never blank mid-turn.
+  const hasAnswerText = lastAgent !== null && smoothed.trim() !== "";
+  const workKind = activity?.kind;
+  const backgroundWork =
+    workKind === "tool" ||
+    workKind === "waiting" ||
+    workKind === "retrying" ||
+    workKind === "starting";
+  const waiting = busy && (!hasAnswerText || backgroundWork);
   /**
    * Inside the answer it already belongs to, rather than under a second label.
    *
@@ -393,62 +389,13 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
   }
 
   /*
-   * The dots, and beside them what is happening and for how long.
-   *
-   * The label is a fold over signals that arrived; the clock is the part that
-   * answers the actual question. A reader who can see "Looking up SAP (4s)"
-   * knows to wait, and a reader who sees "(2m 10s · still running)" knows to
-   * decide — neither of which three hopping dots can tell them.
-   *
-   * `aria-live="polite"` rather than `assertive`: it updates every second, and
-   * a screen reader interrupting itself once a second is worse than silence.
+   * The dots, beside them what is happening and for how long, and under them
+   * what the turn has done so far. See `ActivityLine`.
    */
-  const elapsed = useElapsed(activity?.since ?? null);
-  const said = activity ? describeActivity(activity, elapsed, messages.activity) : null;
-
-  const dots = (
-    <span className="activity">
-      <span className="dots" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </span>
-      {said ? (
-        <span className="activity-said" aria-live="polite">
-          <span className="activity-label">{said.label}</span>
-          {said.detail && (
-            <span className="activity-detail">{said.detail}</span>
-          )}
-          <span className="activity-meta">{said.meta}</span>
-        </span>
-      ) : (
-        <span className="sr-only">{t.working}</span>
-      )}
-    </span>
-  );
+  const dots = <ActivityLine activity={activity} items={items} />;
 
   return (
     <div className="transcript">
-      {/* Final answers only, or the whole turn. Pinned to the corner so it is
-          there whatever is scrolled, and drawn quiet because it is a reading
-          preference, not a control over the conversation. */}
-      {rows.length > 0 && (
-        <button
-          type="button"
-          className={`ghost transcript-everything${everything ? " is-on" : ""}`}
-          aria-pressed={everything}
-          title={
-            everything ? t.showingEverything : t.showingFinal
-          }
-          onClick={() => {
-            const next = !everything;
-            setEverything(next);
-            writeShowEverything(next);
-          }}
-        >
-          {everything ? t.everything : t.finalOnly}
-        </button>
-      )}
 
       {rows.length === 0 && !waiting && (
         <p className="empty">{t.empty}</p>
