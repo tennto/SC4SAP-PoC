@@ -65,6 +65,21 @@ const HISTORY_LIMIT = 500;
 const ORPHAN_GRACE_MS = 15_000;
 
 /**
+ * Appended to the model's system prompt for every session.
+ *
+ * One rule, about how table data is laid out. Left to itself the model
+ * transposes a single-record result into a two-column field/value list while
+ * rendering many records as one column per field — so the same query reads as
+ * a different shape at one row versus two. This pins the orientation: fields
+ * are columns and records are rows, at any count.
+ */
+const OUTPUT_FORMAT_APPEND =
+  "When you present data read from a SAP table — whether one record or many — " +
+  "always render it as a Markdown table with one column per field and one row " +
+  "per record. Keep this same header-and-rows orientation for a single record: " +
+  "never transpose one record into a two-column field/value list.";
+
+/**
  * How long an unanswered approval blocks the turn before it is denied.
  * Without a ceiling a closed browser tab wedges the session forever.
  * Overridable so the timeout path is testable without a five-minute wait.
@@ -484,6 +499,13 @@ export class SessionManager {
         plugins: [{ type: "local", path: this.#config.pluginPath }],
         cwd: this.#config.workspace,
         model: options.model ?? this.#config.model,
+        // Keep Claude Code's own prompt and add one formatting rule on top —
+        // SAP records render row-oriented at any row count. See the constant.
+        systemPrompt: {
+          type: "preset",
+          preset: "claude_code",
+          append: OUTPUT_FORMAT_APPEND,
+        },
         // Loads the workspace .claude/settings.json, which is the ONLY place
         // the L1 blocklist guards are declared. Dropping this silently
         // ungates row extraction — see provision-workspace.ts.

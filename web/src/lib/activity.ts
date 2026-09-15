@@ -13,11 +13,18 @@
  */
 
 import type { Messages } from "@/lib/i18n/messages";
+import type { TranscriptItem } from "@/lib/types";
 
 /** The words for every state below, in the reader's language. */
 export type ActivityText = Messages["activity"];
 
 export type ActivityKind =
+  /**
+   * The session is booting — the Claude Code process, the plugin, the MCP
+   * server. The first prompt of a session waits on this, and it used to
+   * wait with no label at all.
+   */
+  | "starting"
   /** Mid-turn with no more specific signal yet. */
   | "working"
   /** Extended thinking is streaming. */
@@ -131,6 +138,16 @@ export function describeActivity(
     return { label: t.waiting, meta: clock };
   }
 
+  if (activity.kind === "starting") {
+    // Booting is a wait with a known shape — plugin, MCP server, tool list —
+    // so it says what it is loading rather than a bare "working".
+    return {
+      label: t.starting,
+      detail: t.startingDetail,
+      meta: stalled ? t.still(clock, t.starting) : clock,
+    };
+  }
+
   const label =
     activity.kind === "thinking"
       ? t.thinking
@@ -139,4 +156,32 @@ export function describeActivity(
         : t.working;
 
   return { label, meta: stalled ? t.still(clock, label) : clock };
+}
+
+/**
+ * What the current turn has done so far, folded by kind.
+ *
+ * Every tool item after the reader's last prompt, grouped under the words
+ * `describeTool` gives it and counted. Order is first appearance, so a turn
+ * that read files and then went to SAP says so in that order. Chunked reads
+ * arrive already folded into one item with `calls`, which is what is summed.
+ */
+export function summarizeTurn(
+  items: TranscriptItem[],
+  t: ActivityText,
+): { label: string; count: number }[] {
+  let start = 0;
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].kind === "user") {
+      start = i + 1;
+      break;
+    }
+  }
+  const steps = new Map<string, number>();
+  for (const item of items.slice(start)) {
+    if (item.kind !== "tool") continue;
+    const { label } = describeTool(item.name, t);
+    steps.set(label, (steps.get(label) ?? 0) + item.calls);
+  }
+  return [...steps].map(([label, count]) => ({ label, count }));
 }

@@ -37,6 +37,7 @@ import { useSessionStream } from "@/hooks/useSessionStream";
 import { Icon } from "@/components/Icon";
 import { Select } from "@/components/Select";
 import { Markdown } from "@/components/Markdown";
+import { ActivityLine } from "@/components/ActivityLine";
 import {
   readShowEverything,
   toRows,
@@ -1020,14 +1021,17 @@ export function SkillForm({
           </div>
 
           {paced.trim() === "" ? (
-            // Nothing to read yet. The same mark the rest of the app turns
-            // while it waits, rather than a spinner of this screen's own.
+            // Nothing to read yet. The same line the chat draws while it
+            // waits — what is happening, for how long, and what has been done
+            // — rather than a spinner of this screen's own. Before the
+            // session exists there is no stream to say anything, so the
+            // placeholder does.
             <p className="skill-doc-wait">
-              <span className="dots" aria-label={t.working}>
-                <span />
-                <span />
-                <span />
-              </span>
+              <ActivityLine
+                activity={stream.activity}
+                items={stream.items}
+                placeholder={t.working}
+              />
             </p>
           ) : (
             <div className="skill-doc-box">
@@ -1071,10 +1075,12 @@ export function SkillForm({
                     report is on its way. Under the document rather than inside
                     it, because it is not part of what was written. */}
                 {running && (
-                  <span className="dots skill-doc-more" aria-label={t.working}>
-                    <span />
-                    <span />
-                    <span />
+                  <span className="skill-doc-more">
+                    <ActivityLine
+                      activity={stream.activity}
+                      items={stream.items}
+                      placeholder={t.working}
+                    />
                   </span>
                 )}
               </div>

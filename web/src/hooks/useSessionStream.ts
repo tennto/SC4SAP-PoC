@@ -212,10 +212,24 @@ function reduce(state: State, action: Action): State {
   const event = action.event;
   switch (event.type) {
     case "status": {
-      // Anything that is not a running turn has no activity to report, and
-      // leaving a stale label up would be the exact lie this is here to stop.
+      // Booting is its own state: the process, the plugin and the MCP server
+      // are loading, and that is worth a label rather than silence.
+      if (event.status === "starting") {
+        return moveTo({ ...state, status: event.status }, "starting");
+      }
+      // Anything else that is not a running turn has no activity to report,
+      // and leaving a stale label up would be the exact lie this is here to
+      // stop.
       if (event.status !== "busy") {
         return { ...state, status: event.status, activity: null };
+      }
+      /*
+       * A prompt sent into a session that is still booting is queued behind
+       * the boot. "Working" over that says the model is on it when it has
+       * not been reached yet, so the boot label stays until `turn_start`.
+       */
+      if (state.status === "starting" && state.activity?.kind === "starting") {
+        return { ...state, status: event.status };
       }
       /*
        * Busy arrives before `turn_start` — the backend accepts the prompt, and

@@ -1707,6 +1707,103 @@ button.primary:hover:not(:disabled) {
   white-space: nowrap;
 }
 
+/* Three dots in a row, one solid ink. Position only — a small vertical wave
+   travels left to right; no size and no brightness change anywhere. Small
+   dots, tight gap. */
+.activity-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+}
+
+.gdots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  /* Room for the lift, so the row above does not shift when it starts. */
+  height: 8px;
+}
+
+.gdots span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--ink);
+  animation: gdot-wave 1.1s ease-in-out infinite;
+}
+
+.gdots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.gdots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes gdot-wave {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gdots span {
+    animation: none;
+  }
+}
+
+/* A slow sheen across the label — the words in motion, not only the mark
+   beside them. Ink at reading weight with a lighter band passing through,
+   so it reads as light moving over text and not as text fading in and out. */
+.activity-label {
+  background: linear-gradient(
+    100deg,
+    var(--ink-55) 0%,
+    var(--ink-55) 35%,
+    var(--ink) 50%,
+    var(--ink-55) 65%,
+    var(--ink-55) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: label-sheen 2.4s linear infinite;
+}
+
+@keyframes label-sheen {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -30% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-label {
+    animation: none;
+    background: none;
+    color: var(--ink-80);
+  }
+}
+
+/* The line and, under it, the trail. */
+.activity-block {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1722,66 +1819,6 @@ button.primary:hover:not(:disabled) {
 .dots-row {
   margin-top: 14px;
   animation: msg-in 900ms var(--ease) both;
-}
-
-/* Three dots, and each one is lifted rather than dimmed.
-   
-   Fading alone was the problem: opacity on a 5px dot is a change of about two
-   pixels' worth of ink, which at a glance reads as the row flickering rather
-   than as something working. Movement does not need to be large to be read as
-   movement, and a hop of four pixels across three dots on a stagger is enough
-   to be seen from the corner of the eye — which is where this indicator
-   actually lives while someone waits.
-
-   Smaller than they were, because the lift gives them presence that size used
-   to have to supply on its own. */
-.dots {
-  display: inline-flex;
-  align-items: flex-end;
-  /* Room for the hop, so the row above does not shift when the animation
-     starts — the dots are laid out at the top of their travel. */
-  height: 9px;
-  gap: 5px;
-}
-
-.dots span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--ink-38);
-  animation: dot-lift 2.1s var(--ease) infinite;
-}
-
-/* A wave passing along them rather than three things blinking near each other.
-   The first offset also clears the row's own entrance above, so the lift does
-   not start halfway through the dots fading in. */
-.dots span:nth-child(1) {
-  animation-delay: 180ms;
-}
-
-.dots span:nth-child(2) {
-  animation-delay: 400ms;
-}
-
-.dots span:nth-child(3) {
-  animation-delay: 620ms;
-}
-
-/* Up, and darker on the way — the ink carries the top of the arc so a dot at
-   its height is also the one being looked at. Down again by 55% of the cycle,
-   and then a beat of rest before the wave comes round: without the rest the
-   three run continuously and it reads as a machine rather than as a pulse. */
-@keyframes dot-lift {
-  0%,
-  46%,
-  100% {
-    transform: translateY(0);
-    background: var(--ink-38);
-  }
-  23% {
-    transform: translateY(-4px);
-    background: var(--ink);
-  }
 }
 
 /* The token caret — a blinking slab on the last character. */
@@ -1997,17 +2034,58 @@ button.primary:hover:not(:disabled) {
   color: var(--shiki-dark);
 }
 
-/* Wide tables scroll inside the bubble rather than stretching it. */
+/* ---------- data tables, drawn like SE16 ----------
+   A toolbar over the grid, a selection gutter down the left, ruled columns,
+   a header that stays put while the rows scroll, and the entry count. The
+   shape of a table in the GUI, in the app's own ink. */
 .markdown-table {
-  overflow-x: auto;
   /* Both, and neither is redundant: `max-width` stops the box from being
      stretched by the table inside it, `min-width` stops it from being handed a
      minimum by the flex chain outside it. */
   max-width: 100%;
   min-width: 0;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.markdown-table-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  font-size: 11px;
+  color: var(--ink-55);
+}
+
+.markdown-table-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.markdown-table-title .ph {
+  font-size: 13px;
+}
+
+.markdown-table-shape {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Wide tables scroll inside the bubble rather than stretching it; tall ones
+   scroll under their header. */
+.markdown-table-scroll {
+  overflow: auto;
+  max-height: 60vh;
 }
 
 /* `width: 100%` fills the scroller when the table is narrow, and is ignored
@@ -2016,10 +2094,12 @@ button.primary:hover:not(:disabled) {
    of its own width, which is what put a horizontal scrollbar under every
    review. */
 .markdown-table table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: auto;
   width: 100%;
-  font-size: 13px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The scrollbar for the ones that still overflow.
@@ -2032,10 +2112,10 @@ button.primary:hover:not(:disabled) {
 
    `contain`, so reaching the end of the table does not hand the gesture up and
    start scrolling the conversation behind it. */
-.markdown-table {
+.markdown-table-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--ink-38) var(--panel-3);
-  overscroll-behavior-x: contain;
+  overscroll-behavior: contain;
 }
 
 /* Cells wrap, and no single one decides how wide the table is.
@@ -2058,20 +2138,60 @@ button.primary:hover:not(:disabled) {
 .markdown-table th,
 .markdown-table td {
   text-align: left;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--line);
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  border-right: 1px solid var(--line-soft);
   max-width: 44ch;
   white-space: normal;
   overflow-wrap: break-word;
   vertical-align: top;
+  line-height: 1.5;
 }
 
+.markdown-table th:last-child,
+.markdown-table td:last-child {
+  border-right: 0;
+}
+
+/* The header stays put while the rows go under it. `separate` borders above
+   are what let a sticky cell keep its bottom rule; collapsed ones scroll away
+   with the row. */
 .markdown-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
   font-weight: 600;
+  color: var(--ink-80);
+  white-space: nowrap;
 }
 
-.markdown-table tr:last-child td {
+/* The selection gutter: SAP's blank first column. Narrow, a shade darker,
+   and ruled off from the data. */
+.markdown-table-gutter {
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  padding: 0;
+  background: var(--panel-2);
+  border-right: 1px solid var(--line);
+}
+
+.markdown-table tbody tr:nth-child(even) td:not(.markdown-table-gutter) {
+  background: color-mix(in srgb, var(--panel-2) 45%, var(--panel));
+}
+
+/* The hovered row, the way the GUI marks the selected one. */
+.markdown-table tbody tr:hover td:not(.markdown-table-gutter) {
+  background: var(--panel-3);
+}
+
+.markdown-table tbody tr:hover .markdown-table-gutter {
+  background: var(--ink-38);
+}
+
+.markdown-table tbody tr:last-child td {
   border-bottom: 0;
 }
 
@@ -3665,7 +3785,6 @@ button.primary:hover:not(:disabled) {
    which does not exist until there is a document to put in it. */
 .skill-doc-wait {
   display: flex;
-  justify-content: center;
   margin: 0;
   padding: 18px 0;
 }
@@ -3674,6 +3793,7 @@ button.primary:hover:not(:disabled) {
    to come. Under the document rather than in it: it is not part of what was
    written. */
 .skill-doc-more {
+  display: block;
   margin-top: 18px;
 }
 
@@ -7337,5 +7457,808 @@ button.mon-switch.is-on {
 
   .mon-input {
     display: none;
+  }
+}
+
+/* ---------- configuration setting ----------
+   `web/config.html` in the app's frame: the IMG tree, the article, the
+   reference panel. The page keeps the app's heading and hands everything
+   under it to the browser, which fills the rest of the column and scrolls
+   its three panes on their own. The page itself does not scroll, the way
+   the HTML's body did not. */
+
+.page.config {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 30px;
+  overflow: hidden;
+}
+
+.page.config > .page-head {
+  margin-bottom: 18px;
+}
+
+.cfg-frame {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.cfg {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.cfg.is-ref-open {
+  grid-template-columns: 320px minmax(0, 1fr) 360px;
+}
+
+/* ----- tree ----- */
+
+.cfg-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.cfg-search {
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cfg-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink-38);
+}
+
+.cfg-search-box:focus-within {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.cfg-search-box input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 0;
+  font: inherit;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+.cfg-search-box input::placeholder {
+  font-size: 12px;
+  color: var(--ink-38);
+}
+
+/* The module picker, under the search. Set like a form field: the label on
+   its own line with the count at the far end, the select full width under
+   it — a label beside a select this wide left the select cramped and the
+   count orphaned between them. */
+.cfg-module {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 10px;
+}
+
+.cfg-module-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+}
+
+.cfg-module .cfg-search-count {
+  justify-self: end;
+}
+
+.cfg-module .select {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.cfg-search-count {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-38);
+}
+
+.cfg-tools {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cfg-tools button {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--ink-55);
+}
+
+.cfg-tools button[aria-current="true"] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.cfg-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 8px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-38) transparent;
+}
+
+.cfg-tree ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cfg-node-row,
+.cfg-leaf-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--ink-80);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cfg-node.is-root > .cfg-node-row {
+  margin-top: 2px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.cfg-node-row:hover,
+.cfg-leaf-row:hover {
+  background: var(--panel-2);
+}
+
+.cfg-twist {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  font-size: 10px;
+  color: var(--ink-38);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.cfg-node.is-open > .cfg-node-row .cfg-twist {
+  transform: rotate(90deg);
+}
+
+.cfg-node-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg-count {
+  margin-left: auto;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-55);
+  background: var(--panel-2);
+  border-radius: 999px;
+}
+
+.cfg-leaf-row {
+  align-items: flex-start;
+  color: var(--ink);
+}
+
+.cfg-leaf-row.active {
+  background: var(--panel-3);
+  font-weight: 600;
+}
+
+.cfg-leaf-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--ink-38);
+}
+
+.cfg-leaf-row.active .cfg-leaf-dot {
+  background: var(--ink);
+}
+
+.cfg-leaf-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cfg-leaf-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cfg-check {
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--ok);
+}
+
+.cfg-leaf-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-38);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ----- main ----- */
+
+.cfg-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 26px 32px 56px;
+  background: var(--bg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-38) transparent;
+}
+
+.cfg-overview h2,
+.cfg-detail h2 {
+  margin: 0 0 12px;
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.cfg-lead {
+  max-width: 78ch;
+  margin: 0 0 16px;
+  color: var(--ink-55);
+}
+
+.cfg-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 26px;
+}
+
+.cfg-flow a {
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+}
+
+.cfg-flow a:hover {
+  border-color: var(--ink);
+}
+
+.cfg-area {
+  margin-bottom: 26px;
+}
+
+.cfg-area h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.cfg-step {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--on-ink);
+  background: var(--ink);
+  border-radius: 6px;
+}
+
+.cfg-area-count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-38);
+}
+
+.cfg-area-desc {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--ink-55);
+}
+
+.cfg-acards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.cfg-acard {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.cfg-acard > b {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.cfg-acard > b .cfg-count {
+  margin-left: 0;
+}
+
+.cfg-subs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.cfg-subs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-80);
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.cfg-subs button:hover {
+  border-color: var(--ink-38);
+  color: var(--ink);
+}
+
+.cfg-subs button .cfg-count {
+  margin-left: 0;
+  padding: 0 5px;
+  background: var(--panel);
+}
+
+.cfg-legend {
+  margin: 30px 0 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--ink-38);
+}
+
+.cfg-empty {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-38);
+}
+
+/* ----- detail ----- */
+
+.cfg-detail {
+  max-width: 880px;
+}
+
+.cfg-topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.cfg-topbar button {
+  padding: 5px 10px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.cfg-topbar .cfg-ref-toggle {
+  margin-left: auto;
+}
+
+.cfg-topbar .cfg-ref-toggle[aria-pressed="true"] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.cfg-navtree {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.cfg-nt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cfg-nt.is-leaf {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.cfg-nt-branch {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-38);
+}
+
+.cfg-nt-ico {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 11px;
+  border: 1px solid var(--ink-38);
+  border-radius: 2px;
+  background: var(--panel-2);
+}
+
+.cfg-nt.is-leaf .cfg-nt-ico {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.cfg-detail h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.cfg-no {
+  font-size: 13px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-38);
+}
+
+.cfg-req {
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+
+.cfg-req.is-req {
+  color: var(--on-ink);
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.cfg-req.is-opt {
+  color: var(--ink-55);
+  background: var(--panel-2);
+}
+
+.cfg-tcs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.cfg-tc {
+  padding: 5px 11px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.cfg-tc.is-spro {
+  color: var(--ink-55);
+  background: transparent;
+  border-color: var(--ink-38);
+  border-style: dashed;
+}
+
+.cfg-card {
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.cfg-card h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+}
+
+.cfg-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.cfg-tag {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-38);
+}
+
+.cfg-rel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cfg-rel button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.cfg-rel button:hover {
+  background: var(--panel-2);
+}
+
+.cfg-rel .cfg-tc {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.cfg-rel-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cfg-rel-why {
+  flex: none;
+  font-size: 11px;
+  color: var(--ink-38);
+}
+
+.cfg-shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.cfg-shot {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel-2);
+}
+
+.cfg-shot-ph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  aspect-ratio: 16 / 9;
+  padding: 16px;
+  font-size: 12.5px;
+  text-align: center;
+  color: var(--ink-38);
+}
+
+.cfg-shot-ph .ph {
+  font-size: 26px;
+  margin-bottom: 4px;
+}
+
+.cfg-shot-ph b {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-55);
+}
+
+.cfg-kv {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.cfg-kv dt {
+  padding-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-38);
+}
+
+.cfg-kv dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cfg-kv dd.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ----- references ----- */
+
+.cfg-ref {
+  display: none;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px 40px;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-38) transparent;
+}
+
+.cfg.is-ref-open .cfg-ref:not([hidden]) {
+  display: block;
+}
+
+.cfg-ref-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cfg-ref-head h3 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-55);
+}
+
+.cfg-ref-close {
+  margin-left: auto;
+  padding: 4px 6px;
+}
+
+.cfg-ref-chk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ok);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+
+.cfg-ref-chk .ph {
+  flex: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.cfg-ref h4 {
+  margin: 18px 0 6px;
+  padding-bottom: 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ----- narrow ----- */
+
+@media (max-width: 1200px) {
+  .cfg.is-ref-open {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  /* No room for a third column: the references become a drawer over the
+     article, the way the HTML slid its panel in. */
+  .cfg.is-ref-open .cfg-ref:not([hidden]) {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(380px, 90%);
+    box-shadow: -8px 0 24px rgba(var(--shadow-rgb), 0.12);
+  }
+}
+
+@media (max-width: 900px) {
+  .cfg,
+  .cfg.is-ref-open {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 38%) minmax(0, 1fr);
+  }
+
+  .cfg-side {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .cfg-main {
+    padding: 18px 16px 40px;
   }
 }

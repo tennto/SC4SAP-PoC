@@ -21,3 +21,6 @@ web/.sc4sap/
 # report. Deliberately not history: the useful part of a screenshot is the
 # change it led to, and that is in the commit.
 .test/
+
+# Local reference source for the Configuration page (not tracked)
+web/config.html
