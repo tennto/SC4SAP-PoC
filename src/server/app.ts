@@ -75,6 +75,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     workspace: manager.config.workspace,
     model: manager.config.model,
     sessions: manager.list().length,
+    warm: manager.warmCount,
     // A real check, cached for a few seconds — see `claude-api.ts`. The one
     // await in this handler, and the reason it can take a moment on a cold
     // call. `?fresh=1` skips the cache, for a caller who asked for the check
@@ -188,7 +189,17 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     request.raw.on("error", stop);
   });
 
-  app.get("/sessions", async () => ({ sessions: manager.list() }));
+  /**
+   * Listing is what the chat page does on load, so it is also the moment to
+   * open a session ahead of the "+" that usually follows. Only for a caller
+   * with an account: the shape includes the approval level, and a session
+   * warmed under the wrong one would never be claimed.
+   */
+  app.get("/sessions", async (request) => {
+    const userId = userOf(request.headers);
+    if (userId) manager.warm({ userId, approval: approvalOf(request.headers) });
+    return { sessions: manager.list() };
+  });
 
   app.get<{ Params: IdParams }>("/sessions/:id", async (request, reply) => {
     const session = manager.get(request.params.id);
