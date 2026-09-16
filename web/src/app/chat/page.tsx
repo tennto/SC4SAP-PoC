@@ -15,6 +15,7 @@
  */
 import { BACKEND } from "@/lib/backend";
 import { requireAccount } from "@/lib/auth/session";
+import type { Account } from "@/lib/account";
 import type { Health, Session } from "@/lib/types";
 import { Chat } from "@/components/Chat";
 
@@ -29,10 +30,19 @@ type InitialState = {
   error: string | null;
 };
 
-async function loadInitialState(): Promise<InitialState> {
+async function loadInitialState(account: Account): Promise<InitialState> {
   try {
     const [sessionsResponse, healthResponse] = await Promise.all([
-      fetch(`${BACKEND}/sessions`, { cache: "no-store" }),
+      // With the account, as the proxy would send it: listing is what tells
+      // the backend to open a session ahead of the "+" that usually follows,
+      // and it opens one only for a caller it knows.
+      fetch(`${BACKEND}/sessions`, {
+        cache: "no-store",
+        headers: {
+          "x-sc4sap-user": account.id,
+          "x-sc4sap-approval": account.approval,
+        },
+      }),
       fetch(`${BACKEND}/health`, { cache: "no-store" }),
     ]);
 
@@ -63,7 +73,7 @@ export default async function ChatPage() {
   // Same guard as the dashboard: `proxy.ts` checks that a cookie exists,
   // this checks that it still resolves to a user before rendering.
   const account = await requireAccount();
-  const initial = await loadInitialState();
+  const initial = await loadInitialState(account);
 
   return (
     <Chat

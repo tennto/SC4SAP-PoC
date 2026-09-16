@@ -65,6 +65,25 @@ const HISTORY_LIMIT = 500;
 const ORPHAN_GRACE_MS = 15_000;
 
 /**
+ * How long a session opened ahead of time waits to be claimed before it is
+ * shut down. See `warm()`.
+ *
+ * Ten minutes is a reader who opened the chat page and went to lunch; past
+ * that the process — and the SAP connection behind it — is a cost with no
+ * conversation attached, and reopening it later is a few seconds well spent.
+ */
+const WARM_IDLE_MS = Number(process.env.SC4SAP_WARM_IDLE_MS ?? 10 * 60_000);
+
+/**
+ * How long after a warm session is claimed before the next one is opened.
+ *
+ * Not at once: booting a session is a couple of seconds of CPU, and spending
+ * them under the first turn of the session that was just handed out would
+ * take back part of what warming gave.
+ */
+const WARM_REFILL_DELAY_MS = 3_000;
+
+/**
  * Appended to the model's system prompt for every session.
  *
  * One rule, about how table data is laid out. Left to itself the model
@@ -371,6 +390,21 @@ type LiveSession = {
    * see `background_tasks_changed`.
    */
   backgroundTasks: Set<string>;
+  /**
+   * Set while this session sits in the warm pool: the key it was opened
+   * under and the countdown to shutting it down unclaimed. Cleared the
+   * moment `create()` hands it out. See `warm()`.
+   */
+  warm?: { key: string; timer: ReturnType<typeof setTimeout> };
+};
+
+/** What `create()` fixes at `query()` time, and so what a warm session must match. */
+type SessionShape = {
+  userId?: string;
+  maxBudgetUsd?: number;
+  economy?: boolean;
+  model?: string;
+  approval?: ApprovalLevel;
 };
 
 type PendingEntry = {
@@ -381,6 +415,12 @@ type PendingEntry = {
 
 export class SessionManager {
   readonly #sessions = new Map<string, LiveSession>();
+  /**
+   * Sessions opened ahead of being asked for, one per shape. Not in
+   * `#sessions`: nobody knows their ids, `list()` must not show them, and
+   * a tool call cannot reach them because nothing has been said to them.
+   */
+  readonly #warm = new Map<string, LiveSession>();
   readonly #config: PocConfig;
   /** Deny half applies from the start; the auto-allow half fills in at discover(). */
   #policy: ToolPolicy = buildToolPolicy([]);
@@ -469,20 +509,111 @@ export class SessionManager {
    * So the caller hands back what it has stored, and the counters continue
    * rather than restart. Omitted, they are zero, which is what a genuinely new
    * conversation wants.
+   *
+   * A session of the same shape that `warm()` opened earlier is handed out
+   * instead of a new one, with its process already up. A resumed conversation
+   * never takes one: `resume` is fixed at `query()` time, so a process opened
+   * without it cannot pick the conversation up.
    */
   create(
-    options: {
+    options: SessionShape & {
       resume?: string;
       priorTurns?: number;
       priorCostUsd?: number;
-      userId?: string;
-      maxBudgetUsd?: number;
-      economy?: boolean;
-      /** The session's own model, over the backend's default. */
-      model?: string;
-      approval?: ApprovalLevel;
     } = {},
   ): SessionRecord {
+    const key = options.resume ? null : this.#shapeKey(options);
+    const warm = key ? this.#warm.get(key) : undefined;
+
+    let live: LiveSession;
+    if (warm?.warm && (warm.record.status === "starting" || warm.record.status === "idle")) {
+      this.#warm.delete(key!);
+      clearTimeout(warm.warm.timer);
+      warm.warm = undefined;
+      // Opened a while ago, but the conversation starts now.
+      warm.record.createdAt = new Date().toISOString();
+      live = warm;
+      // The pool refills itself, so the next chat finds one too.
+      setTimeout(() => this.warm(options), WARM_REFILL_DELAY_MS).unref();
+    } else {
+      live = this.#spawn(options);
+    }
+
+    const priorTurns = Math.max(0, options.priorTurns ?? 0);
+    const priorCostUsd = Math.max(0, options.priorCostUsd ?? 0);
+    live.record.turns = priorTurns;
+    live.priorCostUsd = priorCostUsd;
+    live.record.totalCostUsd = priorCostUsd;
+
+    this.#sessions.set(live.record.id, live);
+    return { ...live.record };
+  }
+
+  /**
+   * Opens a session of this shape ahead of anyone asking for it, so the next
+   * `create()` with the same shape gets a process that has already loaded the
+   * plugin and connected to SAP. One per shape; a second call is a no-op
+   * while the first is still waiting.
+   *
+   * One per account, too. The shape carries the account's settings, so a
+   * changed setting leaves the earlier session unclaimable — it is shut down
+   * here rather than left to sit out its timeout.
+   *
+   * Unclaimed after `WARM_IDLE_MS`, the session is shut down.
+   */
+  warm(options: SessionShape = {}): void {
+    const key = this.#shapeKey(options);
+    if (this.#warm.has(key)) return;
+    const userId = options.userId ?? "anonymous";
+    for (const [otherKey, other] of [...this.#warm]) {
+      if (other.userId === userId) this.#discardWarm(otherKey, other);
+    }
+
+    const live = this.#spawn(options);
+    const timer = setTimeout(() => this.#discardWarm(key, live), WARM_IDLE_MS);
+    timer.unref();
+    live.warm = { key, timer };
+    this.#warm.set(key, live);
+  }
+
+  /** How many sessions are sitting warm, for the health endpoint. */
+  get warmCount(): number {
+    return this.#warm.size;
+  }
+
+  #shapeKey(options: SessionShape): string {
+    return [
+      options.userId ?? "anonymous",
+      options.model ?? this.#config.model,
+      options.economy === true,
+      options.approval ?? "all",
+      options.maxBudgetUsd ?? "",
+    ].join(" ");
+  }
+
+  /** Shuts down a warm session nobody claimed. A no-op if it was claimed after all. */
+  #discardWarm(key: string, live: LiveSession): void {
+    if (this.#warm.get(key) !== live) return;
+    this.#warm.delete(key);
+    if (live.warm) clearTimeout(live.warm.timer);
+    live.warm = undefined;
+    live.pump.close();
+    void live.session.interrupt().catch(() => {});
+  }
+
+  /** Drops a warm session whose process has gone, so `create()` does not hand it out. */
+  #forgetWarm(live: LiveSession): void {
+    if (!live.warm) return;
+    if (this.#warm.get(live.warm.key) === live) this.#warm.delete(live.warm.key);
+    clearTimeout(live.warm.timer);
+    live.warm = undefined;
+  }
+
+  /**
+   * Starts the SDK process for a session and begins draining it. The caller
+   * decides where the session lives: `#sessions`, or the warm pool.
+   */
+  #spawn(options: SessionShape & { resume?: string }): LiveSession {
     const id = randomUUID();
     const pump = new InputPump();
     const economy = options.economy === true;
@@ -609,9 +740,6 @@ export class SessionManager {
       },
     });
 
-    const priorTurns = Math.max(0, options.priorTurns ?? 0);
-    const priorCostUsd = Math.max(0, options.priorCostUsd ?? 0);
-
     const live: LiveSession = {
       userId: options.userId ?? "anonymous",
       record: {
@@ -619,8 +747,8 @@ export class SessionManager {
         sdkSessionId: null,
         status: "starting",
         createdAt: new Date().toISOString(),
-        turns: priorTurns,
-        totalCostUsd: priorCostUsd,
+        turns: 0,
+        totalCostUsd: 0,
         title: null,
         autoApproveSapReads: false,
         maxBudgetUsd: options.maxBudgetUsd ?? null,
@@ -636,12 +764,10 @@ export class SessionManager {
       openToolBlocks: new Set(),
       pending: new Map(),
       backgroundTasks: new Set(),
-      priorCostUsd,
+      priorCostUsd: 0,
     };
-    this.#sessions.set(id, live);
     this.#consume(live);
-
-    return { ...live.record };
+    return live;
   }
 
   get(id: string): SessionRecord | undefined {
@@ -1034,6 +1160,7 @@ export class SessionManager {
   }
 
   async closeAll(): Promise<void> {
+    for (const [key, live] of [...this.#warm]) this.#discardWarm(key, live);
     await Promise.all([...this.#sessions.keys()].map((id) => this.close(id)));
   }
 
@@ -1174,6 +1301,9 @@ export class SessionManager {
       } catch (err) {
         this.#emit(live, { type: "error", error: (err as Error).message });
         this.#setStatus(live, "error");
+      } finally {
+        // A process that died while waiting in the pool is not one to hand out.
+        this.#forgetWarm(live);
       }
     })();
   }

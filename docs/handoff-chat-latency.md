@@ -32,6 +32,26 @@
 
 ---
 
+## 2026-09-16 진행 결과 (브랜치 `enhancement`)
+
+측정은 `npm run bench:latency` (`src/bench-latency.ts`, 신규). 브라우저와 같은 HTTP 경로로 `POST /sessions` → 즉시 프롬프트 → 스트림 관찰. 수치는 세션 요청 시점부터 ms, 3회 중앙값.
+
+| 단계 | PONG 첫 토큰 | PONG 완료 | SAP 1회 조회 첫 토큰 | SAP 조회 완료 |
+|---|---|---|---|---|
+| 개선 전 | 21,744 | 26,914 | 42,619 | 48,893 |
+| 훅 러너 수정 후 (콜드) | 3,623 | 3,935 | — | — |
+| + 세션 워밍 | 1,911 | 2,320 | 11,358 | 12,706 |
+
+**진짜 원인은 부팅이 아니라 플러그인 훅 러너였다.** `plugin_module/scripts/run.cjs` 가 `execFile` 로 훅 스크립트를 띄우면서 자기 stdin 을 자식에게 넘기지 않았다. 스크립트 28개가 전부 `readStdin()` 의 5초 타임아웃을 꽉 채우고 나서야 동작했다. `hooks.json` 은 SessionStart·UserPromptSubmit·PreToolUse·PostToolUse·Stop 마다 훅 2~3개를 거니, 턴당 약 15초 + 툴 호출당 약 10초가 순수 대기였다. 수정은 stdin 파이프 한 줄. 훅 하나 5,150 ms → 140 ms.
+
+**세션 워밍**은 그 위에 얹었다. `SessionManager.warm()` / `#warm` 풀, `GET /sessions` 가 계정별로 하나 미리 띄움, `create()` 가 같은 모양(userId·model·economy·approval·budget)이면 가져가고 3초 뒤 재충전, 10분 미청구 시 `#discardWarm` 으로 회수(`SC4SAP_WARM_IDLE_MS`), `/health` 에 `warm` 수. `web/src/app/chat/page.tsx` 의 서버 측 `/sessions` 호출에 계정 헤더를 붙여야 페이지 로드에 워밍이 걸린다.
+
+알게 된 것: SDK 는 첫 프롬프트가 들어오기 전엔 `system/init` 을 보내지 않는다. 워밍 세션은 `starting` 인 채로 대기하지만 프로세스·MCP 연결은 이미 끝나 있다(`mcpServerStatus()` 로 확인, 약 7초). 그래서 "준비 완료" 신호 없이 시간만 벌어두는 구조다.
+
+남은 병목: 2번(워크스페이스 PreToolUse 훅 in-process 전환)은 이제 호출당 수백 ms 수준이라 우선순위 낮음. `result` 가 마지막 텍스트보다 늦게 오는 구간은 Stop 훅 3개(이제 각 0.1초대)로 좁혀졌다.
+
+---
+
 ## 1. 세션 워밍 / 재사용 (효과 큼, 하루)
 
 ### 목표

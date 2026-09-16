@@ -33,3 +33,14 @@ const child = execFile('node', ['--experimental-vm-modules', resolved, ...args],
   }
   process.exit(0);
 });
+
+// The hook payload arrives on this process's stdin, and the script reads it
+// from its own. Without this pipe the child's stdin is a pipe nobody writes to
+// or closes, so every script sat out its 5-second stdin timeout before doing
+// anything — five seconds per hook, on every prompt, every tool call and every
+// stop. Forwarding stdin, EOF included, is what lets the script read and go.
+if (child.stdin) {
+  process.stdin.on('error', () => {});
+  child.stdin.on('error', () => {});
+  process.stdin.pipe(child.stdin);
+}
