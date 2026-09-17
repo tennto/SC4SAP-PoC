@@ -80,6 +80,19 @@ const OUTPUT_FORMAT_APPEND =
   "never transpose one record into a two-column field/value list.";
 
 /**
+ * Tells the plugin's skills which host they are running under.
+ *
+ * Skills written for the Claude Code CLI open with a permission bootstrap
+ * (`trust-session`) that writes `.claude/settings.local.json`. This host loads
+ * only the project settings and decides permissions itself, so that step
+ * grants nothing and costs a turn of file reads. The skills skip it when they
+ * see this marker — `analyze-symptom` first; see its workflow-steps.md.
+ */
+const HOST_APPEND =
+  "Host: sc4sap-web. This is a headless host that governs tool permissions " +
+  "itself; skip any session-trust / permission-bootstrap step a skill asks for.";
+
+/**
  * How long an unanswered approval blocks the turn before it is denied.
  * Without a ceiling a closed browser tab wedges the session forever.
  * Overridable so the timeout path is testable without a five-minute wait.
@@ -499,12 +512,13 @@ export class SessionManager {
         plugins: [{ type: "local", path: this.#config.pluginPath }],
         cwd: this.#config.workspace,
         model: options.model ?? this.#config.model,
-        // Keep Claude Code's own prompt and add one formatting rule on top —
-        // SAP records render row-oriented at any row count. See the constant.
+        // Keep Claude Code's own prompt and add on top: one formatting rule —
+        // SAP records render row-oriented at any row count — and the host
+        // marker the skills read. See the constants.
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: OUTPUT_FORMAT_APPEND,
+          append: `${OUTPUT_FORMAT_APPEND}\n\n${HOST_APPEND}`,
         },
         // Loads the workspace .claude/settings.json, which is the ONLY place
         // the L1 blocklist guards are declared. Dropping this silently
