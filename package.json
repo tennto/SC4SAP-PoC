@@ -1,6 +1,6 @@
 {
   "name": "sc4sap-web-poc",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "SC4SAP Web PoC — Claude Agent SDK backend + web frontend",
