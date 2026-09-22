@@ -43,19 +43,18 @@ Invoke `/sc4sap:trust-session` with `parent_skill=sc4sap:analyze-cbo-obj` to pre
 
 - If `.sc4sap/session-trust.log` already has a line within the last 24h, skip silently.
 - Otherwise run it and surface the one-line confirmation.
-- All subsequent `Agent` dispatches within this skill MUST pass `mode: "dontAsk"`.
 
 Full spec: see [`../trust-session/SKILL.md`](../trust-session/SKILL.md).
 </Session_Trust_Bootstrap>
 
 <Workflow_Steps>
-Orchestration is **3 main-thread Socratic steps (Haiku) + one delegated dispatch to `sap-stocker` (Sonnet) + a branching hand-off**. Detailed spec lives in [`workflow-steps.md`](./workflow-steps.md).
+Orchestration is **3 main-thread Socratic steps + one delegated dispatch to `sap-stocker` (Sonnet) + a branching hand-off**. Detailed spec lives in [`workflow-steps.md`](./workflow-steps.md).
 
-- **Step 1 / 1.5 / 2 (main thread · Haiku)** — Socratic intake: package name → flagship programs (optional `<KEY_PROGRAMS>`) → module. Frontmatter `model: haiku` pins the main thread to Haiku 4.5 for cost-efficient Q&A — no domain judgment required for intake.
+- **Step 1 / 1.5 / 2 (main thread)** — Socratic intake: package name → flagship programs (optional `<KEY_PROGRAMS>`) → module. Frontmatter pins the main thread to Sonnet 4.6.
 - **Step 3–7 (delegated · Sonnet 4.6)** — One `Agent(...)` dispatch to `sap-stocker`. The stocker runs its own Investigation_Protocol: walk → `GetWhereUsed` graph → pin/frequency tiering → business-purpose inference → cross-module gap analysis (per [`../../common/active-modules.md`](../../common/active-modules.md)) → sensitive-name flagging → persist `index.md` + `inventory.json` → return a `Logic-heavy: <bool>` flag. Authoritative spec: [`../../agents/sap-stocker.md`](../../agents/sap-stocker.md) § Investigation_Protocol + § Output_Format.
 - **Step 8 (branching)**:
-  - **Branch A** (`Logic-heavy: false`, DDIC-dominant) — canned summary printed by main thread (Haiku). No agent dispatch.
-  - **Branch B** (`Logic-heavy: true`, FM/CLAS/INTF/large-PROG in inventory) — dispatch `sap-writer` (Haiku 4.5) for a reader-facing briefing: pinned highlights · business-logic assets · cross-module gaps · sensitive objects · next-step hint. Writer BLOCKED → fallback to Branch A.
+  - **Branch A** (`Logic-heavy: false`, DDIC-dominant) — canned summary printed by main thread. No agent dispatch.
+  - **Branch B** (`Logic-heavy: true`, FM/CLAS/INTF/large-PROG in inventory) — main thread renders a reader-facing briefing from `inventory.json`: pinned highlights · business-logic assets · cross-module gaps · sensitive objects · next-step hint. No extra agent dispatch.
 
 Main thread NEVER calls `GetPackageContents` / `GetWhereUsed` itself for the inventory pass — that context stays inside the stocker so the orchestrator window remains small even for large packages (200+ objects).
 </Workflow_Steps>
@@ -66,6 +65,7 @@ Main thread NEVER calls `GetPackageContents` / `GetWhereUsed` itself for the inv
 └── <MODULE>/               # SD, MM, PP, PM, QM, WM, TM, TR, FI, CO, HCM, BW, PS, Ariba
     └── <PACKAGE>/          # e.g., ZSD_MAIN
         ├── index.md        # human-readable summary, grouped by object type
+        ├── index.html      # optional single-file HTML view of index.md (offered at Step 8)
         ├── inventory.json  # machine-readable, consumed by sibling skills
         └── raw-walk.md     # optional full walk (only if asked or small package)
 ```

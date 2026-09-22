@@ -30,7 +30,7 @@ sc4sap:create-program is the flagship skill for creating new ABAP programs. It h
 <Do_Not_Use_When>
 - Creating a single class/interface/table — use `/sc4sap:create-object`
 - Modifying an existing program — use direct `UpdateProgram` / `UpdateInclude` MCP calls
-- Creating a RAP business object / OData service — use `/sc4sap:create-object` (with service binding + behavior definition) or `/sc4sap:team` for multi-object orchestration
+- Creating a RAP business object / OData service — use `/sc4sap:create-object` (with service binding + behavior definition)
 - User wants only scaffolding without coding — use `/sc4sap:create-object` with type=program
 </Do_Not_Use_When>
 
@@ -113,7 +113,6 @@ Full procedure — required steps, enforcement contract, rationale, spec templat
 **MANDATORY — runs at the very start of Phase 1A, BEFORE the module consultant asks the first question.** Invoke `/sc4sap:trust-session` with `parent_skill=sc4sap:create-program` to pre-grant MCP tool + file-op permissions for the entire session. This ensures interview-time MCP calls (consultant SPRO lookups, `SearchObject`, `GetWhereUsed`) and downstream Phase 4–8 activity both run without permission prompts.
 
 - If `.sc4sap/session-trust.log` already has a line within the last 24h, skip silently.
-- All subsequent `Agent` dispatches in this skill MUST pass `mode: "dontAsk"`.
 - **Exception**: `GetTableContents` and `GetSqlQuery` are NEVER auto-approved — they require explicit per-call user consent. See [`../trust-session/SKILL.md`](../trust-session/SKILL.md) Layer 1.
 </Session_Trust_Bootstrap>
 
@@ -169,6 +168,7 @@ Do not inline or paraphrase phase logic here — update `agent-pipeline.md` inst
 - `.sc4sap/program/{PROG}/review-bucket-{B1|B2|B3|B4}.md` — Phase 6 per-bucket reviews (merged into review.md, see `phase6-buckets.md`)
 - `.sc4sap/program/{PROG}/review.md` — Phase 6 consolidated review
 - `.sc4sap/program/{PROG}/report.md` — final completion report
+- `.sc4sap/program/{PROG}/{spec,report}.html` — optional single-file HTML copies, offered after Phase 8
 - `.claude/settings.local.json` — permissions allowlist (written by `/sc4sap:trust-session` during Phase 3.5)
 - `.sc4sap/session-trust.log` — audit trail of `trust-session` invocations
 </State_Files>

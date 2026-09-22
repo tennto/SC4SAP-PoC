@@ -3,6 +3,205 @@
 All notable changes to **SuperClaude for SAP (sc4sap)** will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.23] — 2026-09-22
+
+### Changed — `sap-executor` carries 92 SAP tools instead of 142
+
+- Sub-agents load the full schema of every tool in their `tools:` list on each dispatch (no deferred loading there). Dropped from `sap-executor`: the 25 `Delete*` tools (deletion needs a per-call user approval, so it belongs on the main thread), 16 `Read*` duplicates of `Get*` tools (`ReadClass` / `ReadProgram` stay), and unit-test / CDS unit-test authoring, metadata extension and package tools. A minimal dispatch went from 71.4K to 59.7K tokens.
+- Added `ActivateObjects`, `WriteTextElementsBulk` and `ReadTextElementsBulk`, which `create-program` and `create-object` already told the executor to call but it did not have. Checked with a `create-object` run on DEV (data element in `$TMP`: create → activate via `ActivateObjects` → verify).
+- Vendor pin: `ea0de8c` (4.8.7) → `9a948be` (4.8.8, shorter tool parameter descriptions).
+
+## [0.6.22] — 2026-09-22
+
+### Fixed — table reads returned values in the wrong rows (vendor 4.8.7)
+
+- `GetTableContents` / `GetSqlQuery` merged an empty cell with the next one, so every later value in that column moved up one row. Customizing and SPRO data pulled by `extract-customizations.mjs` / `extract-spro.mjs` from tables with empty cells may hold shifted values — re-run the extraction after updating.
+- `GetProgFullCode` now reads function groups (it returned metadata XML) and resolves nested includes.
+
+### Changed — smaller MCP responses
+
+- `SearchObject` drops the duplicated raw XML (over half of each response) and defaults to 50 results; `GetTableContents` returns column names only, leaves empty cells out of rows and defaults to 20 rows (`fields` / `include_metadata` when more is needed).
+- Source tools (`GetProgram`, `GetClass`, `GetInterface`, `GetFunctionModule`, `GetInclude`, `GetProgFullCode`) accept `output: "file"`: the source goes to `.sc4sap/work/<alias>/mcp-output/src/` and the response is the path plus an outline of METHOD / FORM / MODULE blocks with line ranges (a 66 KB class → ~3 KB). The bridge sets `MCP_OUTPUT_DIR` to that folder per profile; the server refuses file writes outside it.
+- `analyze-symptom` reads large classes / programs through the file outline and only the block around the termination line; `compare-programs` greps the files instead of reading every line, and no longer asks `sap-code-reviewer` for `ReadClass` / `ReadFunctionGroup` / `ReadView`, which it does not have.
+- Vendor pin: `9e6e216` (4.8.6) → `ea0de8c` (4.8.7).
+
+## [0.6.21] — 2026-09-22
+
+### Changed — `analyze-symptom` spends less context per round
+
+- **Dump reads sized to need** (measured on an S/4HANA dump): dumps feed `RuntimeListFeeds` (~1 KB per dump) replaces `RuntimeListDumps`, which returned an empty list on that system; `RuntimeGetDumpById` metadata (~7 KB: error, exception, termination link) comes first; the ~50 KB formatted dump is read at most once and only its developer chapters (~10 KB) are used. `RuntimeAnalyzeDump` and the `summary` key facts are no longer used — they pick the wrong chapter ("System environment", unrelated line). `sap-debugger` gains `RuntimeListFeeds`.
+- **Sonnet for `quick-dump`**, Opus for `full`. A quick-dump round that cannot settle the cause returns `BLOCKED — needs full` and is re-dispatched on Opus with its findings, so nothing is fetched twice.
+- **Type C team mode removed** (debugger + BC + module consultants on Opus for up to three rounds; never runtime-validated). Open business questions become a one-line `/sc4sap:ask-consultant` suggestion in the report.
+- **Narrower reads**: web lookup only when the failure point is standard SAP code; one failing include read with tools the debugger actually has (`GetInclude` / `GetProgram` / `GetClass` / `GetFunctionModule`, never `GetProgFullCode`); `GetTransport` only for transports holding call-stack objects (max 3); customization cache grepped by name instead of read whole; list calls `top ≤ 5`; later rounds reuse prior evidence.
+- `SKILL.md` 199 → 161 lines (duplicated tool inventory replaced by a pointer to the dispatch prompt).
+
+### Changed — vendor pin bumped to abap-mcp-adt-powerup 4.8.6
+
+`scripts/build-mcp-server.mjs` — `DEFAULT_PINNED_SHA` moves from `dfc96de` (4.8.5) to `9e6e21635e032dbfb38aec474c3125d2a8516dbe` (4.8.6):
+
+- `RuntimeGetDumpById` / `RuntimeAnalyzeDump`: key facts from the dump root and termination link (they pointed at the "System environment" chapter before); new `chapters` filter for the ST22 long text (51.5 KB → 3.4 KB on a real dump), used by `analyze-symptom`.
+- `RuntimeListDumps`: per-entry HTML summaries dropped by default (−88%).
+- RFC backend resolved per call; `SAP_RFC_BACKEND=zrfc` now works (it was offered by setup / sap-option but rejected by the server).
+- `pino` / `pino-pretty` no longer skipped by `npm install --omit=dev` — fresh installs and the bridge self-heal failed with "Vendor dependency missing: pino" on 4.8.5.
+
+Refresh path for existing installs: `node scripts/build-mcp-server.mjs --update`.
+
+### Version
+
+All four version fields bumped 0.6.20 → 0.6.21.
+
+## [0.6.20] — 2026-09-22
+
+### Changed — `analyze-symptom` is read-only and checks known issues first
+
+- Never calls SAP write tools (Create/Update/Delete/Patch/Write/Activate, RunUnitTest, RuntimeRun*/RuntimeCreate*, CreateTransport) and never edits files outside teamMode protocol files — even when asked for the fix. Fixes appear only as a "Proposed fix — not applied" block; Step 4 gives pointers instead of applying them.
+- Round 1 starts with a short web lookup for dumps / error messages (≤ 2 searches, ≤ 1 fetch) built from standard identifiers only — never Z*/Y* names, SID, user IDs or data. Hits are reported as leads under "🌐 Known Issues".
+- Profiler: existing traces are analyzed; no run is started and no trace parameters are created.
+- `sap-debugger`: when the dispatching skill names a report format, that format wins over the agent's default template.
+
+### Added — HTML output (new `scripts/spec/md-to-html.mjs`)
+
+Zero-dependency converter: one self-contained `.html` from a skill's `.md` (local images inlined as data URIs, ```` ```mermaid ```` drawn by the Mermaid CDN script, YAML frontmatter as a table, GitHub-style heading ids).
+
+- `program-to-spec` — output formats are a multi-select (Markdown / HTML / Excel); HTML is converted from the `.md`, and the intermediate `.md` is removed when Markdown was not selected.
+- `package-to-process` — `formats[]` multi-select for the process document and the BPML (default Markdown + Excel); `build-bpml.mjs` gains an `.html` mode. The process document has no Excel form, so an Excel-only choice keeps its `.md`.
+
+### Added — HTML option for the remaining Markdown-producing skills
+
+Every skill that writes a Markdown document for people can now also give a single self-contained HTML file, converted from the same `.md` by `scripts/spec/md-to-html.mjs` (images inlined, Mermaid via CDN):
+
+- `compare-programs` — Step 2 reply takes `html` (Markdown + HTML) or `html only`; follow-up menu offers an HTML copy later.
+- `analyze-code` — the Step 4 "save report" action writes Markdown, HTML or both.
+- `analyze-cbo-obj` — Step 8 offers `index.html` beside `index.md` (`index.md` / `inventory.json` always stay for sibling skills).
+- `create-program` — after Phase 8, offers HTML copies of `spec.md` and `report.md` (the `.md` files stay as pipeline state).
+
+### Fixed — SubagentStop loop and agent reference files
+
+- `scripts/verify-deliverables.mjs` read `output` / `result`, which SubagentStop never sends, so every agent looked empty ("produced minimal output (0 chars, expected 50+)") and was woken again. It now reads `last_assistant_message`, skips when the field is absent or `stop_hook_active` is set, and matches plugin-namespaced agent types (`sc4sap:sap-…`).
+- `agents/agent_details/bc/*` moved to `agent-refs/bc/*` — files under `agents/` were being registered as agents (with all tools). References in `sap-bc-consultant` and `analyze-symptom/team-mode.md` updated.
+
+### Version
+
+All four version fields (`package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` root & `plugins[0]`) bumped 0.6.19 → 0.6.20. Vendor pin unchanged (`dfc96de`, 4.8.5).
+
+## [0.6.19] — 2026-09-22
+
+### Removed — hooks that never fired or only added noise
+
+`hooks/hooks.json` drops from 22 hook commands to 14; for SAP MCP tool calls, only `permission-approver` still runs on each call.
+
+| Script | Why it went |
+|---|---|
+| `transport-validator`, `activation-trigger`, `project-memory-posttool`, `syntax-checker` | Matched only `mcp__mcp-abap-adt__*`; the plugin's tools are `mcp__plugin_sc4sap_sap__*`, so they never fired |
+| `keyword-detector` | Routed to skills that do not exist (`cancel`, `autopilot`, `ralph`, `release`) |
+| `skill-injector` | Scanned only top-level `skills/*.md` (skills live in sub-folders) for a `triggers:` key no skill has |
+| `persistent-mode` (+ ralph/autopilot branches in `session-start` / `session-end`) | Modes that no skill creates |
+| `permission-handler`, `code-simplifier` | Never approved anything / off by default with a one-line message |
+| `spro-injector` | Injected 15–20 KB of module config on every keyword-matched prompt, no de-duplication; consultants load what they need themselves |
+| `pre-tool-enforcer`, `post-tool-verifier` | Generic tips on every tool call; false "Command failed" on normal output containing "failed" / "error" |
+| `run.cjs` | Wrapper that spawned a second node process per hook — hooks now run `node <script>` directly |
+
+`tests/validation/plugin-structure.test.ts` now asserts that every hook command points at an existing script instead of a minimum event count.
+
+### Changed — lighter agent context
+
+- **Tier 1 is three files** (`data-extraction-policy`, `sap-version-reference`, `naming-conventions`). `context-loading-protocol` and `model-routing-rule` are orchestrator-only; every agent's `<Mandatory_Baseline>` now lists its files explicitly and carries the two rules it needs inline (expansion limit, `BLOCKED` on a hard blocker). Saves about 18 KB per dispatch.
+- **Module consultants read `configs/{MODULE}/*.md` on demand** — only the file the question needs instead of all six up front (about 20–30 KB per consultant dispatch).
+- **Report-only writer dispatches moved to the main thread** — `create-object` Step 7, `analyze-code` Branch B briefing, `analyze-cbo-obj` Branch B briefing. Same section templates, no extra agent.
+
+### Fixed — stale docs
+
+- Multi-profile paths: `common/spro-lookup.md`, `common/customization-lookup.md` and 17 agents now point at `.sc4sap/work/<alias>/…` (legacy `.sc4sap/…` fallback). `sap-option`, `sap-doctor` (Layer 1 active-profile check, Layer 6 default `odata`) and `mcp-setup` no longer describe the single-file `.sc4sap/sap.env` flow.
+- `create-object`, `analyze-code`, `analyze-symptom`, `compare-programs`, `analyze-cbo-obj` said the main thread runs on Haiku; their frontmatter has been `sonnet` since 0.6.6 — wording corrected.
+- `program-to-spec`: removed the deprecated `mode: "dontAsk"` Agent parameter.
+
+### Fixed — HUD context window ignored the subscription plan
+
+The `ctx` segment read its window from the pricing table, so models missing from it (e.g. `claude-opus-5[1m]`) fell back to 200K — a Max session at 633K rendered `633K/200K` (capped at 100%). New `scripts/hud/lib/context-window.mjs` resolves it on its own: `SC4SAP_CONTEXT_WINDOW` env > statusLine payload size > `[1m]` model id > model limit (Haiku, Claude 3, Opus/Sonnet 4.0–4.1 stay 200K) > `claudeAiOauth.subscriptionType` in `~/.claude/.credentials.json` (`max` / `team` / `enterprise` → 1M, `pro` / other → 200K) > 200K. `pricing.mjs` no longer carries a `ctx` column.
+
+### Upstream dependency
+
+- `abap-mcp-adt-powerup`: `SAP_RFC_BACKEND=zrfc` was offered by setup and `sap-option` but rejected by the runtime selector (`src/lib/rfcBackend.ts`) even though `zrfcProxy.ts` implements the backend. The selector now routes `zrfc` to it. Needs a vendor release + pin bump before it reaches plugin users.
+
+### Version
+
+All four version fields (`package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` root & `plugins[0]`) bumped 0.6.18 → 0.6.19. Vendor pin unchanged (`dfc96de`, 4.8.5).
+
+## [0.6.18] — 2026-08-23
+
+### Fixed — tier readonly guard let four mutating tools through on QA and PRD
+
+`scripts/hooks/tier-readonly-guard.mjs` matched mutations by the prefixes `Create` / `Update` / `Delete` plus a three-entry runtime-execution set. Four registered tools that mutate SAP matched neither and were reachable on QA and PRD profiles:
+
+| Tool | What it does |
+|---|---|
+| `ActivateObjects` | activates ABAP objects |
+| `PatchGuiStatus` | modifies a GUI status |
+| `WriteTextElementsBulk` | bulk-writes the text pool |
+| `RuntimeCreateProfilerTraceParameters` | configures a server-side profiler trace |
+
+Verified by running the hook as a real child process against an isolated project with `SAP_TIER=PRD`: all four returned no decision (allow) before the change and `deny` after it, while six controls (`Create*` / `Update*` / `Delete*` / `RunUnitTest` / `RuntimeRun*` / `GetProgram`) were unchanged in both directions.
+
+- `Patch`, `Write` and `Activate` join `MUTATION_PREFIXES` as prefixes rather than literals — each matches exactly one registered tool today, so a future sibling is covered on the day it ships. `Create` still matches by `startsWith`, so `RuntimeCreate*` is not swept in and stays in the explicit runtime set.
+- `RuntimeCreateProfilerTraceParameters` joins `RUNTIME_EXEC` alongside the `RuntimeRun*` executions it configures.
+- `data/sc4sap-mcp-tools-write.md` gains the missing `Write*` section. It already listed `ActivateObjects` and `PatchGuiStatus` as write tools, so the classification and the guard now agree.
+
+**No behaviour change on DEV** — the guard returns `null` on its first line for that tier, confirmed for all ten probed tools. On QA/PRD nothing usable is lost: activation and text-pool writes are unreachable once `Create*` / `Update*` are denied, and profiler-trace setup pairs with runs that were blocked already.
+
+Known gap, deliberately left open and documented in code: `RuntimeCallDispatch` invokes an arbitrary `ZMCP_ADT_DISPATCH` action, and the action name is a runtime argument — so neither layer can separate a write action from a read one by tool name alone. Tracked separately.
+
+Gap originally spotted by the SC4SAP-PoC read-only tool policy; the profiler-trace tool and the `RuntimeCallDispatch` note were found while verifying that report.
+
+### Changed — vendor pin bumped to abap-mcp-adt-powerup 4.8.5
+
+The MCP server's `readonlyGuard.ts` carried the identical two lists, so for these four tools **neither** layer of the two-layer defence blocked — while the hook still told the user the server guard was backing it up. Fixed upstream in the same shape and released as 4.8.5.
+
+- `scripts/build-mcp-server.mjs` — `DEFAULT_PINNED_SHA` bumped from `9fc6da6bf1b056edd29179edbc812e69f80c5363` (4.8.4) to `dfc96de9201d8450cbc59062a8ab67de88788ddc` (4.8.5).
+- Refresh path for existing installs: `node scripts/build-mcp-server.mjs --update`.
+
+### Version
+
+All four version fields (`package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` root & `plugins[0]`) bumped 0.6.17 → 0.6.18.
+
+## [0.6.17] — 2026-08-23
+
+### Fixed — hook payload never reached hook scripts (all sc4sap hooks silently broken)
+
+`scripts/run.cjs` launched each hook script with `execFile` but never forwarded the parent's stdin — the hook payload JSON — to the child process. Every stdin-reading hook (`skill-injector`, `keyword-detector`, `spro-injector`, `pre-tool-enforcer`, `transport-validator`, `post-tool-verifier`, `session-*`, …) therefore blocked until its internal `readStdin()` 5s timeout fired and then ran with an empty payload. Under Claude Code's stricter per-hook timeout enforcement this surfaced as `UserPromptSubmit hook timed out after 3s`, leaving keyword / skill / SPRO injection non-functional.
+
+- `scripts/run.cjs` rewritten from `execFile` to `spawn(..., { stdio: 'inherit' })`, wiring stdin/stdout/stderr straight through so hooks receive their payload and Claude Code receives their output. Per-invocation latency dropped from ~5.3s to ~0.3s; the 30s safety kill and clean exit-0-on-error behavior are retained. Affects every hook event (UserPromptSubmit, PreToolUse, PostToolUse, SessionStart/End, …).
+
+### Changed — trust-session permission model migrated to a PreToolUse hook
+
+A Claude Code permission update deprecated the Agent tool's `mode` parameter: `mode: "dontAsk"` is now ignored, and sub-agents inherit the parent session's permission mode (agent frontmatter `permissionMode` may override it, but there `dontAsk` means auto-DENY, not auto-approve). `trust-session`'s Layer 2 — passing `mode: "dontAsk"` on every `Agent` dispatch — was therefore fully non-functional, and pipeline sub-agents began prompting mid-run.
+
+- New PreToolUse hook `scripts/permission-approver.mjs` (wired in `hooks/hooks.json`, matcher `mcp__plugin_sc4sap_sap__.*|mcp__mcp-abap-adt__.*`) returns `permissionDecision: "allow"` for all SAP MCP handlers **except** `GetTableContents` / `GetSqlQuery`, which fall through to normal prompting plus the `block-forbidden-tables` safeguard. The hook runs in both the main thread and sub-agents, independent of session permission mode, so SAP MCP calls are auto-approved without the deprecated parameter.
+- `skills/trust-session/SKILL.md` rewritten: no longer enumerates SAP MCP tools in `settings.local.json` and no longer references `mode: "dontAsk"`; it now only pre-approves `Agent(*)` dispatch and `.sc4sap/**` state-file I/O, and documents the hook as the SAP MCP approval mechanism.
+- Removed the now-ignored `mode: "dontAsk"` directive from 22 skill files across `create-program`, `create-object`, `analyze-cbo-obj`, `analyze-code`, `analyze-symptom`, `compare-programs`, `package-to-process`, `ask-consultant`, and `setup`. (`program-to-spec` is owned by another contributor and was left untouched.)
+
+Reference: hooks `permissionDecision` output (code.claude.com/docs/en/hooks); sub-agent permission modes (code.claude.com/docs/en/sub-agents).
+
+### Changed — setup wizard `SAP_SYSTEM_TYPE` values renamed
+
+The setup wizard's system-type question (Step 4 profile creation) now offers `s4hana | cloud | ecc` instead of `onprem | cloud | legacy`, giving a clearer SAP product/deployment taxonomy (`s4hana` = S/4HANA on-prem, `cloud` = S/4HANA Cloud, `ecc` = ECC). The field is a descriptive label with no behavioral branching, so the rename is low-risk.
+
+- `scripts/sap-profile-cli.mjs` — new-profile default `'onprem'` → `'s4hana'`.
+- `scripts/sap-option-tui.mjs` — validator `['onprem','cloud','legacy']` → `['s4hana','cloud','ecc']`.
+- `skills/setup/wizard-step-04-profile-creation.md`, `skills/sap-option/SKILL.md`, `skills/sap-option/migration.md` — documented values + example updated.
+- Note: existing profiles carrying the old value keep working; re-save via `/sap-option` expects the new values.
+
+### Removed — `deep-interview`, `team`, `release` skills (OMC leftovers)
+
+Three skills carried over from the original oh-my-claudecode base were retired. `deep-interview` and `team` were generic OMC orchestration leftovers; `release` (CTS transport release workflow) is no longer needed. The `teamMode` feature woven into `create-program` / `compare-programs` / `ask-consultant` / `analyze-symptom` / `analyze-code` (and `common/team-consultation-protocol.md`) is a separate, sc4sap-native capability and is **retained** — only the standalone `/sc4sap:team` skill was removed.
+
+- Deleted `skills/{deep-interview,team,release}/`.
+- Registration updated: `.claude-plugin/plugin.json` + `marketplace.json` descriptions and skill count (17 → 14 workflow skills); `CLAUDE.md` skill list; `docs/FEATURES.md` (+ ko/ja/de) table rows and sections; `tests/validation/skills.test.ts` expected-skills list.
+- Cross-references to the removed skills cleaned from `common/model-routing-rule.md`, `common/active-modules.md`, `skills/trust-session/SKILL.md`, `skills/compare-programs/SKILL.md`, `skills/ask-consultant/SKILL.md`, `skills/create-object/SKILL.md` (+ `dispatch-prompts.md`), and `skills/create-program/SKILL.md`. (`program-to-spec` is owned by another contributor; its stale `deep-interview` cross-reference was left untouched.)
+
+### Version
+
+All four version fields (`package.json`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` root & `plugins[0]`) bumped 0.6.16 → 0.6.17.
+
 ## [0.6.16] — 2026-07-20
 
 ### Added — BPML deliverable for `package-to-process`

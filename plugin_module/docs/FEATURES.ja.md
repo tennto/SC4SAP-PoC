@@ -53,9 +53,6 @@
 | `sc4sap:analyze-symptom` | SAP 運用エラー/症状のステップバイステップ解析 (ダンプ、ログ、SAP Note 候補) |
 | `sc4sap:ask-consultant` | モジュールコンサルタントエージェント (SD/MM/FI/CO/PP/PS/PM/QM/TR/HCM/WM/TM/BW/Ariba/BC) に直接質問。読み取り専用 — 設定された SAP 環境に沿って回答。 |
 | `sc4sap:trust-session` | INTERNAL-ONLY — セッション全体 MCP パーミッションブートストラップ |
-| `sc4sap:deep-interview` | 実装前の Socratic 要件収集 |
-| `sc4sap:team` | 調整された並列エージェント実行 (ネイティブ Claude Code teams) |
-| `sc4sap:release` | CTS トランスポートリリースワークフロー |
 
 ## スキル — 例 & ワークフロー
 
@@ -109,12 +106,6 @@ Z パッケージを走査、再利用可能資産をカタログ化、クロス
 
 ### `/sc4sap:program-to-spec`
 Socratic scope narrowing で ABAP プログラムを仕様書にリバースエンジニアリング (Markdown/Excel)。
-
-### `/sc4sap:team`
-ネイティブ Claude Code teams で調整された並列エージェント実行。
-
-### `/sc4sap:release`
-CTS トランスポートリリースワークフロー — リスト、検証、リリース、インポート確認。
 
 ### `/sc4sap:sap-doctor`
 プラグイン + MCP + SAP 接続診断。問題発生時に最初に実行。
@@ -177,7 +168,7 @@ sc4sap のルールコーパスは膨大 — 25+ `common/*.md` + 14 `configs/{MO
 
 | Tier | ロードタイミング | ファイル |
 |------|-----------------|----------|
-| **Tier 1 — グローバル必須** | すべてのエージェント、すべてのスキル、セッション開始 | `data-extraction-policy.md`, `sap-version-reference.md`, `naming-conventions.md`, `context-loading-protocol.md`, `model-routing-rule.md` |
+| **Tier 1 — グローバル必須** | すべてのエージェント、すべてのスキル、セッション開始 | `data-extraction-policy.md`, `sap-version-reference.md`, `naming-conventions.md` |
 | **Tier 2 — 役割別必須** | エージェントの役割グループ固定セット、セッション開始 | 役割グループによって異なる (下記参照) |
 | **Tier 3 — トリガーロード** | 現在のタスクが条件に一致する場合 | ALV → `alv-rules.md` · Procedural → `clean-code-procedural.md` + `ok-code-pattern.md` · `CALL SCREEN` → `ok-code-pattern.md` · ECC → `ecc-ddic-fallback.md` · industry/country 設定 → 該当ファイル · 等 |
 | **Tier 4 — Per-Task キット** | ディスパッチするスキル/phase/bucket が宣言 | `phase4-parallel.md` の wave 別、`phase6-review.md` の §1-§12 別 |
@@ -191,7 +182,7 @@ sc4sap のルールコーパスは膨大 — 25+ `common/*.md` + 14 `configs/{MO
 | **Planner / Architect** | `sap-planner`, `sap-architect` | `include-structure.md`, `active-modules.md`, `customization-lookup.md`, `field-typing-rule.md` |
 | **Analyst / Writer** | `sap-analyst`, `sap-writer` | `active-modules.md` |
 | **Doc Specialist** | `sap-doc-specialist` | *(なし — タスク駆動)* |
-| **Module Consultant** | 14 モジュールコンサルタント (SD, MM, FI, CO, PP, PS, PM, QM, TR, HCM, WM, TM, BW, Ariba) | `spro-lookup.md`, `customization-lookup.md`, `active-modules.md`, `configs/{MODULE}/{spro,tcodes,bapi,tables,enhancements,workflows}.md` |
+| **Module Consultant** | 14 モジュールコンサルタント (SD, MM, FI, CO, PP, PS, PM, QM, TR, HCM, WM, TM, BW, Ariba) | `spro-lookup.md`, `customization-lookup.md`, `active-modules.md`, `configs/{MODULE}/*.md` (on demand — only the file the question needs) |
 | **Basis Consultant** | `sap-bc-consultant` | `transport-client-rule.md`, `configs/common/*.md` |
 
 ### 強制

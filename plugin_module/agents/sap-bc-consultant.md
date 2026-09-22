@@ -16,7 +16,7 @@ disallowedTools: [Write, Edit]
   </Team_Shutdown_Handler>
 
   <Mandatory_Baseline>
-  Role group: **Basis Consultant**. Load Tier 1 + Tier 2 per [`../common/context-loading-protocol.md`](../common/context-loading-protocol.md) at session start. Tier 2 adds: `transport-client-rule.md`, `configs/common/*.md` (system admin references).
+  Role group: **Basis Consultant**. At session start load Tier 1 — `../common/data-extraction-policy.md`, `../common/sap-version-reference.md`, `../common/naming-conventions.md` — plus the Tier 2 files below. Tier 2 adds: `transport-client-rule.md`, `configs/common/*.md` (system admin references). Skip the orchestrator-only docs (`context-loading-protocol.md`, `model-routing-rule.md`). Read any other rule file only when the task needs it; if more than 2 extra files are needed, return `BLOCKED — context kit insufficient: <list>`. On a hard blocker, return `BLOCKED — <reason>` instead of guessing.
   </Mandatory_Baseline>
 
   <Role>
@@ -63,14 +63,14 @@ disallowedTools: [Write, Edit]
   </Diagnostic_Routing_Tree>
 
   <Diagnostic_Flows>
-    **MANDATORY**: The full step-by-step procedure for all nine flows (ABAP Dump / WP Hang / Transport / RFC / Update / Lock / Performance / Kernel / Unknown) lives in `agents/agent_details/bc/diagnostic-flows.md`. Read that file before beginning any investigation and follow the flow matching the Diagnostic Routing Tree classification. Do not diagnose from memory — every symptom type has a prescribed evidence-collection order.
+    **MANDATORY**: The full step-by-step procedure for all nine flows (ABAP Dump / WP Hang / Transport / RFC / Update / Lock / Performance / Kernel / Unknown) lives in `agent-refs/bc/diagnostic-flows.md`. Read that file before beginning any investigation and follow the flow matching the Diagnostic Routing Tree classification. Do not diagnose from memory — every symptom type has a prescribed evidence-collection order.
   </Diagnostic_Flows>
 
   <Customization_Context>
     **MANDATORY when a dump / symptom originates in a `Z*` / `Y*` object, a customized SAP include, or touches a modified SAP table.** Before finalising a root-cause hypothesis:
 
     1. Identify which functional module(s) the faulting program / include / FM belongs to (use the include/program prefix — `MV45AF*` = SD, `LMIGO*` = MM, `RFFO*` = FI, etc.).
-    2. Load the per-module customization cache for each involved module: `.sc4sap/customizations/{MODULE}/enhancements.json` + `.sc4sap/customizations/{MODULE}/extensions.json`.
+    2. Load the per-module customization cache for each involved module: `.sc4sap/work/<alias>/customizations/{MODULE}/enhancements.json` + `.sc4sap/work/<alias>/customizations/{MODULE}/extensions.json`.
     3. Reverse-lookup the failing object:
        - If it is a `Z*` BAdI impl class → find its `standardName` in `badiImplementations[]` so the root cause can be explained against the standard BAdI contract.
        - If it is a customer include like `ZXV45U01` or a customized SAP include like `MV45AFZZ` → find it in `formBasedExits[]` and note the line count (heavy customization = higher likelihood of the dump being customer-side).
@@ -79,7 +79,7 @@ disallowedTools: [Write, Edit]
   </Customization_Context>
 
   <Key_Transaction_Codes>
-    **MANDATORY**: The authoritative TCode reference table lives in `agents/agent_details/bc/transaction-codes.md`. Read that file and cite one of those TCodes (or a log-file path) as diagnostic evidence for every recommendation.
+    **MANDATORY**: The authoritative TCode reference table lives in `agent-refs/bc/transaction-codes.md`. Read that file and cite one of those TCodes (or a log-file path) as diagnostic evidence for every recommendation.
     Quick reference: ST22 (dump), SM21 (syslog), SM50/SM66 (WP), STMS (transport), SM59 (RFC), SM13 (update), SM12 (lock), ST05/SAT/ST06/ST02 (performance), RZ20 (CCMS), RZ10/RZ11 (parameter), SCC4 (client maintenance).
   </Key_Transaction_Codes>
 

@@ -86,17 +86,45 @@ const WARM_REFILL_DELAY_MS = 3_000;
 /**
  * Appended to the model's system prompt for every session.
  *
- * One rule, about how table data is laid out. Left to itself the model
+ * Two things. First, who the host is: the plugin's skills (analyze-symptom
+ * since 0.6.20) look for `Host: sc4sap-web` and skip their trust-session
+ * permission bootstrap when they see it — that step reads a log, globs and
+ * invokes a skill to grant permissions through `.claude/settings.local.json`,
+ * which the SDK never loads, so under this server it was a few seconds of
+ * work that changed nothing. This backend governs permissions itself.
+ *
+ * Second, one rule about how table data is laid out. Left to itself the model
  * transposes a single-record result into a two-column field/value list while
  * rendering many records as one column per field — so the same query reads as
  * a different shape at one row versus two. This pins the orientation: fields
  * are columns and records are rows, at any count.
  */
 const OUTPUT_FORMAT_APPEND =
+  "Host: sc4sap-web — a headless web host that governs tool permissions itself; " +
+  "skip any session-trust or permission bootstrap step a skill would otherwise run.\n\n" +
   "When you present data read from a SAP table — whether one record or many — " +
   "always render it as a Markdown table with one column per field and one row " +
   "per record. Keep this same header-and-rows orientation for a single record: " +
   "never transpose one record into a two-column field/value list.";
+
+/**
+ * Environment for every session's Claude Code process.
+ *
+ * `DISABLE_SC4SAP=1` switches off the plugin's own `permission-approver.mjs`
+ * PreToolUse hook (sc4sap 0.6.17+), and nothing else in the plugin reads the
+ * variable. That hook answers `permissionDecision: "allow"` for every SAP MCP
+ * tool but the two row-extraction ones, and under the SDK an allow from a
+ * hook bypasses `canUseTool` outright — measured: `GetSession` ran without
+ * the callback ever being consulted. That would take the account's approval
+ * level, the session's "allow all SAP reads" switch and the tool log's
+ * decision out of the loop for every SAP read. The plugin's hook exists to
+ * spare a CLI user per-call prompts; here that job is done by `allowedTools`
+ * and the approval queue, which is where it has to stay.
+ */
+const SESSION_ENV: Record<string, string | undefined> = {
+  ...process.env,
+  DISABLE_SC4SAP: "1",
+};
 
 /**
  * How long an unanswered approval blocks the turn before it is denied.
@@ -630,8 +658,11 @@ export class SessionManager {
         plugins: [{ type: "local", path: this.#config.pluginPath }],
         cwd: this.#config.workspace,
         model: options.model ?? this.#config.model,
-        // Keep Claude Code's own prompt and add one formatting rule on top —
-        // SAP records render row-oriented at any row count. See the constant.
+        // Keeps the plugin's auto-approve hook out of the way. See the constant.
+        env: SESSION_ENV,
+        // Keep Claude Code's own prompt and add the host declaration plus one
+        // formatting rule on top — SAP records render row-oriented at any row
+        // count. See the constant.
         systemPrompt: {
           type: "preset",
           preset: "claude_code",

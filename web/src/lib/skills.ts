@@ -212,7 +212,7 @@ export const SKILLS: Skill[] = [
       },
     ],
     cost: {
-      note: "Each round dispatches a reviewer agent against the SAP system — dumps, transports, code. On Opus, as the skill asks, a round is a few dollars; on Sonnet it is a fraction of that.",
+      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code. A plain short dump is triaged on Sonnet for cents; anything wider — an error message, a wrong result, a dump tied to a recent change — runs on Opus, as the skill asks, at a few dollars a round.",
       defaultBudgetUsd: 3,
     },
     followUp: true,
@@ -245,6 +245,9 @@ export const SKILLS: Skill[] = [
       { label: "Programs", kind: "textarea", placeholder: "One per line — 2 to 5 of them.", hint: "They should share a business scenario; the divergence is the point." },
       { label: "Comparison axis", kind: "select", options: ["Module", "Country / localization", "Persona", "Time horizon"] },
       { label: "Reader", kind: "select", options: ["Functional consultant", "Developer", "Business owner"] },
+      // The skill's Step 2 choice, in its own words: Markdown by default,
+      // `html` adds a single-file copy, `html only` keeps just that.
+      { label: "Output", kind: "select", options: ["Markdown", "Markdown + HTML", "HTML only"], hint: "HTML is one self-contained file — share, mail, print." },
     ],
   },
 
@@ -260,7 +263,9 @@ export const SKILLS: Skill[] = [
     status: "ready",
     fields: [
       { label: "Program name", kind: "text", placeholder: "ZPP0050" },
-      { label: "Output format", kind: "select", options: ["Markdown", "Excel (xlsx)"] },
+      // Any combination since plugin 0.6.20; the common ones are listed rather
+      // than every subset, and the skill takes the words as they are.
+      { label: "Output format", kind: "select", options: ["Markdown", "HTML", "Excel (xlsx)", "Markdown + HTML", "Markdown + HTML + Excel (xlsx)"], hint: "HTML is one self-contained file with the mockups inlined." },
       { label: "Scope", kind: "select", options: ["Everything", "Selection screen only", "Business logic only", "Interfaces only"] },
       { label: "Language", kind: "select", options: ["Korean", "English", "Japanese", "German"] },
     ],
@@ -277,7 +282,10 @@ export const SKILLS: Skill[] = [
     fields: [
       { label: "Package", kind: "text", placeholder: "ZMM_CBO" },
       { label: "Module", kind: "select", options: MODULES.slice(1) },
-      { label: "Deliverable", kind: "select", options: ["Markdown", "BPML workbook (xlsx)"] },
+      // One choice covers both deliverables — the process document and the
+      // BPML — since plugin 0.6.20. The process document has no Excel form, so
+      // an Excel choice applies to the BPML and the document keeps Markdown.
+      { label: "Deliverable", kind: "select", options: ["Markdown", "HTML", "Markdown + HTML", "Markdown + BPML workbook (xlsx)", "Markdown + HTML + BPML workbook (xlsx)"], hint: "The BPML is the Excel deliverable; the process document comes as Markdown or HTML." },
       { label: "Language", kind: "select", options: ["Korean", "English", "Japanese", "German"] },
     ],
   },

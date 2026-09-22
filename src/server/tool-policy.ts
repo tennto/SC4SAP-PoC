@@ -29,12 +29,14 @@ export const SAP_TOOL_PREFIX = "mcp__plugin_sc4sap_sap__";
 /**
  * Write-class SAP tools, removed from context outright.
  *
- * The plugin's own `tier-readonly-guard.mjs` hook matches
- * `(Create|Update|Delete|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling)`.
- * That regex misses `PatchGuiStatus`, `WriteTextElementsBulk`, `ActivateObjects`
- * and `RuntimeCreateProfilerTraceParameters`, all of which mutate the SAP
- * system — so this list deliberately covers more than the hook does rather
- * than mirroring it.
+ * The plugin's own `tier-readonly-guard.mjs` hook is installed behind the
+ * matcher `(Create|Update|Delete|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling)`
+ * (see provision-workspace.ts). That regex misses `PatchGuiStatus`,
+ * `WriteTextElementsBulk`, `ActivateObjects` and
+ * `RuntimeCreateProfilerTraceParameters`, all of which mutate the SAP
+ * system — the hook itself has classified them as writes since plugin
+ * 0.6.18, but it is never reached for them — so this list deliberately
+ * covers more than the installed hook does rather than mirroring it.
  */
 export const WRITE_CLASS_PATTERNS: readonly string[] = [
   `${SAP_TOOL_PREFIX}Create*`,

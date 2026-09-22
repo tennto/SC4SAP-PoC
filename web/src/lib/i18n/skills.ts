@@ -110,7 +110,7 @@ const ko: CatalogText = {
       summary:
         "덤프, 오류, 성능 저하의 근본 원인 분석 — 덤프, 전송, where-used를 살펴 가설을 좁힙니다",
       costNote:
-        "매 라운드마다 리뷰어 에이전트가 SAP 시스템의 덤프, 전송, 코드를 조사합니다. 스킬이 요구하는 Opus에서는 한 라운드에 몇 달러, Sonnet에서는 그 일부입니다.",
+        "매 라운드마다 디버거 에이전트가 SAP 시스템의 덤프, 전송, 코드를 조사합니다. 단순한 숏 덤프는 Sonnet에서 몇 센트로 분류되고, 그보다 넓은 경우 — 오류 메시지, 잘못된 결과, 최근 변경과 얽힌 덤프 — 는 스킬이 요구하는 대로 Opus에서 한 라운드에 몇 달러가 듭니다.",
       fields: {
         "Symptom type": {
           label: "증상 유형",
@@ -193,6 +193,11 @@ const ko: CatalogText = {
             "Business owner": "현업 담당자",
           },
         },
+        Output: {
+          label: "출력",
+          options: { Markdown: "Markdown", "Markdown + HTML": "Markdown + HTML", "HTML only": "HTML만" },
+          hint: "HTML은 단일 파일로 만들어져 공유, 메일, 인쇄에 바로 쓸 수 있습니다.",
+        },
       },
     },
     "program-to-spec": {
@@ -201,7 +206,17 @@ const ko: CatalogText = {
         "프로그램을 역공학해 기능 또는 기술 명세서로 만들고, 선택 화면과 ALV 목업을 붙입니다",
       fields: {
         "Program name": { label: "프로그램 이름" },
-        "Output format": { label: "출력 형식", options: { Markdown: "Markdown", "Excel (xlsx)": "Excel (xlsx)" } },
+        "Output format": {
+          label: "출력 형식",
+          options: {
+            Markdown: "Markdown",
+            HTML: "HTML",
+            "Excel (xlsx)": "Excel (xlsx)",
+            "Markdown + HTML": "Markdown + HTML",
+            "Markdown + HTML + Excel (xlsx)": "Markdown + HTML + Excel (xlsx)",
+          },
+          hint: "HTML은 목업 이미지가 포함된 단일 파일입니다.",
+        },
         Scope: {
           label: "범위",
           options: {
@@ -223,7 +238,14 @@ const ko: CatalogText = {
         Module: { label: "모듈", options: MODULES_KO },
         Deliverable: {
           label: "산출물",
-          options: { Markdown: "Markdown", "BPML workbook (xlsx)": "BPML 워크북 (xlsx)" },
+          options: {
+            Markdown: "Markdown",
+            HTML: "HTML",
+            "Markdown + HTML": "Markdown + HTML",
+            "Markdown + BPML workbook (xlsx)": "Markdown + BPML 워크북 (xlsx)",
+            "Markdown + HTML + BPML workbook (xlsx)": "Markdown + HTML + BPML 워크북 (xlsx)",
+          },
+          hint: "BPML이 Excel 산출물이고, 프로세스 문서는 Markdown 또는 HTML로 나옵니다.",
         },
         Language: { label: "언어", options: LANGUAGES_KO },
       },
@@ -341,7 +363,7 @@ const ja: CatalogText = {
       summary:
         "ダンプ、エラー、性能低下の根本原因分析 — ダンプ、移送、where-used を調べて仮説を絞り込みます",
       costNote:
-        "各ラウンドでレビュアーエージェントが SAP システムのダンプ、移送、コードを調査します。スキルが求める Opus では 1 ラウンド数ドル、Sonnet ではその数分の一です。",
+        "各ラウンドでデバッガーエージェントが SAP システムのダンプ、移送、コードを調査します。単純なショートダンプは Sonnet で数セントのうちに切り分けられ、それより広い場合 — エラーメッセージ、誤った結果、最近の変更に絡むダンプ — はスキルが求めるとおり Opus で 1 ラウンド数ドルかかります。",
       fields: {
         "Symptom type": {
           label: "症状の種類",
@@ -424,6 +446,11 @@ const ja: CatalogText = {
             "Business owner": "業務担当者",
           },
         },
+        Output: {
+          label: "出力",
+          options: { Markdown: "Markdown", "Markdown + HTML": "Markdown + HTML", "HTML only": "HTML のみ" },
+          hint: "HTML は単一ファイルとして生成され、共有・メール・印刷にそのまま使えます。",
+        },
       },
     },
     "program-to-spec": {
@@ -432,7 +459,17 @@ const ja: CatalogText = {
         "プログラムをリバースエンジニアリングして機能仕様書または技術仕様書にし、選択画面と ALV のモックアップを添えます",
       fields: {
         "Program name": { label: "プログラム名" },
-        "Output format": { label: "出力形式", options: { Markdown: "Markdown", "Excel (xlsx)": "Excel (xlsx)" } },
+        "Output format": {
+          label: "出力形式",
+          options: {
+            Markdown: "Markdown",
+            HTML: "HTML",
+            "Excel (xlsx)": "Excel (xlsx)",
+            "Markdown + HTML": "Markdown + HTML",
+            "Markdown + HTML + Excel (xlsx)": "Markdown + HTML + Excel (xlsx)",
+          },
+          hint: "HTML はモックアップ画像を埋め込んだ単一ファイルです。",
+        },
         Scope: {
           label: "範囲",
           options: {
@@ -454,7 +491,14 @@ const ja: CatalogText = {
         Module: { label: "モジュール", options: MODULES_JA },
         Deliverable: {
           label: "成果物",
-          options: { Markdown: "Markdown", "BPML workbook (xlsx)": "BPML ワークブック (xlsx)" },
+          options: {
+            Markdown: "Markdown",
+            HTML: "HTML",
+            "Markdown + HTML": "Markdown + HTML",
+            "Markdown + BPML workbook (xlsx)": "Markdown + BPML ワークブック (xlsx)",
+            "Markdown + HTML + BPML workbook (xlsx)": "Markdown + HTML + BPML ワークブック (xlsx)",
+          },
+          hint: "BPML が Excel の成果物で、プロセス文書は Markdown または HTML で出力されます。",
         },
         Language: { label: "言語", options: LANGUAGES_JA },
       },

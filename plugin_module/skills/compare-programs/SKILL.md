@@ -42,7 +42,7 @@ Step 4b is the integration point for Type A teamMode (Cross-Module Consultant Pa
 - Only **one** program → use `/sc4sap:program-to-spec` instead
 - User wants **code quality** review (not business intent) → `/sc4sap:analyze-code`
 - User wants to **build a new** program → `/sc4sap:create-program`
-- More than 5 programs — break into multiple comparison sessions or escalate to `/sc4sap:team`
+- More than 5 programs — break into multiple comparison sessions
 </Do_Not_Use_When>
 
 <Session_Trust_Bootstrap>
@@ -52,7 +52,6 @@ Invoke `/sc4sap:trust-session` with `parent_skill=sc4sap:compare-programs` to pr
 
 - If `.sc4sap/session-trust.log` already has a line within the last 24h, skip silently.
 - Otherwise run it and surface the one-line confirmation.
-- All `Agent` dispatches within this skill MUST pass `mode: "dontAsk"`.
 
 Full spec: see [`../trust-session/SKILL.md`](../trust-session/SKILL.md).
 </Session_Trust_Bootstrap>
@@ -69,15 +68,15 @@ Full spec: see [`../trust-session/SKILL.md`](../trust-session/SKILL.md).
 </Companion_Files>
 
 <Agent_Composition>
-Per-step model allocation. Skill frontmatter pins the main thread to Haiku; each `Agent(...)` carries its own model (frontmatter or explicit override).
+Per-step model allocation. Skill frontmatter pins the main thread to Sonnet; each `Agent(...)` carries its own model (frontmatter or explicit override).
 
-- **Main orchestrator (Haiku 4.5)** — Steps 1, 2, 6: intake, scope confirmation, follow-up menu. Holds NO source code / AST / screens in its own context; all MCP-heavy work runs inside agents.
+- **Main orchestrator (Sonnet 4.6)** — Steps 1, 2, 6: intake, scope confirmation, follow-up menu. Holds NO source code / AST / screens in its own context; all MCP-heavy work runs inside agents.
 - **Facts extraction (`sap-code-reviewer` × N, Sonnet 4.6 via `model: "sonnet"` override)** — Step 3 (absorbs the old "Read Phase"). Each reviewer reads ONE program itself (`GetProgFullCode` / `GetAbapAST` / screens / GUI status / text elements / where-used) and returns structural facts only — no quality scoring. Sonnet is sufficient because this pass is rule-based extraction, not novel code generation; matches the base tier of `common/model-routing-rule.md` § Tier 1.
 - **Analysis + narrative (`sap-analyst` × 1, Opus 4.7)** — Step 4: a SINGLE dispatch covering module classification + dimension scoring + executive summary + recommendation. Keeps the analyst's context continuous across reasoning layers instead of fragmenting into 4 chained calls.
 - **Module specialists (conditional, `sap-{module}-consultant` × K, Opus 4.7)** — Step 4b: when programs span 2+ modules (MM+CO, SD+FI, etc.), each distinct module gets a consultant dispatch to explain "what would a {module} user use this for". The analyst's scoring consumes these in its narrative.
 - **Rendering (`sap-writer` × 1, Haiku 4.5)** — Step 5: renders the final Markdown using `report-template.md`. Pure formatting from structured state.
 
-All Agent dispatches pass `mode: "dontAsk"` (trust-session already granted in Step 0).
+SAP MCP permission prompts are auto-approved by the sc4sap permission-approver PreToolUse hook.
 </Agent_Composition>
 
 <Language_Policy>
@@ -90,7 +89,7 @@ All Agent dispatches pass `mode: "dontAsk"` (trust-session already granted in St
 </Language_Policy>
 
 <Output_Location>
-`.sc4sap/comparisons/{prog1}__vs__{prog2}[__vs__{prog3}…]-{YYYYMMDD}.md`
+`.sc4sap/comparisons/{prog1}__vs__{prog2}[__vs__{prog3}…]-{YYYYMMDD}.md` and/or `.html` — format chosen at Step 2 (Markdown default; `html` adds a single-file HTML converted from the `.md`, `html only` keeps just the HTML).
 
 - Program names are uppercase, underscore-safe (slashes → `_`).
 - If the filename exceeds 120 chars (5-program case), use `.sc4sap/comparisons/compare-{YYYYMMDD}-{hash6}.md` and list the programs inside the front-matter.
@@ -112,7 +111,6 @@ This skill reads **source code + DDIC metadata + where-used + screen/GUI-status/
 - `/sc4sap:program-to-spec` — single-program reverse-engineering (vertical depth)
 - `/sc4sap:analyze-code` — quality review (what's wrong, not what's different)
 - `/sc4sap:analyze-cbo-obj` — CBO package inventory (complementary context for dimension 8)
-- `/sc4sap:deep-interview` — use before comparison if user is unsure which programs to include
 </Related_Skills>
 
 Task: {{ARGUMENTS}}

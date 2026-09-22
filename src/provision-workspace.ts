@@ -31,13 +31,15 @@ const HOOK_SPECS = [
     //
     // It has a known gap: ActivateObjects, PatchGuiStatus,
     // WriteTextElementsBulk and RuntimeCreateProfilerTraceParameters mutate
-    // SAP without a Create|Update|Delete prefix, so neither this matcher nor
-    // the hook's own classification covers them. Widening it here alone would
-    // achieve nothing — the hook would be invoked and then ignore them.
-    // In this PoC those four are handled instead by WRITE_CLASS_PATTERNS in
-    // server/tool-policy.ts, which removes them from the model's context
-    // entirely, on every tier rather than only QA/PRD. Closing the gap in the
-    // hook itself belongs in the plugin repo.
+    // SAP without a Create|Update|Delete prefix. Since plugin 0.6.18 the
+    // hook's own classification does cover them (Patch|Write|Activate
+    // prefixes, the profiler-trace tool in its runtime set), but the matcher
+    // in install-hooks.mjs was not widened, so under this settings.json the
+    // hook is never invoked for them. Widening it here alone would work now,
+    // and is still not done: in this PoC those four are handled instead by
+    // WRITE_CLASS_PATTERNS in server/tool-policy.ts, which removes them from
+    // the model's context entirely, on every tier rather than only QA/PRD.
+    // The matcher stays the plugin's so the two can be diffed.
     matcher:
       "mcp__.*__(Create|Update|Delete|RunUnitTest|RuntimeRunProgramWithProfiling|RuntimeRunClassWithProfiling)",
   },

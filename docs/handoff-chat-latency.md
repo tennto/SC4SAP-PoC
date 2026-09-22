@@ -44,6 +44,8 @@
 
 **진짜 원인은 부팅이 아니라 플러그인 훅 러너였다.** `plugin_module/scripts/run.cjs` 가 `execFile` 로 훅 스크립트를 띄우면서 자기 stdin 을 자식에게 넘기지 않았다. 스크립트 28개가 전부 `readStdin()` 의 5초 타임아웃을 꽉 채우고 나서야 동작했다. `hooks.json` 은 SessionStart·UserPromptSubmit·PreToolUse·PostToolUse·Stop 마다 훅 2~3개를 거니, 턴당 약 15초 + 툴 호출당 약 10초가 순수 대기였다. 수정은 stdin 파이프 한 줄. 훅 하나 5,150 ms → 140 ms.
 
+> **2026-09-22 갱신.** 위 `run.cjs` 패치는 더 이상 이 저장소에 없다. 업스트림 sc4sap 이 0.6.17 에서 같은 stdin 버그를 고쳤고, 0.6.19 에서 `run.cjs` 자체와 UserPromptSubmit·PreToolUse(`*`)·PostToolUse·PermissionRequest 훅을 전부 걷어냈다(훅 22개 → 14개, SAP 툴 호출마다 도는 건 `permission-approver.mjs` 하나). `plugin_module` 을 0.6.23 으로 올리면서 그 상태를 그대로 받았으므로, 턴당 훅 비용은 위 표의 "훅 러너 수정 후" 보다 더 낮다. 단 `permission-approver.mjs` 는 SAP 읽기 툴을 훅 단계에서 `allow` 해 버려 백엔드의 `canUseTool` 승인 큐를 건너뛰므로, `session-manager.ts` 가 세션 환경변수 `DISABLE_SC4SAP=1` 로 그 훅만 끈다.
+
 **세션 워밍**은 그 위에 얹었다. `SessionManager.warm()` / `#warm` 풀, `GET /sessions` 가 계정별로 하나 미리 띄움, `create()` 가 같은 모양(userId·model·economy·approval·budget)이면 가져가고 3초 뒤 재충전, 10분 미청구 시 `#discardWarm` 으로 회수(`SC4SAP_WARM_IDLE_MS`), `/health` 에 `warm` 수. `web/src/app/chat/page.tsx` 의 서버 측 `/sessions` 호출에 계정 헤더를 붙여야 페이지 로드에 워밍이 걸린다.
 
 알게 된 것: SDK 는 첫 프롬프트가 들어오기 전엔 `system/init` 을 보내지 않는다. 워밍 세션은 `starting` 인 채로 대기하지만 프로세스·MCP 연결은 이미 끝나 있다(`mcpServerStatus()` 로 확인, 약 7초). 그래서 "준비 완료" 신호 없이 시간만 벌어두는 구조다.

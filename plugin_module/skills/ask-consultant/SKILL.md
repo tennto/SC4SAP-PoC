@@ -46,7 +46,6 @@ When module routing produces ≥ 2 consultants, Step 4 doubles as teamMode Round
 Invoke `/sc4sap:trust-session` with `parent_skill=sc4sap:ask-consultant` so the consultant agent's read-only MCP calls (`SearchObject`, `GetTable`, `GetPackage`, `GetWhereUsed`, etc.) proceed without prompting.
 
 - If `.sc4sap/session-trust.log` already has a line within the last 24h, skip silently.
-- All downstream `Agent` dispatches MUST pass `mode: "dontAsk"`.
 
 Full spec: see [`../trust-session/SKILL.md`](../trust-session/SKILL.md).
 </Session_Trust_Bootstrap>
@@ -59,7 +58,7 @@ Full spec: see [`../trust-session/SKILL.md`](../trust-session/SKILL.md).
 
 Pass these to the consultant via the dispatch prompt so its answer reflects the actual landscape. If any key is missing, ask the user before dispatching — do NOT let the consultant invent assumptions.
 
-The consultant agent's Mandatory_Baseline (Tier 1 + Tier 2 per [`../../common/context-loading-protocol.md`](../../common/context-loading-protocol.md)) ensures it loads `spro-lookup.md`, `customization-lookup.md`, `active-modules.md`, and `configs/{MODULE}/*.md` at session start.
+The consultant agent's Mandatory_Baseline (Tier 1 + Tier 2 per [`../../common/context-loading-protocol.md`](../../common/context-loading-protocol.md)) ensures it loads `spro-lookup.md`, `customization-lookup.md`, `active-modules.md` at session start and reads only the `configs/{MODULE}/*.md` file(s) the question needs.
 </Environment_Context>
 
 <Module_Routing>
@@ -92,8 +91,7 @@ Per-step model allocation (skill frontmatter pins the main thread to Haiku; Agen
    Agent({
      subagent_type: "sc4sap:sap-<module>-consultant",   // frontmatter already pins claude-opus-4-7
      description: "<MODULE> consultation — <topic>",
-     prompt: <user question + environment context + expected format>,
-     mode: "dontAsk"
+     prompt: <user question + environment context + expected format>
    })
    ```
    **teamMode variant**: when N ≥ 2, Step 4 doubles as Round 1 of teamMode — use the Round 1 spawn shape in [`team-rounds.md`](team-rounds.md) § Round 1 (adds `team_name`, `name`, charter-file reference; consultants write POSITION files instead of returning directly).
@@ -121,8 +119,7 @@ Per-step model allocation (skill frontmatter pins the main thread to Haiku; Agen
        <MODULE_A>: <answer_a>
        <MODULE_B>: <answer_b>
        [...]
-     """,
-     mode: "dontAsk"
+     """
    })
    ```
    **teamMode variant**: if Round 1 POSITIONs diverged (per [`team-rounds.md`](team-rounds.md) § Divergence check), do NOT run the legacy synthesis above — follow [`team-rounds.md`](team-rounds.md) Rounds 2-3 then [`team-mode.md`](team-mode.md) § Synthesis (task-list–driven writer dispatch).
@@ -161,7 +158,6 @@ Dispatch-summary examples in the prefix:
 </Output_Format>
 
 <Related_Skills>
-- `/sc4sap:deep-interview` — use before ask-consultant if the question is too vague to route.
 - `/sc4sap:compare-programs` — complementary when the consultant's answer references existing variants.
 - `/sc4sap:analyze-cbo-obj` — complementary when the consultant's answer depends on knowing what custom assets already exist.
 </Related_Skills>

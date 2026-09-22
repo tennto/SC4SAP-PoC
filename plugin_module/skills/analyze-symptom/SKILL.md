@@ -1,6 +1,6 @@
 ---
 name: sc4sap:analyze-symptom
-description: Step-by-step root cause analysis for SAP operational errors. Uses MCP to directly inspect dumps, logs, transports, and where-used relations, then narrows hypotheses with minimal user questions and provides SAP Note search keywords.
+description: Read-only, step-by-step root cause analysis for SAP operational errors. Reads the dump summary and failing source via MCP (known-issue web lookup only when the failure is in standard SAP code), widens to transports and where-used only when the clues call for it, narrows hypotheses with minimal user questions, and provides SAP Note search keywords. Never changes code or data.
 level: 2
 model: sonnet
 ---
@@ -42,20 +42,20 @@ Multi-phase skill. Before each `Agent(...)` dispatch, emit `▶ phase=<id> (<lab
 
 Invoke `/sc4sap:trust-session` with `parent_skill=sc4sap:analyze-symptom` to pre-grant all MCP tool + file-op permissions for this session (eliminates per-tool "Allow this tool?" prompts during auto-investigation — `RuntimeAnalyzeDump`, `ListTransports`, `GetWhereUsed`, etc.).
 
-- If `.sc4sap/session-trust.log` already has a line within the last 24h, skip silently.
-- Otherwise run it and surface the one-line confirmation.
-- All subsequent `Agent` dispatches within this skill MUST pass `mode: "dontAsk"`.
+- Headless host (system prompt declares `Host: sc4sap-web`) → skip entirely; the host governs permissions.
+- If `.sc4sap/session-trust.log` already has a line within the last 24h, skip silently. Otherwise run it.
 
 Full spec: see [`../trust-session/SKILL.md`](../trust-session/SKILL.md).
 </Session_Trust_Bootstrap>
 
 <Core_Principles>
-- **MCP-first**: Before asking the user, investigate the SAP system directly with MCP. Never re-ask what MCP can answer.
+- **Read-only, always**: analysis and reading only — no SAP write tools (Create/Update/Delete/Patch/Write/Activate, RunUnitTest, RuntimeRun*/RuntimeCreate*, CreateTransport), no Edit/Write, even when the user asks for the fix. Fixes appear only as proposals.
+- **Cheapest evidence first**: dump metadata and termination link, then the one failing include; the ~50 KB formatted dump only when those cannot explain the error. A short web lookup (standard identifiers only — never Z*/Y* names, SID, user IDs, or data) runs only when the failure point is standard SAP code. Never re-ask what MCP can answer.
 - **Evidence over assumption**: Do not speculate. No "probably" statements without supporting MCP or user-provided evidence.
 - **Minimal questions**: At most 3 questions per round. Skip any question whose answer is already known via MCP.
 - **Hypothesis narrowing**: Reduce candidate causes to 2–3 from the 8-category framework; each must carry a confidence level and a confirmation path.
 - **Actionable output**: Every hypothesis must include the next evidence step (another MCP call, a TCode, or an escalation target).
-- **Customization cache first (local, before live MCP) when a Z*/Y* object or customized SAP include appears in the trace**: read `.sc4sap/customizations/<MODULE>/{enhancements,extensions}.json` and correlate — a `Z*` class in a dump may be a known BAdI impl, a customized `MV45AFZZ`/`ZXRSRU01` may be a recorded form-based exit, a failing field may be a recorded append. Follow `common/customization-lookup.md`. If the cache is absent, suggest `/sc4sap:setup customizations` but do not block the current analysis.
+- **Customization cache first (local, before live MCP) when a Z*/Y* object or customized SAP include appears in the trace**: read `<CUSTOMIZATION_DIR>/<MODULE>/{enhancements,extensions}.json` (the path Step 1 resolves once — never search for it) and correlate — a `Z*` class in a dump may be a known BAdI impl, a customized `MV45AFZZ`/`ZXRSRU01` may be a recorded form-based exit, a failing field may be a recorded append. Follow `common/customization-lookup.md`. If the cache is absent, suggest `/sc4sap:setup customizations` but do not block the current analysis.
 </Core_Principles>
 
 <Analysis_Framework>
@@ -80,11 +80,12 @@ Evidence collection strategy — prefer MCP auto-query, fall back to manual TCod
 
 | Symptom Type | MCP Auto-Query | Manual TCode |
 |--------------|----------------|--------------|
-| Short dump / runtime error | `RuntimeListDumps`, `RuntimeGetDumpById`, `RuntimeAnalyzeDump` | ST22 |
-| Performance / long runtime | `RuntimeRunProgramWithProfiling`, `RuntimeAnalyzeProfilerTrace`, `RuntimeListProfilerTraceFiles` | ST05, SAT, SQLM |
-| Suspect program/class logic | `ReadClass`/`ReadProgram`, `GetAbapAST`, `GetAbapSemanticAnalysis`, `GetWhereUsed` | SE80, SE24, SE38 |
+| Short dump / runtime error — **first** | `RuntimeListFeeds` (`dumps`, time window) when no dump ID is known → `RuntimeGetDumpById` metadata (~7 KB, termination link) → failing include; formatted dump (~50 KB) only when needed | ST22 |
+| Known issue — only when the failure point is standard SAP code | `WebSearch` / `WebFetch` (SAP Notes, KBAs, SAP Community) — standard identifiers only | SAP for Me |
+| Performance / long runtime | `RuntimeListProfilerTraceFiles`, `RuntimeAnalyzeProfilerTrace` (existing traces only — never start a run) | ST05, SAT, SQLM |
+| Suspect program/class logic | `GetInclude`/`GetProgram`/`GetClass`/`GetFunctionModule`, `GetAbapAST`, `GetAbapSemanticAnalysis`, `GetWhereUsed` | SE80, SE24, SE38 |
 | Recent change tracking | `ListTransports`, `GetTransport`, `GetObjectInfo` (Author/Changed-by) | SE09, SE10, SE16 → E070 |
-| **Z\*/Y\* object or customized SAP include in trace** | Local file read: `.sc4sap/customizations/<MODULE>/enhancements.json` (→ `badiImplementations[]`, `cmodProjects[]`, `formBasedExits[]`) and `.sc4sap/customizations/<MODULE>/extensions.json` (→ `appendStructures[]`) | n/a — local cache only |
+| **Z\*/Y\* object or customized SAP include in trace** | Local file read (path from Step 1, no search): `<CUSTOMIZATION_DIR>/<MODULE>/enhancements.json` (→ `badiImplementations[]`, `cmodProjects[]`, `formBasedExits[]`) and `<CUSTOMIZATION_DIR>/<MODULE>/extensions.json` (→ `appendStructures[]`) | n/a — local cache only |
 | Enhancement / BAdI | `GetEnhancements`, `GetEnhancementImpl`, `GetEnhancementSpot` | SE18, SE19, SMOD, CMOD |
 | System / session info | `GetSession` | /n (status), /o SM04 |
 | Table schema (not rows) | `GetTable`, `GetStructure`, `GetView`, `GetDataElement`, `GetDomain` | SE11 |
@@ -104,20 +105,17 @@ Evidence collection strategy — prefer MCP auto-query, fall back to manual TCod
 <Workflow_Steps>
 **MANDATORY**: Follow the step sequence defined in [`workflow-steps.md`](workflow-steps.md).
 
-Per-step model allocation (skill main thread runs on Haiku 4.5 per frontmatter; heavy analysis is delegated):
+Per-step model allocation (skill main thread runs on Sonnet 4.6 per frontmatter; heavy analysis is delegated):
 
 | Step | Owner | Model | Role |
 |------|-------|-------|------|
-| 0 Trust | skill-to-skill | Haiku | permission bootstrap |
-| 1 Initial Triage | main | **Haiku** | clue parsing + `GetSession` |
-| **2 Investigate + Gap + Narrow** | **`sap-debugger`** with `model: "opus"` override | **Opus 4.7** | auto-investigation (dump/transport/code/enhancement/customization) + gap identification + 2–3 hypotheses with confidence/evidence/confirmation-path + priority questions. One dispatch per round. |
-| 3 User Questions | main | **Haiku** | render debugger's priority questions + collect answers (max 3/round) |
-| (multi-round) repeat Step 2 | `sap-debugger` (Opus override) | Opus 4.7 | re-run with new user-supplied evidence |
-| 4 SAP Note Keywords | main | **Haiku** | assemble copy-paste search strings from debugger's sap_note_hints |
-| 5 Recommended Actions | main | **Haiku** | static classification by actor (immediate / access-required / escalation) |
-| 6 Escalation Routing | main | **Haiku** | point to next skill or agent (sap-debugger write mode, /sc4sap:analyze-code, module consultant, etc.) |
+| 0 Trust | skill-to-skill | Sonnet | permission bootstrap — skipped on a headless host |
+| 1 Initial Triage | main | **Sonnet** | clue parsing + `GetSession` + MODE (`quick-dump` \| `full`) + customization path |
+| **2 Investigate + Narrow + Report** | **`sap-debugger`** — `model: "sonnet"` for `quick-dump`, `model: "opus"` for `full` | **Sonnet / Opus** | Read-only. `quick-dump`: dump summary → failing source; returns `BLOCKED — needs full` when the dump alone is not enough, and main re-dispatches the round as `full` on Opus. `full`: dump / scoped transports / code / enhancement / customization; web lookup only for standard-code failures. Writes the user-facing report per `output-format.md` (hypotheses, questions, Note keywords, next steps). One dispatch per round. |
+| 3 Relay | main | **Sonnet** | output the report verbatim; wait for answers → repeat Step 2 |
+| 4 Follow-up Routing | main | **Sonnet** | pointers only when the user asks for the fix (apply the proposal in SE38/ADT outside this skill, /sc4sap:analyze-code, module consultant) — never a write call |
 
-sap-debugger's tool set already covers `RuntimeAnalyzeDump`, profiler, transport queries, code reads, enhancement lookup, and customization cache reads — see the agent's Investigation_Protocol for the full inventory. The `model: "opus"` override is appropriate here because symptom triage is cross-file reasoning (dump × transport × source × customization × profiler) with ambiguity resolution (8-category framework), which `common/model-routing-rule.md` § Tier 2 classifies as Opus territory.
+sap-debugger's tool set already covers the dumps feed (`RuntimeListFeeds`), `RuntimeGetDumpById`, profiler, transport queries, code reads, enhancement lookup, and customization cache reads — see the agent's Investigation_Protocol for the full inventory. A `quick-dump` round is read-mostly work (dump → source → explanation), which `common/model-routing-rule.md` § Tier 1 routes to Sonnet; `full` rounds need cross-file reasoning (dump × transport × source × customization) and stay on Opus.
 </Workflow_Steps>
 
 <Question_Strategy>
@@ -142,57 +140,20 @@ Per-round report template and the final-round consolidated report structure live
 </Output_Format>
 
 <MCP_Tools_Used>
-
-Only `GetSession` is called by the main thread (Step 1 intake). Every other tool below is called **by the `sap-debugger` agent** inside its Step 2 dispatch — the orchestrator never holds dump payloads, full source, or transport object lists.
-
-**Main thread (Haiku · Step 1 only)**
-- `GetSession` — system ID, client, release, SP level, current user
-
-**Reviewer agent (`sap-debugger` with Opus override · Step 2 dispatch)**
-
-**Dump Analysis**
-- `RuntimeListDumps` — recent dumps
-- `RuntimeGetDumpById` — specific dump detail
-- `RuntimeAnalyzeDump` — automated dump analysis (location, variables, stack)
-
-**Performance Profiling**
-- `RuntimeCreateProfilerTraceParameters` — profiler setup
-- `RuntimeRunProgramWithProfiling` / `RuntimeRunClassWithProfiling` — reproducible run with profiler
-- `RuntimeListProfilerTraceFiles` / `RuntimeGetProfilerTraceData` / `RuntimeAnalyzeProfilerTrace` — trace analysis
-
-**Transport / Change Tracking**
-- `ListTransports` — recent transports
-- `GetTransport` — objects included in a transport
-- `GetObjectInfo` — author, last changed by, modification date
-
-**Code Analysis**
-- `ReadClass` / `ReadProgram` / `ReadFunctionModule` / `ReadInterface` — source
-- `GetProgFullCode` — full source including includes
-- `GetAbapAST` — parse tree
-- `GetAbapSemanticAnalysis` — semantic analysis (activation / type errors)
-- `GetWhereUsed` — caller graph
-- `GetInactiveObjects` — any inactive objects remaining
-
-**Enhancement**
-- `GetEnhancements` — enhancements attached to program
-- `GetEnhancementImpl` / `GetEnhancementSpot` — implementation and spot detail
-
-**Data Dictionary** (schema only — not row extraction)
-- `GetTable` / `GetStructure` / `GetView` / `GetDataElement` / `GetDomain`
-
-**Search**
-- `SearchObject` — existence / type check
-- `DescribeByList` — batch metadata lookup
-
+Main thread: `GetSession` only (Step 1). Everything else runs inside the `sap-debugger` dispatch, so dump payloads, source and transport lists never sit in the orchestrator context. The authoritative tool list and call limits live in the dispatch prompt in [`workflow-steps.md`](workflow-steps.md) § Step 2: dump (`RuntimeListFeeds` dumps feed, `RuntimeGetDumpById` metadata, formatted view only when needed), one failing include (`GetInclude` / `GetProgram` / `GetClass` / `GetFunctionModule`), scoped transports (`ListTransports`, `GetTransport`, `GetObjectInfo`), `GetWhereUsed`, enhancements, existing profiler traces, DDIC schema reads. Never `GetProgFullCode`, `GetTableContents`, `GetSqlQuery` or any write tool.
 </MCP_Tools_Used>
 
 <Common_Pitfalls_To_Avoid>
 - ❌ Asking the user for information MCP can retrieve (system info, program source, recent transports)
 - ❌ Firing 4+ questions at once
 - ❌ Diagnosing a root cause without an error message in hand
-- ❌ Skipping `RuntimeListDumps` when a dump is suspected and speculating instead
+- ❌ Skipping the dump lookup when a dump is suspected and speculating instead (`RuntimeListFeeds` dumps feed — `RuntimeListDumps` can return an empty list)
+- ❌ Changing anything — code, data, transports, activation — from this skill, even on request
+- ❌ Running the full investigation (transports, where-used) on a plain dump with no change-history signal
+- ❌ Searching the filesystem for config/caches, or rewriting the debugger's report in the main thread
 - ❌ Deflecting with "contact Basis / dev team" without a concrete checklist and evidence
 - ❌ Claiming a standard SAP bug before attempting a SAP Note search
+- ❌ Pulling the ~50 KB formatted dump before the metadata and failing include were checked, trusting the `summary` key facts of `RuntimeAnalyzeDump` / `RuntimeGetDumpById` (they pick the wrong chapter), or reading a whole program with `GetProgFullCode`
 - ❌ Blaming recent changes without inspecting transport history via `ListTransports`
 - ❌ Listing 4+ hypotheses (narrow to 2–3)
 </Common_Pitfalls_To_Avoid>
