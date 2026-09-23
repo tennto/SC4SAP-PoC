@@ -33,6 +33,8 @@ import {
   buildToolPolicy,
   isSapReadTool,
   disallowedForProfile,
+  capRows,
+  MAX_ROWS_PER_READ,
   needsHookApproval,
   outsideWorkspace,
   rowScope,
@@ -142,7 +144,12 @@ const OUTPUT_FORMAT_APPEND =
   "with ORDER BY <field> DESCENDING, not DESC. GetTableContents cannot sort at " +
   "all, so when the question asks for the newest or largest record, use " +
   "GetSqlQuery with ORDER BY and UP TO 1 ROWS rather than reading many rows to " +
-  "sort them yourself.";
+  "sort them yourself.\n\n" +
+  `One read returns at most ${MAX_ROWS_PER_READ} rows; a larger request is ` +
+  "brought down to that. If the rows you need are not among them, narrow the " +
+  "read with key fields, a date range or a WHERE clause rather than asking " +
+  "for more, and say plainly that the result was capped when it matters to " +
+  "the answer.";
 
 /**
  * Environment for every session's Claude Code process.
@@ -198,6 +205,12 @@ export type PendingApproval = {
   description?: string;
   /** For `kind: "question"` — the `questions[]` array, forwarded as-is. */
   questions?: unknown;
+  /**
+   * The model asked to read more rows than one call may, and `input` above
+   * carries the number it will actually get. Set so the dialog can say so
+   * rather than showing a figure the reader did not choose. See `capRows`.
+   */
+  clamped?: boolean;
   createdAt: string;
 };
 
@@ -1253,6 +1266,13 @@ export class SessionManager {
       return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
 
+    // Brought under the row cap before anything else looks at it, so the
+    // approval dialog shows the number that will actually be read and the
+    // turn-scoped memo below is keyed on it too. See `capRows`.
+    const capped = capRows(toolName, input);
+    const clamped = capped !== input;
+    input = capped;
+
     // Already answered this turn, for this table, at least this many rows.
     // See `turnGrants`.
     const scope = rowScope(toolName, input);
@@ -1279,6 +1299,8 @@ export class SessionManager {
       toolName,
       toolUseId: context.toolUseID,
       input,
+      // Says so on the dialog when the model asked for more than it may have.
+      clamped: clamped || undefined,
       title: context.title,
       displayName: context.displayName,
       description: context.description,

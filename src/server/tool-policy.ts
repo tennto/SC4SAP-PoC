@@ -323,6 +323,52 @@ export function outsideWorkspace(
  * the first `FROM` in the query. A query this cannot read falls back to the
  * query itself, which groups an exact repeat and nothing looser.
  */
+/**
+ * The most rows one read may return.
+ *
+ * A hundred is enough to see what a table holds and to eyeball a result, and
+ * small enough that the answer still renders as something a person reads
+ * rather than scrolls past. Past that the right move is not a bigger read but
+ * a narrower one — key fields, a date range — which the model does when the
+ * data it wanted is not in what came back.
+ *
+ * It is also a guard on the approval dialog. "Read 10,000 rows of EKPO?" is a
+ * question nobody answers carefully; the useful question is the one that
+ * cannot be catastrophic whichever way it is answered.
+ */
+export const MAX_ROWS_PER_READ = 100;
+
+/**
+ * The same call with its row count brought under the cap, or the input
+ * untouched when it was already inside it.
+ *
+ * Clamped rather than refused: a refusal costs a round trip and teaches
+ * nothing the model could not see from the result, while a capped read still
+ * answers the question most of the time. The system prompt says what the cap
+ * is, so a short result reads as a limit rather than as an empty table.
+ */
+export function capRows(
+  toolName: string,
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  const bare = toolName.startsWith(SAP_TOOL_PREFIX)
+    ? toolName.slice(SAP_TOOL_PREFIX.length)
+    : toolName;
+  if (!NEVER_AUTO_ALLOW.has(bare)) return input;
+
+  const field = "max_rows" in input ? "max_rows" : "row_number" in input ? "row_number" : null;
+  // No cap named at all: the server applies its own default, which may be
+  // larger than ours, so one is named here.
+  if (!field) {
+    return { ...input, max_rows: MAX_ROWS_PER_READ };
+  }
+  const asked = input[field];
+  if (typeof asked === "number" && Number.isFinite(asked) && asked <= MAX_ROWS_PER_READ) {
+    return input;
+  }
+  return { ...input, [field]: MAX_ROWS_PER_READ };
+}
+
 export function rowScope(
   toolName: string,
   input: Record<string, unknown>,
