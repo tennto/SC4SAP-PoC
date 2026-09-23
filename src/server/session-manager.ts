@@ -883,7 +883,10 @@ export class SessionManager {
                   const strayPath = outsideWorkspace(
                     input.tool_name,
                     (input.tool_input ?? {}) as Record<string, unknown>,
-                    this.#config.workspace,
+                    // The workspace first, because relative paths resolve
+                    // against it; the plugin second, for the skills' own
+                    // reference files.
+                    [this.#config.workspace, this.#config.pluginPath],
                   );
                   if (strayPath) {
                     this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");

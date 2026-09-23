@@ -278,25 +278,36 @@ const PATH_ARG: Record<string, string> = {
  * there. The session's `cwd` is the workspace and everything it legitimately
  * reads is under it, so anything above it is a mistake at best.
  *
- * Relative paths resolve against the workspace and are therefore inside by
- * construction; only an absolute path that climbs out is refused.
+ * Two roots are allowed, not one. The workspace is where the session works,
+ * and the plugin directory is where its instructions live: a skill is told
+ * "follow the step sequence defined in workflow-steps.md", and that file sits
+ * beside the skill under `plugin_module/`, not under the workspace. Blocking
+ * it, as the first version of this did, leaves the model working from the
+ * summary the Skill tool loaded and nothing else — measured: the report came
+ * back at 795 characters, a fraction of what the format asks for.
+ *
+ * Relative paths resolve against the first root, the session's cwd, and are
+ * therefore inside by construction; only an absolute path that climbs out of
+ * both is refused.
  */
 export function outsideWorkspace(
   toolName: string,
   input: Record<string, unknown>,
-  workspace: string,
+  roots: readonly string[],
 ): string | null {
   const field = PATH_ARG[toolName];
   if (!field) return null;
   const raw = input[field];
   if (typeof raw !== "string" || raw === "") return null;
 
-  const target = resolve(workspace, raw);
-  const root = resolve(workspace);
-  // Case-insensitive because Windows is, and a case-flipped prefix would
-  // otherwise read as an escape. `relative` handles the separators.
-  const rel = relative(root.toLowerCase(), target.toLowerCase());
-  const inside = rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  // Relative paths resolve against the first root, which is the session's cwd.
+  const target = resolve(roots[0] ?? ".", raw);
+  const inside = roots.some((root) => {
+    // Case-insensitive because Windows is, and a case-flipped prefix would
+    // otherwise read as an escape. `relative` handles the separators.
+    const rel = relative(resolve(root).toLowerCase(), target.toLowerCase());
+    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  });
   return inside ? null : target;
 }
 
