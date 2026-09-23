@@ -30,7 +30,19 @@ async function main(): Promise<void> {
 
   // Learn the SAP tool list before serving, so the first session already has
   // the read-class auto-allow list rather than prompting for everything.
-  const policy = await manager.discoverToolPolicy();
+  let policy = await manager.discoverToolPolicy();
+  // One retry, because the fault this guards against is a race rather than a
+  // verdict: the status read can throw while the transport is still coming up,
+  // and a second attempt a moment later has always found the tools. Telling
+  // the operator to restart the server was the old answer; doing it ourselves
+  // is the same work without the outage.
+  if (policy.summary.read === 0) {
+    app.log.warn(
+      `first tool discovery found nothing (${manager.discoveryNote ?? "unknown"}) — retrying once`,
+    );
+    await new Promise((r) => setTimeout(r, 2_000));
+    policy = await manager.discoverToolPolicy();
+  }
   app.log.info(
     `tool policy: ${policy.allowedTools.length} auto-allowed, ` +
       `${policy.disallowedTools.length} deny patterns, ` +
@@ -43,8 +55,10 @@ async function main(): Promise<void> {
   if (policy.summary.read === 0) {
     app.log.warn(
       "tool discovery found no read-class SAP tools — every SAP read will " +
-        "raise an approval. The MCP server was slow to publish its tool " +
-        "list; restart the server to retry discovery.",
+        "raise an approval, and a skill that reads SAP will stall on " +
+        "dialogs. Reason: " +
+        (manager.discoveryNote ?? "unknown") +
+        ". The retry did not help either; restart the server.",
     );
   }
 

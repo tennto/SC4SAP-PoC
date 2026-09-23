@@ -25,8 +25,8 @@
  */
 import Link from "next/link";
 import { BACKEND } from "@/lib/backend";
-import type { Health } from "@/lib/types";
-import { CREDITS, SAP_SYSTEM } from "@/lib/account";
+import type { Health, ProfileList } from "@/lib/types";
+import { CREDITS } from "@/lib/account";
 import { requireAccount } from "@/lib/auth/session";
 import { readActivity } from "@/lib/chat-store";
 import { readConnection } from "@/lib/setup-store";
@@ -135,6 +135,23 @@ function sapTail(
   return sap.ok ? t.sapAnswered(when) : t.sapFailed(sap.detail, when);
 }
 
+/**
+ * The SAP systems the backend knows, and which one is live.
+ *
+ * Quiet on failure like `loadHealth`: a backend that is down is already said
+ * plainly at the top of this page, and a second diagnosis inside the system
+ * card would make the card about the outage rather than about the system.
+ */
+async function loadProfiles(): Promise<ProfileList | null> {
+  try {
+    const response = await fetch(`${BACKEND}/profiles`, { cache: "no-store" });
+    if (!response.ok) return null;
+    return (await response.json()) as ProfileList;
+  } catch {
+    return null;
+  }
+}
+
 export default async function HomePage() {
   // Before anything is fetched or rendered. `proxy.ts` has already turned away
   // requests with no cookie at all; this is the check that the cookie still
@@ -143,13 +160,22 @@ export default async function HomePage() {
   // Independent of each other: one is an HTTP call to the backend, the other a
   // Mongo aggregate, and waiting for them in turn would add the slower to the
   // faster for nothing.
-  const [{ health, error }, activity, connection, { locale, t: messages }] =
+  const [{ health, error }, activity, connection, profiles, { locale, t: messages }] =
     await Promise.all([
       loadHealth(),
       readActivity(account.id),
       readConnection(account.id),
+      loadProfiles(),
       readMessages(),
     ]);
+  // The system every session runs on, which is what this card is about. It
+  // used to be a fixture in `lib/account.ts` pointing at `sap-dev.example.com`
+  // — harmless while the backend had one system nobody could change, and a
+  // card confidently describing the wrong stack the moment Settings could
+  // switch. `null` means the backend did not answer, drawn as unknown rather
+  // than invented.
+  const system =
+    profiles?.profiles.find((p) => p.alias === profiles.active) ?? null;
   const t = messages.home;
   const tag = localeTag(locale);
   const online = health !== null;
@@ -313,38 +339,44 @@ export default async function HomePage() {
             <h2>
               <Icon name="database" /> {t.sapSystemCard}
             </h2>
-            <span className="tier">{SAP_SYSTEM.tier}</span>
+            {system && <span className="tier">{system.tier}</span>}
           </div>
-          <dl className="facts">
-            <div>
-              <dt>{t.profile}</dt>
-              <dd>
-                {SAP_SYSTEM.alias} — {SAP_SYSTEM.description}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.host}</dt>
-              <dd>
-                <code>{SAP_SYSTEM.host}</code>
-              </dd>
-            </div>
-            <div>
-              <dt>{t.systemClient}</dt>
-              <dd>
-                {SAP_SYSTEM.sid} · {SAP_SYSTEM.client} · {SAP_SYSTEM.language}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.user}</dt>
-              <dd>{SAP_SYSTEM.user}</dd>
-            </div>
-            <div>
-              <dt>{t.release}</dt>
-              <dd>
-                {SAP_SYSTEM.sapVersion} · ABAP {SAP_SYSTEM.abapRelease}
-              </dd>
-            </div>
-          </dl>
+          {system ? (
+            <dl className="facts">
+              <div>
+                <dt>{t.profile}</dt>
+                <dd>
+                  {system.alias}
+                  {system.description ? ` — ${system.description}` : ""}
+                </dd>
+              </div>
+              <div>
+                <dt>{t.host}</dt>
+                <dd>
+                  <code>{system.host}</code>
+                </dd>
+              </div>
+              <div>
+                <dt>{t.systemClient}</dt>
+                <dd>
+                  {system.client} · {system.language}
+                </dd>
+              </div>
+              <div>
+                <dt>{t.user}</dt>
+                <dd>{system.username}</dd>
+              </div>
+              <div>
+                <dt>{t.release}</dt>
+                <dd>
+                  {system.version === "ECC" ? "ECC 6.0" : "S/4HANA"} · ABAP{" "}
+                  {system.abapRelease}
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="field-note">{t.systemUnknown}</p>
+          )}
         </section>
 
         <section

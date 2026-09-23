@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { FileChip } from "@/components/FileChip";
+import { Select } from "@/components/Select";
 import { useLocale } from "@/lib/i18n/client";
 import {
   ACCEPT,
@@ -14,9 +15,9 @@ import {
 
 /**
  * `claude-sonnet-5` reads as `Sonnet 5`, `claude-haiku-4-5-20251001` as
- * `Haiku 4.5`. The chip is a label, not a control: the model is server
- * configuration (`SC4SAP_MODEL`), so offering a picker here would promise a
- * choice the backend does not take.
+ * `Haiku 4.5`. Used for the chip under the box, which is a picker when the
+ * caller passes the list the backend offers and a plain label when it does
+ * not — a running session's model is fixed at the moment it was opened.
  */
 export function modelLabel(model: string): string {
   const parts = model
@@ -34,8 +35,19 @@ export function modelLabel(model: string): string {
 type Props = {
   disabled: boolean;
   hint: string;
-  /** From `/health`. Rendered read-only; null while the snapshot is missing. */
+  /** From `/health`. Null while the snapshot is missing. */
   model: string | null;
+  /**
+   * What the backend will open a session on. Given, the chip becomes a
+   * picker; omitted, it stays the label it was.
+   *
+   * Worth offering rather than leaving to server config: reading a table or a
+   * program is work Haiku does, and it costs half what Sonnet does on input —
+   * which is most of what a turn is billed for.
+   */
+  models?: { id: string; label: string; note: string }[];
+  /** Called with the chosen id. The next session opened uses it. */
+  onModelChange?: (id: string) => void;
   /** Focus on mount — true on the empty state, where the box is the screen. */
   autoFocus?: boolean;
   /**
@@ -62,6 +74,8 @@ export function Composer({
   disabled,
   hint,
   model,
+  models,
+  onModelChange,
   autoFocus = false,
   running = false,
   onSend,
@@ -393,9 +407,23 @@ export function Composer({
               </button>
             </div>
           )}
-          <span className="composer-model" title={model ?? undefined}>
-            {model ? modelLabel(model) : "—"}
-          </span>
+          {models && models.length > 1 && onModelChange ? (
+            <span className="composer-model-pick">
+              <Select
+                name="model"
+                value={model ?? models[0]!.id}
+                options={models.map((entry) => ({
+                  value: entry.id,
+                  label: entry.label,
+                }))}
+                onChange={onModelChange}
+              />
+            </span>
+          ) : (
+            <span className="composer-model" title={model ?? undefined}>
+              {model ? modelLabel(model) : "—"}
+            </span>
+          )}
         </div>
         {/* One button, two jobs. A separate stop control beside the send one
             would sit dead for the whole time it is not needed, and the two are

@@ -32,10 +32,16 @@ import { ToolLog } from "./tool-log.ts";
 import {
   buildToolPolicy,
   isSapReadTool,
+  disallowedForProfile,
+  capRows,
+  MAX_ROWS_PER_READ,
   needsHookApproval,
+  outsideWorkspace,
+  rowScope,
   QUESTION_TOOL,
   SAP_TOOL_PREFIX,
   type ToolPolicy,
+  type ToolProfile,
   allowedByLevel,
   type ApprovalLevel,
 } from "./tool-policy.ts";
@@ -132,7 +138,18 @@ const OUTPUT_FORMAT_APPEND =
   "When you present data read from a SAP table — whether one record or many — " +
   "always render it as a Markdown table with one column per field and one row " +
   "per record. Keep this same header-and-rows orientation for a single record: " +
-  "never transpose one record into a two-column field/value list.";
+  "never transpose one record into a two-column field/value list.\n\n" +
+  "SAP queries are ABAP Open SQL, not ANSI SQL. Cap rows with UP TO n ROWS at " +
+  "the end of the statement: LIMIT and a bare ROWS n are both rejected. Sort " +
+  "with ORDER BY <field> DESCENDING, not DESC. GetTableContents cannot sort at " +
+  "all, so when the question asks for the newest or largest record, use " +
+  "GetSqlQuery with ORDER BY and UP TO 1 ROWS rather than reading many rows to " +
+  "sort them yourself.\n\n" +
+  `One read returns at most ${MAX_ROWS_PER_READ} rows; a larger request is ` +
+  "brought down to that. If the rows you need are not among them, narrow the " +
+  "read with key fields, a date range or a WHERE clause rather than asking " +
+  "for more, and say plainly that the result was capped when it matters to " +
+  "the answer.";
 
 /**
  * Environment for every session's Claude Code process.
@@ -188,6 +205,12 @@ export type PendingApproval = {
   description?: string;
   /** For `kind: "question"` — the `questions[]` array, forwarded as-is. */
   questions?: unknown;
+  /**
+   * The model asked to read more rows than one call may, and `input` above
+   * carries the number it will actually get. Set so the dialog can say so
+   * rather than showing a figure the reader did not choose. See `capRows`.
+   */
+  clamped?: boolean;
   createdAt: string;
 };
 
@@ -417,6 +440,24 @@ type LiveSession = {
   /** Approvals blocking a turn, keyed by reqId. */
   pending: Map<string, PendingEntry>;
   /**
+   * Row-extraction answers already given in this turn, by table.
+   *
+   * One question about "the latest EKPO entry" raised six approval dialogs:
+   * four `GetSqlQuery` attempts that the ABAP dialect refused, then two
+   * `GetTableContents` reads — all of them the same table, all answered the
+   * same way. A dialog asked six times for one decision is not consent, it is
+   * a rhythm someone learns to clear without reading.
+   *
+   * So the answer is remembered for the rest of the turn, with the row count
+   * it was given for. A later call on the same table rides on it only if it
+   * asks for no more rows than the one that was approved: saying yes to twenty
+   * rows of EKPO is not saying yes to ten thousand. A refusal is remembered
+   * the same way — "no" means no for the turn, not until the model rephrases.
+   *
+   * Cleared when the next prompt arrives. See `send`.
+   */
+  turnGrants: Map<string, { decision: "allow" | "deny"; rows: number }>;
+  /**
    * What this conversation had already spent before this session existed.
    *
    * `turns` needs no equivalent because the record accumulates it and can
@@ -460,6 +501,22 @@ type SessionShape = {
   economy?: boolean;
   model?: string;
   approval?: ApprovalLevel;
+  /**
+   * What this session may reach for — see `ToolProfile`.
+   *
+   * `ask` unless stated, which is the chat screen: no sub-agents, no files,
+   * no shell, no web. A skill declares its own, and most of them declare
+   * `build`; the two that only investigate declare `analyse`, which keeps the
+   * specialist dispatch and the web lookup and takes the shell away.
+   *
+   * Removing the tools rather than merely declining to auto-approve them is
+   * the point, and it is the lesson of a logged `analyze-symptom` run: the
+   * skill forbids filesystem search in its own prompt and the model spent
+   * four minutes doing it anyway, because `Bash` was there. `allowedTools`
+   * decides what is waved through; only `disallowedTools` takes a tool out of
+   * the prompt, and out of reach.
+   */
+  profile?: ToolProfile;
 };
 
 type PendingEntry = {
@@ -479,6 +536,8 @@ export class SessionManager {
   readonly #config: PocConfig;
   /** Deny half applies from the start; the auto-allow half fills in at discover(). */
   #policy: ToolPolicy = buildToolPolicy([]);
+  /** Why discovery came back empty, when it did. Read by the startup log. */
+  #discoveryNote: string | null = null;
   /** Every tool call, as it happens. See `tool-log.ts`. */
   readonly toolLog: ToolLog;
 
@@ -494,6 +553,11 @@ export class SessionManager {
 
   get policy(): ToolPolicy {
     return this.#policy;
+  }
+
+  /** What went wrong with discovery, or null when it went fine. */
+  get discoveryNote(): string | null {
+    return this.#discoveryNote;
   }
 
   /**
@@ -518,18 +582,50 @@ export class SessionManager {
       },
     });
 
+    // A holder rather than a bare `let`: the assignment happens inside the
+    // closure below, which TypeScript's flow analysis does not follow, so a
+    // plain variable reads as `never` at the point it is used.
+    const last: { error: Error | null } = { error: null };
+
+    /**
+     * One status read, and never a reason to abandon discovery.
+     *
+     * `mcpServerStatus()` is a control request over the transport to the CLI
+     * process, and early in a session that transport is not always ready:
+     * observed here as `ProcessTransport is not ready for writing`. Awaited
+     * bare, that throw left the loop below, hit the outer catch, and ended
+     * discovery with the empty fail-safe policy — a backend that had come up
+     * perfectly reporting zero SAP tools, which is the cold-start fault this
+     * has been chased through twice.
+     *
+     * A failed read means "ask again in a moment", not "give up": the caller
+     * loops until the deadline either way.
+     */
+    const readStatus = async (): Promise<
+      Awaited<ReturnType<typeof probe.mcpServerStatus>>
+    > => {
+      try {
+        return await probe.mcpServerStatus();
+      } catch (err) {
+        last.error = err as Error;
+        return [];
+      }
+    };
+
+
+
     try {
       for await (const message of probe) {
         if (message.type !== "system" || message.subtype !== "init") continue;
 
         const until = Date.now() + MCP_DISCOVERY_TIMEOUT_MS;
-        let statuses = await probe.mcpServerStatus();
+        let statuses = await readStatus();
         while (
           Date.now() < until &&
           (statuses.length === 0 || !statuses.every(mcpServerSettled))
         ) {
           await new Promise((r) => setTimeout(r, 500));
-          statuses = await probe.mcpServerStatus();
+          statuses = await readStatus();
         }
 
         const names = statuses
@@ -538,10 +634,19 @@ export class SessionManager {
           .map((t) => (typeof t === "string" ? t : t.name));
 
         this.#policy = buildToolPolicy(names);
+        if (names.length === 0) {
+          this.#discoveryNote =
+            last.error
+              ? `the MCP status could not be read: ${last.error.message}`
+              : "the MCP server published no tools before the timeout";
+        }
         break;
       }
-    } catch {
-      // Leave the fail-safe policy in place.
+    } catch (err) {
+      // Leave the fail-safe policy in place, but say what happened: this path
+      // used to be silent, and a silent empty policy reads as a credentials
+      // or permission bug from every screen that sees it.
+      this.#discoveryNote = `discovery failed: ${(err as Error).message}`;
     } finally {
       await probe.interrupt().catch(() => {});
     }
@@ -642,6 +747,10 @@ export class SessionManager {
       options.economy === true,
       options.approval ?? "all",
       options.maxBudgetUsd ?? "",
+      // A warm session opened for questions cannot serve a skill run: the
+      // tools are missing from a process that has already started. Different
+      // profiles, different pools.
+      options.profile ?? "ask",
     ].join(" ");
   }
 
@@ -678,6 +787,14 @@ export class SessionManager {
       ? this.#policy.allowedTools.filter((tool) => tool !== "Agent")
       : this.#policy.allowedTools;
 
+    // See `profile` on SessionShape. Appended rather than folded into the
+    // policy, because this is a property of one session and the policy
+    // describes the SAP tool surface every session shares.
+    const disallowedTools = [
+      ...this.#policy.disallowedTools,
+      ...disallowedForProfile(options.profile ?? "ask"),
+    ];
+
     const session = query({
       prompt: pump,
       options: {
@@ -706,7 +823,7 @@ export class SessionManager {
         // Plan 2-5 — write-class SAP tools are removed from context outright;
         // read-class ones are auto-approved so a single consultant answer does
         // not fire twenty prompts. Everything else falls through to 2-4.
-        disallowedTools: this.#policy.disallowedTools,
+        disallowedTools,
         allowedTools,
         // A ceiling the SDK enforces. Undefined means none, as before.
         maxBudgetUsd: options.maxBudgetUsd,
@@ -766,6 +883,63 @@ export class SessionManager {
                     };
                   }
 
+                  // The permission bootstrap, on a host that governs
+                  // permissions itself.
+                  //
+                  // Every skill that opens with it is told to skip it here —
+                  // its own spec says "Headless host → skip entirely", and
+                  // the system prompt declares `Host: sc4sap-web`. The logged
+                  // `analyze-symptom` run invoked it anyway, and spent about
+                  // ninety seconds on it and the file reads around it,
+                  // granting permissions through a settings file the SDK never
+                  // loads. Refused rather than repeated.
+                  if (input.tool_name === "Skill") {
+                    const asked = (input.tool_input ?? {}) as Record<string, unknown>;
+                    if (
+                      typeof asked.skill === "string" &&
+                      /(^|:)trust-session$/.test(asked.skill)
+                    ) {
+                      this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "deny" as const,
+                          permissionDecisionReason:
+                            "This host governs tool permissions itself, so the " +
+                            "session-trust bootstrap does nothing here. Skip it " +
+                            "and continue with the task.",
+                        },
+                      };
+                    }
+                  }
+
+                  // Off the disk this app was given. Refused before the
+                  // operator is asked, because there is no answer worth
+                  // collecting: a SAP skill reaching into another directory
+                  // is a mistake, and a dialog would only invite waving it
+                  // through. See `outsideWorkspace`.
+                  const strayPath = outsideWorkspace(
+                    input.tool_name,
+                    (input.tool_input ?? {}) as Record<string, unknown>,
+                    // The workspace first, because relative paths resolve
+                    // against it; the plugin second, for the skills' own
+                    // reference files.
+                    [this.#config.workspace, this.#config.pluginPath],
+                  );
+                  if (strayPath) {
+                    this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                    return {
+                      hookSpecificOutput: {
+                        hookEventName: "PreToolUse" as const,
+                        permissionDecision: "deny" as const,
+                        permissionDecisionReason:
+                          `Outside this session's workspace: ${strayPath}. ` +
+                          "Everything you need is under the working directory; " +
+                          "paths above it are not part of this task.",
+                      },
+                    };
+                  }
+
                   if (!needsHookApproval(input.tool_name)) return {};
 
                   const result = await this.#requestApproval(
@@ -820,6 +994,7 @@ export class SessionManager {
       seq: 0,
       openToolBlocks: new Set(),
       pending: new Map(),
+      turnGrants: new Map(),
       backgroundTasks: new Set(),
       priorCostUsd: 0,
     };
@@ -871,6 +1046,9 @@ export class SessionManager {
       );
     }
     const meta: AttachmentMeta[] = attachments.map(toMeta);
+    // A new question is a new decision. Whatever was agreed about a table
+    // last turn does not carry into this one — see `turnGrants`.
+    live.turnGrants.clear();
     this.#setStatus(live, "busy");
     // A tab that sends and closes in the same breath unsubscribes while the
     // session is still idle, so the countdown has to be armed here too.
@@ -1088,6 +1266,31 @@ export class SessionManager {
       return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
 
+    // Brought under the row cap before anything else looks at it, so the
+    // approval dialog shows the number that will actually be read and the
+    // turn-scoped memo below is keyed on it too. See `capRows`.
+    const capped = capRows(toolName, input);
+    const clamped = capped !== input;
+    input = capped;
+
+    // Already answered this turn, for this table, at least this many rows.
+    // See `turnGrants`.
+    const scope = rowScope(toolName, input);
+    const granted = scope ? live.turnGrants.get(scope.key) : undefined;
+    if (scope && granted && scope.rows <= granted.rows) {
+      this.toolLog.decide(context.toolUseID, granted.decision === "allow" ? "auto" : "denied");
+      return Promise.resolve(
+        granted.decision === "allow"
+          ? { behavior: "allow", updatedInput: input }
+          : {
+              behavior: "deny",
+              message:
+                "Already declined for this table earlier in this turn. Ask the " +
+                "operator in your answer rather than trying another query.",
+            },
+      );
+    }
+
     const reqId = randomUUID();
     const isQuestion = toolName === QUESTION_TOOL;
     const request: PendingApproval = {
@@ -1096,6 +1299,8 @@ export class SessionManager {
       toolName,
       toolUseId: context.toolUseID,
       input,
+      // Says so on the dialog when the model asked for more than it may have.
+      clamped: clamped || undefined,
       title: context.title,
       displayName: context.displayName,
       description: context.description,
@@ -1116,6 +1321,11 @@ export class SessionManager {
           context.toolUseID,
           decision === "allow" ? "allowed" : decision === "deny" ? "denied" : "expired",
         );
+        // Remembered for the rest of the turn, at the scale it was given for.
+        // An expiry is not an answer and is not kept.
+        if (scope && (decision === "allow" || decision === "deny")) {
+          live.turnGrants.set(scope.key, { decision, rows: scope.rows });
+        }
         this.#emit(live, { type: "permission_resolved", reqId, decision });
         resolve(result);
       };

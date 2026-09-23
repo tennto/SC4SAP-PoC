@@ -100,7 +100,17 @@ export const api = {
      * How the run is allowed to spend. A skill screen sets these from its
      * pre-run dialog; the chat leaves them out. Zero budget means none.
      */
-    spend?: { maxBudgetUsd?: number; economy?: boolean; model?: string },
+    spend?: {
+      maxBudgetUsd?: number;
+      economy?: boolean;
+      model?: string;
+      /**
+       * What the run may reach for: `analyse` or `build`. Each skill declares
+       * its own. Chat leaves it out and gets `ask`, which carries neither
+       * sub-agents nor the file, shell and web tools.
+       */
+      profile?: "analyse" | "build";
+    },
   ): Promise<Session> =>
     (
       await request<{ session: Session }>("/sessions", {
@@ -112,6 +122,7 @@ export const api = {
             : {}),
           ...(spend?.maxBudgetUsd ? { maxBudgetUsd: spend.maxBudgetUsd } : {}),
           ...(spend?.economy !== undefined ? { economy: spend.economy } : {}),
+          ...(spend?.profile ? { profile: spend.profile } : {}),
           ...(spend?.model ? { model: spend.model } : {}),
         }),
       })

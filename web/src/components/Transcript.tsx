@@ -328,13 +328,24 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
   //     the reader means by "don't show a loader while the answer is showing".
   //   - Real background work still shows them, even with an intro line already
   //     on screen: a tool running, an approval waiting, a retry, the session
-  //     booting. That is the SAP-fetch wait the dots exist to cover.
+  //     booting, or the gap between two of those. That is the SAP-fetch wait
+  //     the dots exist to cover.
   //   - With no answer text yet — an empty bubble, or a tool before the agent
   //     has said anything — they show, so the screen is never blank mid-turn.
+  //
+  // `working` belongs in that list and was the bug. `tool_end` moves the
+  // activity there, and so does `turn_end`, so every gap between one tool
+  // finishing and the next thing starting reported "working" — which counted
+  // as no background work at all. With an intro line already on screen the
+  // dots went out and the answer looked finished while the model was still
+  // deciding what to fetch next. Measured on a real run: a question about the
+  // latest EKPO entry made six tool calls over about 25 seconds, and the gaps
+  // between them are exactly this state.
   const hasAnswerText = lastAgent !== null && smoothed.trim() !== "";
   const workKind = activity?.kind;
   const backgroundWork =
     workKind === "tool" ||
+    workKind === "working" ||
     workKind === "waiting" ||
     workKind === "retrying" ||
     workKind === "starting";
@@ -357,6 +368,34 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
    * mind.
    */
   const waitingInline = waiting && !pending && last?.kind === "agent";
+
+  /**
+   * Whether an agent row should play the arrival animation — decided the first
+   * time the row is seen, and never revisited.
+   *
+   * The row that replaces the standalone waiting one must not animate. Same
+   * label, same place: while a turn runs the waiting row is the last thing on
+   * screen, and the moment the first content block opens it unmounts and the
+   * real one mounts in its stead. With `msg-in` on both, that swap plays a
+   * second fade from transparent under the same heading — the blink people
+   * see just before an answer appears. It is not arriving; it is what the
+   * waiting row already was, now with words in it.
+   *
+   * Deciding it per render instead would trade one flicker for another: the
+   * test is true while the turn runs and false when it ends, so the class
+   * would land on an element that is already mounted and play the animation
+   * at the end of the turn instead of the start. And it would fire again on
+   * every older row the moment a new one pushed it out of last place. Hence
+   * the ref: first sight settles it.
+   */
+  const entrances = useRef<Map<string, boolean>>(new Map());
+  const entrance = (id: string, replacingWaitingRow: boolean): boolean => {
+    const known = entrances.current.get(id);
+    if (known !== undefined) return known;
+    const animate = !replacingWaitingRow;
+    entrances.current.set(id, animate);
+    return animate;
+  };
 
   /**
    * Follow the tail as tokens arrive — and as the waiting row appears.
@@ -433,10 +472,15 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
         }
 
         return (
-          <article key={row.id} className="msg assistant msg-in">
+          <article
+            key={row.id}
+            className={`msg assistant${entrance(row.id, isLast && busy) ? " msg-in" : ""}`}
+          >
             <span className="who">{t.agent}</span>
             <div className="text">
-              <Markdown>{isLast ? smoothed : row.text}</Markdown>
+              <Markdown streaming={row.streaming}>
+                {isLast ? smoothed : row.text}
+              </Markdown>
               {row.streaming && <span className="caret" aria-hidden />}
               {isLast && waitingInline && (
                 <div className="dots-row">{dots}</div>

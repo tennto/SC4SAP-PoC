@@ -1,21 +1,29 @@
-import { checkSap, CheckError } from "@/lib/setup-checks";
-import { readConnection, readConnectionSecrets, recordCheck } from "@/lib/setup-store";
+import { recordCheck } from "@/lib/setup-store";
+import { BACKEND } from "@/lib/backend";
 import { jsonError, signedIn } from "../../shared";
 
 /**
- * `POST /api/account/connection/check` — is the stored SAP connection alive?
+ * `POST /api/account/connection/check` — is the SAP system alive?
  *
- * The dashboard's Reconnect calls this. It takes no body: the values it probes
- * are the ones this account saved, unsealed here and never sent anywhere a
- * page could read them. That is the difference from `/api/setup/check/sap`,
- * which probes values that have been typed and not yet kept.
+ * The dashboard's Reconnect calls this. It probes the system every session
+ * actually runs on: the backend's active profile, asked through
+ * `POST /profiles/check`, which resolves the `keychain:` password with the
+ * same module the running sessions use.
  *
- * What it finds is written to the row as well as returned, so the next render
- * of the dashboard shows the same answer this press showed — the SAP row is
- * server-rendered and reads the stored result, not this response.
+ * It used to probe this account's own stored connection instead. That was the
+ * right shape when the backend had one system and the account's copy of it was
+ * the only description anyone had. It stopped being true the moment Settings
+ * could switch systems: the stored row kept describing whichever stack setup
+ * was run against, and a green SAP row about a system nothing is running on is
+ * worse than no row, because it is believed.
  *
- * 502 on a system that did not answer, like the setup probe: this endpoint
- * worked, the thing behind it did not.
+ * The result is still written to this account's row. It is the dashboard's own
+ * memory of the last check — the row is server-rendered and reads the stored
+ * result rather than this response — and what was checked is now a property of
+ * the server rather than of the account.
+ *
+ * 502 on a system that did not answer: this endpoint worked, the thing behind
+ * it did not.
  */
 
 export const runtime = "nodejs";
@@ -26,28 +34,33 @@ export async function POST(): Promise<Response> {
   if ("response" in auth) return auth.response;
   const userId = auth.account.id;
 
-  const [connection, secrets] = await Promise.all([
-    readConnection(userId),
-    readConnectionSecrets(userId),
-  ]);
-  if (!connection || !secrets) {
-    return jsonError(409, "This account has not completed setup.");
+  let response: Response;
+  try {
+    response = await fetch(`${BACKEND}/profiles/check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      cache: "no-store",
+    });
+  } catch (err) {
+    // The backend itself is unreachable, which is a different outage from the
+    // SAP system being unreachable and is not recorded as one: writing it to
+    // the row would leave the dashboard claiming SAP is down when it may be
+    // perfectly healthy.
+    return jsonError(503, `The backend did not answer: ${(err as Error).message}`);
   }
 
-  try {
-    const { detail } = await checkSap({
-      adtUrl: connection.adtUrl,
-      sapUser: connection.sapUser,
-      sapPassword: secrets.sapPassword,
-      client: connection.client,
-    });
-    await recordCheck(userId, { ok: true, detail });
-    return Response.json({ ok: true, detail });
-  } catch (err) {
-    if (err instanceof CheckError) {
-      await recordCheck(userId, { ok: false, detail: err.message });
-      return jsonError(502, err.message);
-    }
-    throw err;
+  const body = (await response.json().catch(() => null)) as
+    | { ok?: boolean; detail?: string; error?: string }
+    | null;
+
+  if (!response.ok) {
+    const detail = body?.error ?? `The system answered ${response.status}.`;
+    await recordCheck(userId, { ok: false, detail });
+    return jsonError(502, detail);
   }
+
+  const detail = body?.detail ?? "The system answered.";
+  await recordCheck(userId, { ok: true, detail });
+  return Response.json({ ok: true, detail });
 }

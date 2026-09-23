@@ -48,7 +48,7 @@ import { ApprovalModal } from "@/components/ApprovalModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { EditModal } from "@/components/settings/EditModal";
 import type { PermissionResponse } from "@/lib/types";
-import { findSkill, type SkillField } from "@/lib/skills";
+import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
 import { skillDisplay } from "@/lib/i18n/skills";
 import type { Messages } from "@/lib/i18n/messages";
@@ -79,7 +79,7 @@ type Value = string | boolean;
 type Spend = { maxBudgetUsd: number; economy: boolean; model: string };
 
 /**
- * The models the dialog offers. The same two the backend accepts; listed
+ * The models the dialog offers. The same three the backend accepts; listed
  * here rather than fetched because the dialog opens before any session
  * exists to ask through, and a list of two is not worth a round trip.
  */
@@ -89,6 +89,7 @@ const MODELS: {
   /** The dictionary key for the line under the picker. */
   note: keyof Messages["skillForm"];
 }[] = [
+  { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "haikuNote" },
   { id: "claude-sonnet-5", label: "Sonnet 5", note: "sonnetNote" },
   { id: "claude-opus-5", label: "Opus 5", note: "opusNote" },
 ];
@@ -236,6 +237,7 @@ export function SkillForm({
   command,
   title,
   fields,
+  tools,
   /** The skill cannot run here — see `blockedReason`. */
   blocked,
   autorun = null,
@@ -246,6 +248,8 @@ export function SkillForm({
   command: string;
   title: string;
   fields: readonly SkillField[];
+  /** What this skill's session may reach for — see `Skill.tools`. */
+  tools: SkillTools;
   blocked: boolean;
   /**
    * Start a run the moment the page opens, with this as its context.
@@ -262,7 +266,12 @@ export function SkillForm({
    * set, the first Run opens a dialog for a budget ceiling and the Sonnet
    * switch, and the choice is kept for "Run again" on this page.
    */
-  cost?: { note: string; defaultBudgetUsd: number } | null;
+  cost?: {
+    note: string;
+    defaultBudgetUsd: number;
+    /** Which model the dialog opens on — see `Skill.cost`. */
+    defaultModel?: string;
+  } | null;
   /**
    * The skill answers in rounds and asks back — see `Skill.followUp`. With
    * this set, a composer sits under the result while the session is open,
@@ -320,7 +329,8 @@ export function SkillForm({
   const [askingCost, setAskingCost] = useState(false);
   const [costForm, setCostForm] = useState<{ budget: string; model: string }>(() => ({
     budget: String(cost?.defaultBudgetUsd ?? 0),
-    model: MODELS[0].id,
+    // The skill's own choice, not whatever happens to be first in the list.
+    model: cost?.defaultModel ?? MODELS[0].id,
   }));
   /** The context a run was asked with while the cost dialog was up. */
   const pendingContext = useRef<string | null>(null);
@@ -659,7 +669,16 @@ export function SkillForm({
     setStarting(true);
     setError(null);
     try {
-      const session = await api.createSession(undefined, undefined, how ?? undefined);
+      // Each skill says what it needs; none of them gets everything by
+      // default. `analyse` keeps the specialist dispatch and the web lookup
+      // and takes the shell and file writes away, which is what a read-only
+      // investigation like `analyze-symptom` actually runs on — its own
+      // prompt forbids filesystem search, and a logged run spent four minutes
+      // doing it anyway because `Bash` was in reach. See `Skill.tools`.
+      const session = await api.createSession(undefined, undefined, {
+        ...(how ?? {}),
+        profile: tools,
+      });
       setSessionId(session.id);
       await api.sendMessage(
         session.id,

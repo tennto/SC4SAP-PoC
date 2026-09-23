@@ -1,3 +1,5 @@
+import { isAbsolute, relative, resolve } from "node:path";
+
 /**
  * Phase 2-5 — read-only tool policy.
  *
@@ -50,6 +52,33 @@ export const WRITE_CLASS_PATTERNS: readonly string[] = [
   `${SAP_TOOL_PREFIX}RuntimeCreate*`,
   // Switches which SAP system the session talks to — server-state mutation.
   `${SAP_TOOL_PREFIX}ReloadProfile`,
+];
+
+/**
+ * SAP tools the plugin's own workflow says not to call, superseded by ones
+ * that work.
+ *
+ * Not a safety rule — these two are simply wrong on this vendor build, and the
+ * skill files say so:
+ *
+ *   RuntimeListDumps    "Do NOT use ... it returns an empty list on some
+ *                        systems (verified on S/4HANA)" — use RuntimeListFeeds
+ *   RuntimeAnalyzeDump  "the summary facts pick the wrong chapter ('System
+ *                        environment', unrelated line) ... do not use
+ *                        RuntimeAnalyzeDump" — use RuntimeGetDumpById
+ *
+ * Written in a prompt, both bans were ignored: the logged `analyze-symptom`
+ * run on 2026-09-12 called `RuntimeListDumps` once and `RuntimeAnalyzeDump`
+ * twice, for 65 seconds of SAP round-trip that produced a wrong chapter and
+ * an empty list. Denied here instead, for every session, because the tools
+ * are not broken for one skill and sound for another.
+ *
+ * Tied to the vendor version, not to us: when abap-mcp-adt-powerup fixes
+ * them, this list is what to revisit.
+ */
+export const SUPERSEDED_SAP_TOOLS: readonly string[] = [
+  `${SAP_TOOL_PREFIX}RuntimeListDumps`,
+  `${SAP_TOOL_PREFIX}RuntimeAnalyzeDump`,
 ];
 
 /** Bare tool names matching a write-class pattern, for classification. */
@@ -157,6 +186,220 @@ export const LOCAL_AUTO_ALLOW: readonly string[] = [
   // The other half of ExitPlanMode. Changes nothing outside the turn.
   "EnterPlanMode",
 ];
+
+/**
+ * What a session is allowed to reach for, as one word.
+ *
+ * Three shapes, because measurement said two was not enough. A chat asks
+ * questions. A read-only skill investigates — it dispatches a specialist,
+ * looks things up on the web, and reads the local customization cache, but
+ * changes nothing. A build skill does work: it writes its artifacts down and
+ * runs commands.
+ *
+ * The distinction is not decoration. `analyze-symptom` is read-only by its own
+ * rules — "No filesystem search: paths are resolved once in Step 1" — and in a
+ * logged run on 2026-09-12 it spent its first four minutes and nineteen `Bash`
+ * calls on `find`, `grep`, `mkdir` and `cp`, then went on to grep the
+ * developer's own Claude Code transcripts under `~/.claude/projects`. A rule
+ * written in a prompt is a request; a tool that is absent is an answer.
+ */
+export type ToolProfile = "ask" | "analyse" | "build";
+
+/** Every profile, for validating one off the wire. */
+export const TOOL_PROFILES: readonly ToolProfile[] = ["ask", "analyse", "build"];
+
+/**
+ * Tools that change the machine this server runs on, or run commands on it.
+ *
+ * Out of reach for everything but a build skill. Nothing else in this app has
+ * a reason to write a file or open a shell: a chat renders an answer, and a
+ * read-only skill returns a report.
+ */
+const LOCAL_WRITES: readonly string[] = [
+  "Write",
+  "Edit",
+  "NotebookEdit",
+  "Bash",
+  "BashOutput",
+  "KillShell",
+];
+
+/**
+ * Tools that leave the machine, plus the model's own bookkeeping.
+ *
+ * A read-only skill keeps these: `analyze-symptom` looks up SAP Notes as its
+ * known-issue step, and a multi-round investigation has a list to keep. A chat
+ * has neither, and carrying them costs it tokens on every turn.
+ */
+const LOCAL_LOOKUP: readonly string[] = ["WebFetch", "WebSearch", "TodoWrite"];
+
+/** The sub-agent dispatch. Its description is every agent the plugin declares. */
+const AGENT = "Agent";
+
+/**
+ * What a profile may not touch, on top of the SAP write patterns every session
+ * is denied.
+ *
+ * Measured per turn on this machine: `Agent` is 17,665 tokens, and the local
+ * tools together are 8,766. A chat that carried all of it was paying 61% of
+ * its context for machinery it never reached for.
+ */
+export function disallowedForProfile(profile: ToolProfile): readonly string[] {
+  if (profile === "build") return [];
+  if (profile === "analyse") return LOCAL_WRITES;
+  return [AGENT, ...LOCAL_WRITES, ...LOCAL_LOOKUP];
+}
+
+/**
+ * Local read tools, and the input field each one takes a path in.
+ *
+ * Read, Grep and Glob are kept for every profile: a read-only skill needs them
+ * for the customization cache the workflow hands it a path to. What they are
+ * not for is the rest of the disk, which is the next function's job.
+ */
+const PATH_ARG: Record<string, string> = {
+  Read: "file_path",
+  Grep: "path",
+  Glob: "path",
+  Write: "file_path",
+  Edit: "file_path",
+  NotebookEdit: "notebook_path",
+};
+
+/**
+ * The path a tool call is reaching for, when that is outside the workspace.
+ *
+ * Returns the offending path, or null when the call stays inside.
+ *
+ * This exists because of one line in a logged run. `analyze-symptom`, a
+ * read-only SAP skill, ran `Grep` against the developer's own Claude Code
+ * transcripts under `~/.claude/projects` three times, and five `Bash`
+ * commands into the same directory. Nothing about a SAP short dump lives
+ * there. The session's `cwd` is the workspace and everything it legitimately
+ * reads is under it, so anything above it is a mistake at best.
+ *
+ * Two roots are allowed, not one. The workspace is where the session works,
+ * and the plugin directory is where its instructions live: a skill is told
+ * "follow the step sequence defined in workflow-steps.md", and that file sits
+ * beside the skill under `plugin_module/`, not under the workspace. Blocking
+ * it, as the first version of this did, leaves the model working from the
+ * summary the Skill tool loaded and nothing else — measured: the report came
+ * back at 795 characters, a fraction of what the format asks for.
+ *
+ * Relative paths resolve against the first root, the session's cwd, and are
+ * therefore inside by construction; only an absolute path that climbs out of
+ * both is refused.
+ */
+export function outsideWorkspace(
+  toolName: string,
+  input: Record<string, unknown>,
+  roots: readonly string[],
+): string | null {
+  const field = PATH_ARG[toolName];
+  if (!field) return null;
+  const raw = input[field];
+  if (typeof raw !== "string" || raw === "") return null;
+
+  // Relative paths resolve against the first root, which is the session's cwd.
+  const target = resolve(roots[0] ?? ".", raw);
+  const inside = roots.some((root) => {
+    // Case-insensitive because Windows is, and a case-flipped prefix would
+    // otherwise read as an escape. `relative` handles the separators.
+    const rel = relative(resolve(root).toLowerCase(), target.toLowerCase());
+    return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  });
+  return inside ? null : target;
+}
+
+/**
+ * What a row-extraction call is asking for, as something two calls can be
+ * compared by: which table, and how many rows.
+ *
+ * Null for every other tool. Only the two gated reads are grouped, because
+ * they are the only ones a turn asks about repeatedly for the same target —
+ * everything else is either auto-allowed or a one-off.
+ *
+ * The table comes out of `table_name` where there is one, and otherwise out of
+ * the first `FROM` in the query. A query this cannot read falls back to the
+ * query itself, which groups an exact repeat and nothing looser.
+ */
+/**
+ * The most rows one read may return.
+ *
+ * A hundred is enough to see what a table holds and to eyeball a result, and
+ * small enough that the answer still renders as something a person reads
+ * rather than scrolls past. Past that the right move is not a bigger read but
+ * a narrower one — key fields, a date range — which the model does when the
+ * data it wanted is not in what came back.
+ *
+ * It is also a guard on the approval dialog. "Read 10,000 rows of EKPO?" is a
+ * question nobody answers carefully; the useful question is the one that
+ * cannot be catastrophic whichever way it is answered.
+ */
+export const MAX_ROWS_PER_READ = 100;
+
+/**
+ * The same call with its row count brought under the cap, or the input
+ * untouched when it was already inside it.
+ *
+ * Clamped rather than refused: a refusal costs a round trip and teaches
+ * nothing the model could not see from the result, while a capped read still
+ * answers the question most of the time. The system prompt says what the cap
+ * is, so a short result reads as a limit rather than as an empty table.
+ */
+export function capRows(
+  toolName: string,
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  const bare = toolName.startsWith(SAP_TOOL_PREFIX)
+    ? toolName.slice(SAP_TOOL_PREFIX.length)
+    : toolName;
+  if (!NEVER_AUTO_ALLOW.has(bare)) return input;
+
+  const field = "max_rows" in input ? "max_rows" : "row_number" in input ? "row_number" : null;
+  // No cap named at all: the server applies its own default, which may be
+  // larger than ours, so one is named here.
+  if (!field) {
+    return { ...input, max_rows: MAX_ROWS_PER_READ };
+  }
+  const asked = input[field];
+  if (typeof asked === "number" && Number.isFinite(asked) && asked <= MAX_ROWS_PER_READ) {
+    return input;
+  }
+  return { ...input, [field]: MAX_ROWS_PER_READ };
+}
+
+export function rowScope(
+  toolName: string,
+  input: Record<string, unknown>,
+): { key: string; rows: number } | null {
+  const bare = toolName.startsWith(SAP_TOOL_PREFIX)
+    ? toolName.slice(SAP_TOOL_PREFIX.length)
+    : toolName;
+  if (!NEVER_AUTO_ALLOW.has(bare)) return null;
+
+  const table =
+    typeof input.table_name === "string" && input.table_name.trim() !== ""
+      ? input.table_name.trim().toUpperCase()
+      : typeof input.sql_query === "string"
+        ? (/\bFROM\s+([A-Za-z_][A-Za-z0-9_/]*)/i.exec(input.sql_query)?.[1] ??
+            input.sql_query)
+            .trim()
+            .toUpperCase()
+        : "";
+  if (table === "") return null;
+
+  // Whichever of the two row caps this tool uses. Absent means the server's
+  // own default, which is not zero — treated as unbounded so a call with no
+  // cap never rides in on the back of one that named a small number.
+  const asked = input.max_rows ?? input.row_number;
+  const rows =
+    typeof asked === "number" && Number.isFinite(asked) && asked > 0
+      ? asked
+      : Number.POSITIVE_INFINITY;
+
+  return { key: `${bare}:${table}`, rows };
+}
 
 export type ToolClass = "write" | "row-extraction" | "read" | "other";
 
@@ -377,7 +620,7 @@ export function buildToolPolicy(bareToolNames: readonly string[]): ToolPolicy {
     // list they are not discovered, so a discovery failure must not be able to
     // take them away and bury the operator in prompts.
     allowedTools: [...allowedTools, ...LOCAL_AUTO_ALLOW],
-    disallowedTools: [...WRITE_CLASS_PATTERNS],
+    disallowedTools: [...WRITE_CLASS_PATTERNS, ...SUPERSEDED_SAP_TOOLS],
     summary,
   };
 }

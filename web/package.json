@@ -1,6 +1,6 @@
 {
   "name": "sc4sap-web-poc-web",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

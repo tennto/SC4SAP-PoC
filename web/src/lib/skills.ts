@@ -37,6 +37,18 @@ export type SkillField = {
   images?: boolean;
 };
 
+/**
+ * What a skill's session may reach for. Mirrors `ToolProfile` in
+ * `src/server/tool-policy.ts`, and is declared per skill rather than derived
+ * from `group`, which is a shelf in the sidebar and would silently regrant
+ * permissions the day someone re-shelves something.
+ *
+ *   analyse — dispatches specialists, looks things up, reads the local cache,
+ *             and changes nothing. No shell, no file writes.
+ *   build   — writes its artifacts down and runs commands.
+ */
+export type SkillTools = "analyse" | "build";
+
 export type Skill = {
   /** Route segment: `/skills/<slug>`. */
   slug: string;
@@ -51,6 +63,12 @@ export type Skill = {
   icon: string;
   summary: string;
   group: SkillGroupId;
+  /**
+   * Required, not defaulted. A skill that does not say what it needs gets the
+   * benefit of the doubt nowhere: the compiler asks, and whoever adds the next
+   * one has to answer.
+   */
+  tools: SkillTools;
   status: SkillStatus;
   /** Why it cannot run yet. Required when `status` is `blocked`. */
   blockedReason?: string;
@@ -66,6 +84,15 @@ export type Skill = {
   cost?: {
     note: string;
     defaultBudgetUsd: number;
+    /**
+     * Which model the dialog opens on.
+     *
+     * Stated per skill rather than taken from the first entry of the picker's
+     * list, which is how it worked until Haiku was added to that list and
+     * silently became every skill's default. A default that moves when someone
+     * reorders an array is not a default, it is an accident.
+     */
+    defaultModel: string;
   };
   /**
    * The skill answers in rounds and asks back.
@@ -122,6 +149,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "ask-consultant",
     command: "/sc4sap:ask-consultant",
+    tools: "analyse",
     title: "Ask a Consultant",
     icon: "chat-teardrop-text",
     summary:
@@ -136,6 +164,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "analyze-code",
     command: "/sc4sap:analyze-code",
+    tools: "build",
     title: "Analyze Code",
     icon: "code",
     summary:
@@ -155,6 +184,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "analyze-symptom",
     command: "/sc4sap:analyze-symptom",
+    tools: "analyse",
     title: "Analyze a Symptom",
     icon: "bug",
     summary:
@@ -212,14 +242,23 @@ export const SKILLS: Skill[] = [
       },
     ],
     cost: {
-      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code. A plain short dump is triaged on Sonnet for cents; anything wider — an error message, a wrong result, a dump tied to a recent change — runs on Opus, as the skill asks, at a few dollars a round.",
+      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code. A short dump is triaged on the cheap path; the skill escalates to Opus by itself, and only when the dump alone cannot explain the failure. Note that this choice moves the orchestrator, not the debugger: the plugin's agents pin their own model today, so the heavy half of a run ignores it until that changes.",
       defaultBudgetUsd: 3,
+      // Haiku, on the evidence rather than to be cheap: asked to analyse an
+      // ST22 screenshot it produced a report at least as good as Sonnet's —
+      // it caught the "(Source code changed)" flag, compared both function
+      // module interfaces field by field and found the one-digit name typo.
+      // The work is retrieval and comparison, which is the shape it is good
+      // at, and the skill's own `BLOCKED — needs full` escalation is the
+      // safety net that makes starting cheap safe.
+      defaultModel: "claude-haiku-4-5",
     },
     followUp: true,
   },
   {
     slug: "analyze-cbo-obj",
     command: "/sc4sap:analyze-cbo-obj",
+    tools: "build",
     title: "Inventory a CBO Package",
     icon: "package",
     summary:
@@ -235,6 +274,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "compare-programs",
     command: "/sc4sap:compare-programs",
+    tools: "build",
     title: "Compare Programs",
     icon: "git-diff",
     summary:
@@ -255,6 +295,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "program-to-spec",
     command: "/sc4sap:program-to-spec",
+    tools: "build",
     title: "Program → Spec",
     icon: "file-text",
     summary:
@@ -273,6 +314,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "package-to-process",
     command: "/sc4sap:package-to-process",
+    tools: "build",
     title: "Package → Process",
     icon: "flow-arrow",
     summary:
@@ -294,6 +336,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "create-program",
     command: "/sc4sap:create-program",
+    tools: "build",
     title: "Create a Program",
     icon: "file-plus",
     summary:
@@ -313,6 +356,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "create-object",
     command: "/sc4sap:create-object",
+    tools: "build",
     title: "Create an Object",
     icon: "cube",
     summary:
@@ -336,6 +380,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "sap-doctor",
     command: "/sc4sap:sap-doctor",
+    tools: "build",
     title: "SAP Doctor",
     icon: "stethoscope",
     summary:

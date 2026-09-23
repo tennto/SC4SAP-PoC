@@ -46,6 +46,9 @@ const ACTIVE_KEY = "sc4sap.activeSession";
  * not put the same question back after it has been sent or thrown away.
  */
 const DRAFT_KEY = "sc4sap.chatDraft";
+
+/** The model this browser last chose for a new chat. See `model` below. */
+const MODEL_KEY = "sc4sap.chatModel";
 /** Which backend session is running which stored chat — see `attached`. */
 const ATTACHED_KEY = "sc4sap.attached";
 
@@ -71,6 +74,27 @@ export function Chat({
   firstName,
 }: Props) {
   const [health, setHealth] = useState<Health | null>(initialHealth);
+  /**
+   * The model the next session opens on.
+   *
+   * `null` means the backend's own default, which is what this screen used to
+   * be fixed at. A running session's model cannot change — it is settled when
+   * the process starts — so this applies to the next conversation, and the
+   * chip under the composer shows the running one until then.
+   *
+   * Remembered per browser: someone who has decided their SAP reads run on
+   * Haiku should not re-decide it every morning. A value the backend no
+   * longer offers is ignored rather than sent.
+   */
+  const [model, setModel] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(MODEL_KEY);
+      if (stored) setModel(stored);
+    } catch {
+      // Private window, blocked storage. The default is the right fallback.
+    }
+  }, []);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [chats, setChats] = useState<StoredChat[]>([]);
   /** chat id → the backend session currently running it. */
@@ -127,6 +151,32 @@ export function Chat({
   // Read from localStorage after mount, not during render: the server has no
   // localStorage and a differing first render is a hydration mismatch.
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  const offered = health?.models ?? [];
+  const chosen = offered.some((entry) => entry.id === model) ? model : null;
+
+  /**
+   * The model the conversation on screen is actually running on, if it has a
+   * session. A session's model is settled when its process starts, so the
+   * picker cannot change this one — only the next.
+   */
+  const activeBackendId = activeId ? (attached[activeId] ?? activeId) : null;
+  const activeModel =
+    sessions.find((session) => session.id === activeBackendId)?.model ?? null;
+
+  /** What a new session is opened with. Undefined means the backend default. */
+  const spend = (): { model: string } | undefined =>
+    chosen ? { model: chosen } : undefined;
+
+  function pickModel(id: string): void {
+    setModel(id);
+    try {
+      localStorage.setItem(MODEL_KEY, id);
+    } catch {
+      // See above: remembering it is a convenience, not the feature.
+    }
+  }
+
   const [busy, setBusy] = useState(false);
   // Latches the empty state closed the instant a prompt is submitted from it,
   // so the composer starts gliding down on the keystroke rather than when the
@@ -202,6 +252,19 @@ export function Chat({
   const listSeq = useRef(0);
   const closed = useRef<Set<string>>(new Set());
   const closing = useRef<Set<string>>(new Set());
+  /**
+   * The same shadow, for stored conversations rather than backend sessions.
+   *
+   * `refreshChats` replaced the list with whatever the server said, and during
+   * a run of quick closes the server is behind: the answer to the first close
+   * still lists the conversations the second and third clicks have already
+   * taken off screen, so they come back and go again. A chat is held here from
+   * the click until the server stops listing it.
+   */
+  const removedChats = useRef<Set<string>>(new Set());
+  const chatsSeq = useRef(0);
+  /** Pending coalesced refresh — see `scheduleRefresh`. */
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read inside async callbacks, where `sessions` would be the value it had
   // when the callback was created.
   const sessionsRef = useRef<Session[]>(initialSessions);
@@ -332,14 +395,50 @@ export function Chat({
   }, []);
 
   const refreshChats = useCallback(async () => {
+    const seq = ++chatsSeq.current;
     try {
-      setChats(await api.listChats());
+      const list = await api.listChats();
+      // A newer list has already been applied; this one is history.
+      if (seq !== chatsSeq.current) return;
+
+      // A conversation the server has stopped listing is really gone, so the
+      // shadow over it can be lifted. Kept, and the row stays off screen.
+      for (const id of [...removedChats.current]) {
+        if (!list.some((chat) => chat.id === id)) removedChats.current.delete(id);
+      }
+
+      setChats(list.filter((chat) => !removedChats.current.has(chat.id)));
     } catch (err) {
       // History being unavailable is not a reason to take the screen down:
       // live sessions still work without it.
       fail((err as Error).message);
     }
   }, []);
+
+  /**
+   * One refresh after a run of closes, rather than one per close.
+   *
+   * Each close ended with two list requests. Closing four conversations in as
+   * many seconds fired eight, overlapping, each replacing the list from a
+   * server at a different point in the deletions — which is what made a quick
+   * run of × feel like the rail was arguing with itself. The work is the same
+   * either way; only the last answer is worth drawing.
+   */
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      void refresh();
+      void refreshChats();
+    }, 250);
+  }, [refresh, refreshChats]);
+
+  useEffect(
+    () => () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    },
+    [],
+  );
 
   /** What the composer opens with, if the monitor left something. */
   const [seed, setSeed] = useState<string | null>(null);
@@ -657,7 +756,7 @@ export function Chat({
     setBusy(true);
     setError(null);
     try {
-      const session = await api.createSession();
+      const session = await api.createSession(undefined, undefined, spend());
       setSessions((current) => [...current, session]);
       setHistory(null);
       setActiveId(session.id);
@@ -684,6 +783,7 @@ export function Chat({
 
     const backend = attached[id] ?? id;
     closed.current.add(backend);
+    removedChats.current.add(id);
 
     setSessions((current) =>
       current.filter((session) => session.id !== backend),
@@ -714,8 +814,9 @@ export function Chat({
       fail((err as Error).message);
     } finally {
       closing.current.delete(id);
-      await refresh();
-      await refreshChats();
+      // Not awaited, and not one per close: see `scheduleRefresh`. The row is
+      // already gone from the screen — this is only the list catching up.
+      scheduleRefresh();
     }
   };
 
@@ -756,6 +857,7 @@ export function Chat({
                 totalCostUsd: storedChat.totalCostUsd,
               }
             : undefined,
+          spend(),
         );
         setSessions((current) => [...current, session]);
         setAttached((current) => ({ ...current, [activeId]: session.id }));
@@ -820,7 +922,7 @@ export function Chat({
     setSendMark(0);
     setError(null);
     try {
-      const session = await api.createSession();
+      const session = await api.createSession(undefined, undefined, spend());
       setSessions((current) => [...current, session]);
       setHistory(null);
       setActiveId(session.id);
@@ -1053,7 +1155,12 @@ export function Chat({
           <div className="stage-composer">
             <Composer
               disabled={composerDisabled}
-              model={health?.model ?? null}
+              // The running session's model when there is one, otherwise the
+              // one the next session will open on — which is what the picker
+              // is changing.
+              model={activeModel ?? chosen ?? health?.model ?? null}
+              models={offered}
+              onModelChange={pickModel}
               autoFocus={hero}
               // The same test the transcript's indicator uses, so the button
               // and the dots are never in disagreement about whether the

@@ -2083,6 +2083,39 @@ button.primary:hover:not(:disabled) {
 
 /* Wide tables scroll inside the bubble rather than stretching it; tall ones
    scroll under their header. */
+/* The copy control, pushed to the end of the bar.
+
+   Quiet until the pointer is on the bar: the table is the thing being read,
+   and a button competing with the heading for attention on every result is
+   noise for a press most readers never make. */
+.markdown-table-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  color: var(--ink-55);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  opacity: 0;
+  transition:
+    opacity var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.markdown-table:hover .markdown-table-copy,
+.markdown-table-copy:focus-visible {
+  opacity: 1;
+}
+
+.markdown-table-copy:hover {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
 .markdown-table-scroll {
   overflow: auto;
   max-height: 60vh;
@@ -2110,12 +2143,20 @@ button.primary:hover:not(:disabled) {
    it did not. A track the eye can find is the whole affordance, since a mouse
    wheel does not scroll sideways without a modifier.
 
-   `contain`, so reaching the end of the table does not hand the gesture up and
-   start scrolling the conversation behind it. */
+   Sideways is contained so a horizontal flick does not become a browser
+   back-navigation. Vertically it chains, which is the default and was
+   deliberately turned off here once: the argument was that reaching the end
+   of a table should not start scrolling the conversation behind it. In a
+   window it does not survive. The scroller is capped at 60vh, so a long
+   result occupies most of the screen, and containing the gesture means the
+   wheel simply stops — the page will not move until the pointer is dragged
+   off the table and put back. Chaining costs an unintended scroll now and
+   then; containing costs a dead wheel every time. */
 .markdown-table-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--ink-38) var(--panel-3);
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
 }
 
 /* Cells wrap, and no single one decides how wide the table is.
@@ -2315,11 +2356,45 @@ button.primary:hover:not(:disabled) {
 
 /* A label, not a picker. The model is `SC4SAP_MODEL` on the server, so there
    is nothing here to open. */
+/* The label and the picker that replaces it share a height on purpose.
+   `health` arrives after the first paint, so the chip starts as the plain
+   label and becomes a `Select` a moment later — and the two differing by a
+   couple of pixels moved the whole composer, and with it the box the reader's
+   hand is on, once per page load. Reserving the taller of the two costs
+   nothing and the swap is then invisible. */
+.composer-model,
+.composer-model-pick {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+}
+
 .composer-model {
   font-size: 12px;
   color: var(--ink-55);
   padding: 2px 4px;
   user-select: none;
+}
+
+/* The same chip, made pickable. Sized down and stripped of its border so it
+   still reads as the quiet label it replaced rather than as a form control
+   competing with the send button beside it. */
+.composer-model-pick {
+  min-width: 118px;
+}
+
+.composer-model-pick .select-button {
+  padding: 2px 6px 2px 8px;
+  font-size: 12px;
+  color: var(--ink-55);
+  background: transparent;
+  border-color: transparent;
+}
+
+.composer-model-pick .select-button:hover:not(:disabled),
+.composer-model-pick .select-button.is-open {
+  color: var(--ink);
+  border-color: var(--line);
 }
 
 .composer-send {
@@ -5832,6 +5907,21 @@ a.ghost.auth-submit .google-mark {
   flex: 1;
 }
 
+/* What the button below is about to do, when that is more than the button's
+   own label can say — "adding switches to it, which closes every open
+   session". A block above the row rather than a third item inside it: a
+   sentence in a flex row either squeezes the two controls or wraps the row,
+   and at Korean line lengths it wrapped. */
+.setup-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink-55);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .setup-actions .primary {
   padding: 9px 20px;
   font-size: 13px;
@@ -6647,6 +6737,30 @@ a.ghost.auth-submit .google-mark {
 
 .approval-pick {
   max-width: 280px;
+}
+
+/* Wider than the approval picker beside it because it holds more: an approval
+   level is one or two words, an SAP system is an alias and the description
+   that tells two similarly-named systems apart. At 280px the description was
+   ellipsed off entirely, which left the picker showing the one part of the
+   label a reader already knows. Capped rather than full-width so it still
+   reads as a control on a row and not as the row itself, and it gives way
+   below that on a narrow window. */
+.system-pick {
+  width: 100%;
+  max-width: 460px;
+}
+
+/* The second subject inside the SAP card: what this account has on file, under
+   the system every session actually runs on. A heavier rule and a little air
+   above it, so the eye reads a change of topic rather than four more facts
+   about the system named above. The rows inside keep their own separators. */
+.setting-aside {
+  display: flex;
+  flex-direction: column;
+  margin-top: 6px;
+  padding-top: 2px;
+  border-top: 1px solid var(--ink-12, var(--line));
 }
 
 /* ---- a skill that asks back: the reply composer under its result, and the

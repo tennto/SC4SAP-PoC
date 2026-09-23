@@ -70,6 +70,7 @@ const en = {
     notSet: "Not set",
 
     sapSystemCard: "SAP system",
+    systemUnknown: "The backend did not say which system it is on.",
     profile: "Profile",
     host: "Host",
     systemClient: "System / client",
@@ -130,10 +131,10 @@ const en = {
 
     connectedHeading: "Everything is connected",
     connectedBody:
-      "Re-checked just now: the agent backend is answering, its Claude API key was accepted, and the SAP system accepted the stored logon. Nothing needed reconnecting. Run diagnostics if you want the detail behind that.",
+      "Re-checked just now: the agent backend is answering, its Claude API key was accepted, and the active SAP system accepted its logon. Nothing needed reconnecting. Run diagnostics if you want the detail behind that.",
     reconnectedHeading: "Reconnected",
     reconnectedBody:
-      "Something was failing a moment ago and is answering again: the agent backend responded, its Claude API key was accepted, and the SAP system accepted the stored logon. The connection panel behind this has caught up.",
+      "Something was failing a moment ago and is answering again: the agent backend responded, its Claude API key was accepted, and the active SAP system accepted its logon. The connection panel behind this has caught up.",
     problemsHeading: "Still not connected",
     problemsBody: (detail: string, remedy: string) =>
       `Re-checked just now, and ${detail}. ${remedy}`,
@@ -196,6 +197,7 @@ const en = {
   },
 
   skillForm: {
+    haikuNote: "Half the price of Sonnet. Enough to read a table or a program.",
     sonnetNote: "Fast, and enough to narrow most causes.",
     opusNote: "Deeper cross-file reasoning, about five times the price.",
     onlyImages: (file: string) =>
@@ -286,6 +288,8 @@ const en = {
     empty: "Ask the SC4SAP agent something.",
     you: "You",
     tableTitle: "Table view",
+    tableCopy: "Copy",
+    tableCopied: "Copied",
     tableEntries: (count: number) => `${count} ${count === 1 ? "entry" : "entries"}`,
     tableFields: (count: number) => `${count} ${count === 1 ? "field" : "fields"}`,
     agent: "Agent",
@@ -613,6 +617,84 @@ const en = {
     backendNotAnswering: "Backend not answering",
     defaultModelHint:
       "What chat opens with. A skill that dispatches a reviewer asks which model to use before it runs.",
+
+    systems: "SAP system",
+    systemsNote:
+      "Which system every session talks to. One setting for the whole backend, not for this account.",
+    activeSystem: "Active system",
+    systemHint:
+      "Switching closes every open session, including other people's. The next session you open starts on the new system.",
+    systemSwitched: (alias: string, closed: number) =>
+      closed === 0
+        ? `Now on ${alias}.`
+        : `Now on ${alias}. ${closed} open session${closed === 1 ? "" : "s"} closed.`,
+    systemSwitching: "Switching…",
+    noSystems: "No SAP systems are configured on this machine.",
+    systemsUnavailable: "The backend could not read the system list.",
+    systemUser: "User",
+    systemPasswordPlaintext: "Password is in plaintext, not the keychain.",
+    addSystemHeading: "Add a SAP system?",
+    addSystemBody:
+      "The next screen asks for the host and logon, tries them for real, and only then writes the system.",
+    addSystemConfirm: "Add a system",
+    switchHeading: (alias: string) => `Switch to ${alias}?`,
+    switchConfirm: "Switch",
+    clientShort: (client: string) => `client ${client}`,
+  },
+
+  addSystem: {
+    title: "Add a SAP system",
+    kind: "New system",
+    heading: "Which system should this connect to?",
+    lede: "The logon is tried for real before anything is written. Nothing is saved if it does not answer.",
+    adtUrl: "ADT URL",
+    sapUser: "SAP user",
+    sapPassword: "Password",
+    passwordHint: "Kept in the operating system's keychain, never in a file.",
+    client: "Client",
+    release: "Release",
+    abapRelease: "ABAP release",
+    logonLanguage: "Logon language",
+    industry: "Industry",
+    alias: "Short name",
+    aliasHint: "What the system picker shows, and the folder name on disk. Letters, digits, dash and underscore.",
+    tier: "Tier",
+    tierHint: "DEV, QA or PRD. A system marked PRD is treated as read-only by the plugin.",
+    description: "Description",
+    descriptionPlaceholder: "Korea development — S/4HANA 758",
+    descriptionHint: "Optional. Shown beside the short name in the picker.",
+    next: "Next",
+    stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
+    steps: [
+      {
+        title: "Where is the system?",
+        short: "Connection",
+        lede: "The host, and a logon that may read it. Tried for real before anything is written.",
+      },
+      {
+        title: "What is it running?",
+        short: "System",
+        lede: "What decides which tables exist, which syntax is allowed, and what the consultants read first.",
+      },
+      {
+        title: "What should it be called?",
+        short: "Name",
+        lede: "The name in the system picker, and the folder on disk.",
+      },
+    ],
+    duplicateHeading: (alias: string) => `Already registered as ${alias}.`,
+    duplicateBody: "That host, client and user are a system this machine already has.",
+    duplicateGoing: "Taking you back to settings, where you can switch to it.",
+    checkAndAdd: "Check and add",
+    checking: "Trying the logon…",
+    saving: "Adding the system…",
+    cancel: "Cancel",
+    switchWarning: "Adding switches to it, which closes every open session.",
+    checkFailed: "That system did not answer.",
+    saveFailed: "The system could not be added.",
+    doneHeading: (alias: string) => `${alias} is connected.`,
+    doneBody: "Every new session runs on it from now on. The sessions that were open have been closed.",
+    backToSettings: "Back to settings",
   },
 
   configuration: {
@@ -827,6 +909,7 @@ const ko: Messages = {
     notSet: "미설정",
 
     sapSystemCard: "SAP 시스템",
+    systemUnknown: "백엔드가 어느 시스템에 연결되어 있는지 알려주지 않았습니다.",
     profile: "프로필",
     host: "호스트",
     systemClient: "시스템 / 클라이언트",
@@ -883,10 +966,10 @@ const ko: Messages = {
 
     connectedHeading: "모두 연결되어 있습니다",
     connectedBody:
-      "방금 다시 확인했습니다. 에이전트 백엔드가 응답하고, Claude API 키가 승인되었으며, SAP 시스템이 저장된 로그온을 받아들였습니다. 다시 연결할 것이 없었습니다. 자세한 내용은 진단 실행으로 확인하세요.",
+      "방금 다시 확인했습니다. 에이전트 백엔드가 응답하고, Claude API 키가 승인되었으며, 활성 SAP 시스템이 자기 로그온을 받아들였습니다. 다시 연결할 것이 없었습니다. 자세한 내용은 진단 실행으로 확인하세요.",
     reconnectedHeading: "다시 연결되었습니다",
     reconnectedBody:
-      "조금 전까지 실패하던 것이 다시 응답합니다. 에이전트 백엔드가 응답하고, Claude API 키가 승인되었으며, SAP 시스템이 저장된 로그온을 받아들였습니다. 뒤의 연결 패널도 갱신되었습니다.",
+      "조금 전까지 실패하던 것이 다시 응답합니다. 에이전트 백엔드가 응답하고, Claude API 키가 승인되었으며, 활성 SAP 시스템이 자기 로그온을 받아들였습니다. 뒤의 연결 패널도 갱신되었습니다.",
     problemsHeading: "아직 연결되지 않았습니다",
     problemsBody: (detail, remedy) =>
       `방금 다시 확인했으나, ${detail}. ${remedy}`,
@@ -949,6 +1032,7 @@ const ko: Messages = {
   },
 
   skillForm: {
+    haikuNote: "Sonnet의 절반 가격입니다. 테이블이나 프로그램을 읽는 데는 충분합니다.",
     sonnetNote: "빠르고, 대부분의 원인을 좁히기에 충분합니다.",
     opusNote: "파일 간 추론이 더 깊고, 가격은 약 5배입니다.",
     onlyImages: (file) => `${file}: 여기에는 이미지(PNG, JPEG, GIF, WebP)만 첨부할 수 있습니다.`,
@@ -1033,6 +1117,8 @@ const ko: Messages = {
     empty: "SC4SAP 에이전트에게 무엇이든 물어보세요.",
     you: "나",
     tableTitle: "테이블 뷰",
+    tableCopy: "복사",
+    tableCopied: "복사됨",
     tableEntries: (count) => `${count}건`,
     tableFields: (count) => `${count}개 필드`,
     agent: "에이전트",
@@ -1371,6 +1457,80 @@ const ko: Messages = {
     defaultModel: "기본 모델",
     backendNotAnswering: "백엔드 응답 없음",
     defaultModelHint: "채팅이 시작할 때 쓰는 모델입니다. 리뷰어를 파견하는 스킬은 실행 전에 어떤 모델을 쓸지 묻습니다.",
+
+    systems: "SAP 시스템",
+    systemsNote: "모든 세션이 연결되는 시스템입니다. 이 계정이 아니라 백엔드 전체에 적용됩니다.",
+    activeSystem: "활성 시스템",
+    systemHint:
+      "전환하면 다른 사람의 것까지 열려 있는 모든 세션이 닫힙니다. 다음에 여는 세션부터 새 시스템에서 시작합니다.",
+    systemSwitched: (alias: string, closed: number) =>
+      closed === 0 ? `${alias}(으)로 전환했습니다.` : `${alias}(으)로 전환했습니다. 열려 있던 세션 ${closed}개를 닫았습니다.`,
+    systemSwitching: "전환 중…",
+    noSystems: "이 머신에 설정된 SAP 시스템이 없습니다.",
+    systemsUnavailable: "백엔드가 시스템 목록을 읽지 못했습니다.",
+    systemUser: "사용자",
+    systemPasswordPlaintext: "비밀번호가 키체인이 아니라 평문으로 저장되어 있습니다.",
+    addSystemHeading: "SAP 시스템을 추가할까요?",
+    addSystemBody: "다음 화면에서 호스트와 로그온 정보를 받아 실제로 접속을 시도하고, 성공한 뒤에야 시스템을 저장합니다.",
+    addSystemConfirm: "시스템 추가",
+    switchHeading: (alias: string) => `${alias}(으)로 전환할까요?`,
+    switchConfirm: "전환",
+    clientShort: (client: string) => `클라이언트 ${client}`,
+  },
+
+  addSystem: {
+    title: "SAP 시스템 추가",
+    kind: "새 시스템",
+    heading: "어느 시스템에 연결할까요?",
+    lede: "저장하기 전에 로그온을 실제로 시도합니다. 응답이 없으면 아무것도 저장하지 않습니다.",
+    adtUrl: "ADT URL",
+    sapUser: "SAP 사용자",
+    sapPassword: "비밀번호",
+    passwordHint: "운영체제 키체인에 보관되며 파일에는 저장되지 않습니다.",
+    client: "클라이언트",
+    release: "릴리스",
+    abapRelease: "ABAP 릴리스",
+    logonLanguage: "로그온 언어",
+    industry: "산업",
+    alias: "짧은 이름",
+    aliasHint: "시스템 선택기에 표시되고 디스크의 폴더 이름이 됩니다. 영문자, 숫자, 하이픈, 밑줄만 씁니다.",
+    tier: "티어",
+    tierHint: "DEV, QA, PRD 중 하나입니다. PRD로 표시된 시스템은 플러그인이 읽기 전용으로 다룹니다.",
+    description: "설명",
+    descriptionPlaceholder: "한국 개발 — S/4HANA 758",
+    descriptionHint: "선택 사항입니다. 선택기에서 짧은 이름 옆에 표시됩니다.",
+    next: "다음",
+    stepOf: (n: number, total: number) => `${total}단계 중 ${n}단계`,
+    steps: [
+      {
+        title: "시스템이 어디에 있나요?",
+        short: "연결",
+        lede: "호스트와 읽을 수 있는 로그온입니다. 저장하기 전에 실제로 접속해 봅니다.",
+      },
+      {
+        title: "무엇이 돌고 있나요?",
+        short: "시스템",
+        lede: "어떤 테이블이 존재하는지, 어떤 문법을 쓸 수 있는지, 컨설턴트가 무엇을 먼저 읽을지를 정합니다.",
+      },
+      {
+        title: "뭐라고 부를까요?",
+        short: "이름",
+        lede: "시스템 선택기에 표시되는 이름이자 디스크의 폴더 이름입니다.",
+      },
+    ],
+    duplicateHeading: (alias: string) => `이미 ${alias}(으)로 등록되어 있습니다.`,
+    duplicateBody: "그 호스트와 클라이언트, 사용자 조합은 이 머신에 이미 있는 시스템입니다.",
+    duplicateGoing: "설정으로 돌아갑니다. 거기서 그 시스템으로 전환할 수 있습니다.",
+    checkAndAdd: "확인하고 추가",
+    checking: "로그온 시도 중…",
+    saving: "시스템 추가 중…",
+    cancel: "취소",
+    switchWarning: "추가하면 그 시스템으로 전환되며 열려 있는 모든 세션이 닫힙니다.",
+    checkFailed: "그 시스템이 응답하지 않았습니다.",
+    saveFailed: "시스템을 추가하지 못했습니다.",
+    doneHeading: (alias: string) => `${alias}에 연결되었습니다.`,
+    doneBody: "이제부터 새로 여는 세션은 이 시스템에서 실행됩니다. 열려 있던 세션은 닫혔습니다.",
+    backToSettings: "설정으로 돌아가기",
   },
 
   configuration: {
@@ -1562,6 +1722,7 @@ const ja: Messages = {
     notSet: "未設定",
 
     sapSystemCard: "SAP システム",
+    systemUnknown: "バックエンドがどのシステムに接続しているか答えませんでした。",
     profile: "プロファイル",
     host: "ホスト",
     systemClient: "システム / クライアント",
@@ -1618,10 +1779,10 @@ const ja: Messages = {
 
     connectedHeading: "すべて接続されています",
     connectedBody:
-      "たった今再確認しました。エージェントバックエンドは応答し、Claude API キーは受理され、SAP システムは保存されたログオンを受け付けました。再接続の必要はありませんでした。詳細は「診断を実行」で確認できます。",
+      "たった今再確認しました。エージェントバックエンドは応答し、Claude API キーは受理され、使用中の SAP システムがそのログオンを受け付けました。再接続の必要はありませんでした。詳細は「診断を実行」で確認できます。",
     reconnectedHeading: "再接続しました",
     reconnectedBody:
-      "少し前まで失敗していたものが再び応答しています。エージェントバックエンドは応答し、Claude API キーは受理され、SAP システムは保存されたログオンを受け付けました。背後の接続パネルも更新されています。",
+      "少し前まで失敗していたものが再び応答しています。エージェントバックエンドは応答し、Claude API キーは受理され、使用中の SAP システムがそのログオンを受け付けました。背後の接続パネルも更新されています。",
     problemsHeading: "まだ接続されていません",
     problemsBody: (detail, remedy) =>
       `たった今再確認しましたが、${detail}。${remedy}`,
@@ -1684,6 +1845,7 @@ const ja: Messages = {
   },
 
   skillForm: {
+    haikuNote: "Sonnet の半額です。テーブルやプログラムを読むには十分です。",
     sonnetNote: "高速で、ほとんどの原因を絞り込むには十分です。",
     opusNote: "ファイル横断の推論がより深く、価格は約 5 倍です。",
     onlyImages: (file) => `${file}: ここに添付できるのは画像 (PNG, JPEG, GIF, WebP) のみです。`,
@@ -1768,6 +1930,8 @@ const ja: Messages = {
     empty: "SC4SAP エージェントに何か聞いてみてください。",
     you: "あなた",
     tableTitle: "テーブルビュー",
+    tableCopy: "コピー",
+    tableCopied: "コピーしました",
     tableEntries: (count) => `${count} 件`,
     tableFields: (count) => `${count} 項目`,
     agent: "エージェント",
@@ -2106,6 +2270,80 @@ const ja: Messages = {
     defaultModel: "既定のモデル",
     backendNotAnswering: "バックエンド応答なし",
     defaultModelHint: "チャットが最初に使うモデルです。レビュアーを派遣するスキルは実行前にどのモデルを使うか尋ねます。",
+
+    systems: "SAP システム",
+    systemsNote: "すべてのセッションが接続するシステムです。このアカウントではなくバックエンド全体の設定です。",
+    activeSystem: "使用中のシステム",
+    systemHint:
+      "切り替えると、他の人のものも含め開いているセッションがすべて閉じます。次に開くセッションから新しいシステムになります。",
+    systemSwitched: (alias: string, closed: number) =>
+      closed === 0 ? `${alias} に切り替えました。` : `${alias} に切り替えました。開いていたセッション ${closed} 件を閉じました。`,
+    systemSwitching: "切り替え中…",
+    noSystems: "このマシンに設定された SAP システムがありません。",
+    systemsUnavailable: "バックエンドがシステム一覧を読めませんでした。",
+    systemUser: "ユーザー",
+    systemPasswordPlaintext: "パスワードがキーチェーンではなく平文で保存されています。",
+    addSystemHeading: "SAP システムを追加しますか?",
+    addSystemBody: "次の画面でホストとログオン情報を受け取り、実際に接続を試したうえでシステムを保存します。",
+    addSystemConfirm: "システムを追加",
+    switchHeading: (alias: string) => `${alias} に切り替えますか?`,
+    switchConfirm: "切り替える",
+    clientShort: (client: string) => `クライアント ${client}`,
+  },
+
+  addSystem: {
+    title: "SAP システムを追加",
+    kind: "新しいシステム",
+    heading: "どのシステムに接続しますか?",
+    lede: "保存する前にログオンを実際に試します。応答がなければ何も保存しません。",
+    adtUrl: "ADT URL",
+    sapUser: "SAP ユーザー",
+    sapPassword: "パスワード",
+    passwordHint: "OS のキーチェーンに保管され、ファイルには書き込みません。",
+    client: "クライアント",
+    release: "リリース",
+    abapRelease: "ABAP リリース",
+    logonLanguage: "ログオン言語",
+    industry: "業種",
+    alias: "短い名前",
+    aliasHint: "システム選択に表示され、ディスク上のフォルダ名になります。英数字とハイフン、アンダースコアのみです。",
+    tier: "ティア",
+    tierHint: "DEV、QA、PRD のいずれかです。PRD のシステムはプラグインが読み取り専用として扱います。",
+    description: "説明",
+    descriptionPlaceholder: "韓国開発 — S/4HANA 758",
+    descriptionHint: "任意です。選択画面で短い名前の横に表示されます。",
+    next: "次へ",
+    stepOf: (n: number, total: number) => `${total} ステップ中 ${n}`,
+    steps: [
+      {
+        title: "システムはどこにありますか?",
+        short: "接続",
+        lede: "ホストと、読み取りできるログオンです。保存する前に実際に接続します。",
+      },
+      {
+        title: "何が動いていますか?",
+        short: "システム",
+        lede: "どのテーブルが存在し、どの構文が使えて、コンサルタントが何を先に読むかを決めます。",
+      },
+      {
+        title: "何と呼びますか?",
+        short: "名前",
+        lede: "システム選択に表示される名前で、ディスク上のフォルダ名にもなります。",
+      },
+    ],
+    duplicateHeading: (alias: string) => `すでに ${alias} として登録されています。`,
+    duplicateBody: "そのホスト、クライアント、ユーザーの組み合わせはこのマシンに既にあります。",
+    duplicateGoing: "設定に戻ります。そこで切り替えられます。",
+    checkAndAdd: "確認して追加",
+    checking: "ログオンを試しています…",
+    saving: "システムを追加しています…",
+    cancel: "キャンセル",
+    switchWarning: "追加するとそのシステムに切り替わり、開いているセッションはすべて閉じます。",
+    checkFailed: "そのシステムから応答がありませんでした。",
+    saveFailed: "システムを追加できませんでした。",
+    doneHeading: (alias: string) => `${alias} に接続しました。`,
+    doneBody: "これ以降に開くセッションはこのシステムで動きます。開いていたセッションは閉じました。",
+    backToSettings: "設定に戻る",
   },
 
   configuration: {
