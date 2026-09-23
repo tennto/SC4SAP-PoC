@@ -164,10 +164,104 @@ function tableShape(node: Element | undefined): { rows: number; fields: number }
  * because a column cannot be drawn in from CSS alone. The scroller caps its
  * height so a long result scrolls under a header that stays put.
  */
+/**
+ * The table as a spreadsheet would paste it.
+ *
+ * Tab-separated, one line per row, read off the rendered table rather than
+ * rebuilt from the markdown — what is on screen is what gets copied, including
+ * the blank cells the MCP server omits from its rows. The selection gutter is
+ * skipped: it is a column this app draws, not one the data has.
+ *
+ * Tabs and newlines inside a cell would break the row apart on paste, so they
+ * collapse to a space. Nothing is quoted: TSV has no escape that Excel and
+ * Sheets agree on, and a mangled cell is better than a mangled sheet.
+ */
+function cellsOf(table: HTMLTableElement): string[][] {
+  return [...table.rows].map((row) =>
+    [...row.cells]
+      .filter((cell) => !cell.classList.contains("markdown-table-gutter"))
+      .map((cell) => (cell.innerText ?? "").replace(/\s+/g, " ").trim()),
+  );
+}
+
+function toTsv(grid: string[][]): string {
+  return grid.map((row) => row.join("\t")).join("\n");
+}
+
+const ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+};
+
+/**
+ * The same grid as an HTML table whose every cell is marked as text.
+ *
+ * This is what stops a spreadsheet helpfully destroying SAP keys. Pasted as
+ * plain TSV, a material number like `100000000000` arrives as `1E+11` and a
+ * company code of `0001` arrives as `1` — the identifier is gone, and it looks
+ * like the data was wrong rather than the paste. Excel reads `text/html` in
+ * preference to `text/plain` and honours `mso-number-format:'\@'`, its code
+ * for the Text format, so every cell lands exactly as it reads on screen.
+ *
+ * Both flavours go on the clipboard. Anything that is not a spreadsheet — a
+ * text editor, a chat box, a terminal — takes the plain one and gets the
+ * tab-separated rows it expects.
+ */
+function toHtml(grid: string[][]): string {
+  const escape = (value: string): string =>
+    value.replace(/[&<>]/g, (ch) => ESCAPES[ch] ?? ch);
+  const body = grid
+    .map(
+      (row) =>
+        `<tr>${row
+          .map((cell) => `<td style="mso-number-format:'\\@'">${escape(cell)}</td>`)
+          .join("")}</tr>`,
+    )
+    .join("");
+  return `<table>${body}</table>`;
+}
+
 function DataTable({ node, children: cells }: { node?: Element; children?: ReactNode }) {
   const { t: messages } = useLocale();
   const t = messages.transcript;
   const { rows, fields } = tableShape(node);
+  const table = useRef<HTMLTableElement>(null);
+  /** Briefly, after a copy — the button is its own confirmation. */
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  async function copy(): Promise<void> {
+    if (!table.current) return;
+    const grid = cellsOf(table.current);
+    const tsv = toTsv(grid);
+    try {
+      // Both flavours, so the spreadsheet gets the one that keeps its cells as
+      // text and everything else gets the tab-separated rows. `ClipboardItem`
+      // is the only way to put two types down at once; where it is missing,
+      // plain text alone still pastes into the right cells.
+      if (typeof ClipboardItem === "function" && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/plain": new Blob([tsv], { type: "text/plain" }),
+            "text/html": new Blob([toHtml(grid)], { type: "text/html" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(tsv);
+      }
+      setCopied(true);
+    } catch {
+      // Denied clipboard permission, or an insecure origin. Nothing useful to
+      // say that the absent confirmation does not already say.
+    }
+  }
+
   return (
     <div className="markdown-table">
       <div className="markdown-table-bar">
@@ -177,9 +271,22 @@ function DataTable({ node, children: cells }: { node?: Element; children?: React
         <span className="markdown-table-shape">
           {t.tableEntries(rows)} · {t.tableFields(fields)}
         </span>
+        {/* Tab-separated, because the place this is going is a spreadsheet.
+            Pasting a Markdown table into Excel puts the whole thing in one
+            cell; TSV lands in the grid. */}
+        <button
+          type="button"
+          className="markdown-table-copy"
+          onClick={() => void copy()}
+          aria-label={t.tableCopy}
+          title={t.tableCopy}
+        >
+          <Icon name={copied ? "check" : "copy"} />
+          {copied ? t.tableCopied : t.tableCopy}
+        </button>
       </div>
       <div className="markdown-table-scroll">
-        <table>{cells}</table>
+        <table ref={table}>{cells}</table>
       </div>
     </div>
   );

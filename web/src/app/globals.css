@@ -2083,6 +2083,39 @@ button.primary:hover:not(:disabled) {
 
 /* Wide tables scroll inside the bubble rather than stretching it; tall ones
    scroll under their header. */
+/* The copy control, pushed to the end of the bar.
+
+   Quiet until the pointer is on the bar: the table is the thing being read,
+   and a button competing with the heading for attention on every result is
+   noise for a press most readers never make. */
+.markdown-table-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 3px 8px;
+  font-size: 11.5px;
+  color: var(--ink-55);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  opacity: 0;
+  transition:
+    opacity var(--t-fast) var(--ease),
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease);
+}
+
+.markdown-table:hover .markdown-table-copy,
+.markdown-table-copy:focus-visible {
+  opacity: 1;
+}
+
+.markdown-table-copy:hover {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
 .markdown-table-scroll {
   overflow: auto;
   max-height: 60vh;
@@ -2110,12 +2143,20 @@ button.primary:hover:not(:disabled) {
    it did not. A track the eye can find is the whole affordance, since a mouse
    wheel does not scroll sideways without a modifier.
 
-   `contain`, so reaching the end of the table does not hand the gesture up and
-   start scrolling the conversation behind it. */
+   Sideways is contained so a horizontal flick does not become a browser
+   back-navigation. Vertically it chains, which is the default and was
+   deliberately turned off here once: the argument was that reaching the end
+   of a table should not start scrolling the conversation behind it. In a
+   window it does not survive. The scroller is capped at 60vh, so a long
+   result occupies most of the screen, and containing the gesture means the
+   wheel simply stops — the page will not move until the pointer is dragged
+   off the table and put back. Chaining costs an unintended scroll now and
+   then; containing costs a dead wheel every time. */
 .markdown-table-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--ink-38) var(--panel-3);
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
 }
 
 /* Cells wrap, and no single one decides how wide the table is.
