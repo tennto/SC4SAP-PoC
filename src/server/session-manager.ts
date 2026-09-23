@@ -136,7 +136,13 @@ const OUTPUT_FORMAT_APPEND =
   "When you present data read from a SAP table — whether one record or many — " +
   "always render it as a Markdown table with one column per field and one row " +
   "per record. Keep this same header-and-rows orientation for a single record: " +
-  "never transpose one record into a two-column field/value list.";
+  "never transpose one record into a two-column field/value list.\n\n" +
+  "SAP queries are ABAP Open SQL, not ANSI SQL. Cap rows with UP TO n ROWS at " +
+  "the end of the statement: LIMIT and a bare ROWS n are both rejected. Sort " +
+  "with ORDER BY <field> DESCENDING, not DESC. GetTableContents cannot sort at " +
+  "all, so when the question asks for the newest or largest record, use " +
+  "GetSqlQuery with ORDER BY and UP TO 1 ROWS rather than reading many rows to " +
+  "sort them yourself.";
 
 /**
  * Environment for every session's Claude Code process.

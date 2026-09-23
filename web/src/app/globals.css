@@ -2315,6 +2315,19 @@ button.primary:hover:not(:disabled) {
 
 /* A label, not a picker. The model is `SC4SAP_MODEL` on the server, so there
    is nothing here to open. */
+/* The label and the picker that replaces it share a height on purpose.
+   `health` arrives after the first paint, so the chip starts as the plain
+   label and becomes a `Select` a moment later — and the two differing by a
+   couple of pixels moved the whole composer, and with it the box the reader's
+   hand is on, once per page load. Reserving the taller of the two costs
+   nothing and the swap is then invisible. */
+.composer-model,
+.composer-model-pick {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+}
+
 .composer-model {
   font-size: 12px;
   color: var(--ink-55);
