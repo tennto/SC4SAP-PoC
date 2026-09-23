@@ -460,6 +460,24 @@ type SessionShape = {
   economy?: boolean;
   model?: string;
   approval?: ApprovalLevel;
+  /**
+   * Whether this session may dispatch sub-agents.
+   *
+   * Off unless asked for, because `Agent` is not a tool-sized thing in the
+   * prompt: its description carries every agent the plugin declares — 26 of
+   * them — and measured on this machine that is 17,665 tokens, 31% of a
+   * session's whole context, re-read on every turn of every conversation.
+   *
+   * What needs it is a skill run: `create-program` and `analyze-code` are
+   * built out of sub-agents. What does not is a question typed in the chat
+   * screen, which is most of the traffic and was paying for the dispatch
+   * machinery on every turn without ever using it.
+   *
+   * Removing the tool rather than merely declining to auto-approve it is the
+   * point. `allowedTools` decides what is waved through; only
+   * `disallowedTools` takes the description out of the prompt.
+   */
+  subagents?: boolean;
 };
 
 type PendingEntry = {
@@ -642,6 +660,10 @@ export class SessionManager {
       options.economy === true,
       options.approval ?? "all",
       options.maxBudgetUsd ?? "",
+      // A warm session opened without sub-agents cannot serve a skill run that
+      // needs them: the tool is missing from a process that has already
+      // started. Different shapes, different pools.
+      options.subagents === true,
     ].join(" ");
   }
 
@@ -678,6 +700,14 @@ export class SessionManager {
       ? this.#policy.allowedTools.filter((tool) => tool !== "Agent")
       : this.#policy.allowedTools;
 
+    // See `subagents` on SessionShape. Appended rather than folded into the
+    // policy, because this is a property of one session and the policy
+    // describes the SAP tool surface every session shares.
+    const disallowedTools =
+      options.subagents === true
+        ? this.#policy.disallowedTools
+        : [...this.#policy.disallowedTools, "Agent"];
+
     const session = query({
       prompt: pump,
       options: {
@@ -706,7 +736,7 @@ export class SessionManager {
         // Plan 2-5 — write-class SAP tools are removed from context outright;
         // read-class ones are auto-approved so a single consultant answer does
         // not fire twenty prompts. Everything else falls through to 2-4.
-        disallowedTools: this.#policy.disallowedTools,
+        disallowedTools,
         allowedTools,
         // A ceiling the SDK enforces. Undefined means none, as before.
         maxBudgetUsd: options.maxBudgetUsd,

@@ -100,7 +100,18 @@ export const api = {
      * How the run is allowed to spend. A skill screen sets these from its
      * pre-run dialog; the chat leaves them out. Zero budget means none.
      */
-    spend?: { maxBudgetUsd?: number; economy?: boolean; model?: string },
+    spend?: {
+      maxBudgetUsd?: number;
+      economy?: boolean;
+      model?: string;
+      /**
+       * Whether the run may dispatch sub-agents. The skill screen sets it;
+       * chat leaves it out. Off, the `Agent` tool is gone from the session's
+       * context along with the description of every agent the plugin
+       * declares — about a third of the tokens a turn is billed for.
+       */
+      subagents?: boolean;
+    },
   ): Promise<Session> =>
     (
       await request<{ session: Session }>("/sessions", {
@@ -112,6 +123,7 @@ export const api = {
             : {}),
           ...(spend?.maxBudgetUsd ? { maxBudgetUsd: spend.maxBudgetUsd } : {}),
           ...(spend?.economy !== undefined ? { economy: spend.economy } : {}),
+          ...(spend?.subagents ? { subagents: true } : {}),
           ...(spend?.model ? { model: spend.model } : {}),
         }),
       })

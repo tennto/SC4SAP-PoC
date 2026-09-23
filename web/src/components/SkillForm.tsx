@@ -659,7 +659,15 @@ export function SkillForm({
     setStarting(true);
     setError(null);
     try {
-      const session = await api.createSession(undefined, undefined, how ?? undefined);
+      // `subagents` on purpose, and only here. A skill is built out of
+      // sub-agents — `create-program` dispatches a reviewer before it writes
+      // anything — so this is the one screen that needs the dispatch tool.
+      // Chat does not, and the tool costs about a third of every turn's
+      // context, so it is absent there. See `SessionShape.subagents`.
+      const session = await api.createSession(undefined, undefined, {
+        ...(how ?? {}),
+        subagents: true,
+      });
       setSessionId(session.id);
       await api.sendMessage(
         session.id,

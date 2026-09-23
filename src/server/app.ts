@@ -266,6 +266,13 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           maxBudgetUsd?: number;
           /** Sub-agents on Sonnet whatever the skill asked for. */
           economy?: boolean;
+          /**
+           * Whether the session may dispatch sub-agents. Absent means no,
+           * which is what a chat turn wants: the `Agent` tool's description
+           * carries every agent the plugin declares and costs 17,665 tokens
+           * of every turn's context. The skill screen asks for it.
+           */
+          subagents?: boolean;
           /** One of the models this backend offers — see `/health`. */
           model?: string;
         }
@@ -275,7 +282,8 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     // by the web app when it revives a stored chat. Only a finite number is
     // worth carrying: a bad one would be added to every later figure, so it
     // is refused here rather than poisoning the count downstream.
-    const { priorTurns, priorCostUsd, maxBudgetUsd, economy } = request.body ?? {};
+    const { priorTurns, priorCostUsd, maxBudgetUsd, economy, subagents } =
+      request.body ?? {};
     for (const [name, value] of [
       ["priorTurns", priorTurns],
       ["priorCostUsd", priorCostUsd],
@@ -291,6 +299,9 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     if (economy !== undefined && typeof economy !== "boolean") {
       return reply.code(400).send({ error: "body.economy must be a boolean" });
     }
+    if (subagents !== undefined && typeof subagents !== "boolean") {
+      return reply.code(400).send({ error: "body.subagents must be a boolean" });
+    }
     const model = request.body?.model;
     if (model !== undefined && !MODELS.some((entry) => entry.id === model)) {
       return reply.code(400).send({ error: "body.model is not one this backend offers" });
@@ -302,6 +313,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       priorCostUsd,
       maxBudgetUsd: maxBudgetUsd ? maxBudgetUsd : undefined,
       economy,
+      subagents,
       model,
       userId: userOf(request.headers),
       approval: approvalOf(request.headers),
