@@ -87,7 +87,7 @@ export function SystemSettings({ initial }: { initial: ProfileList | null }) {
           <SettingRow
             label={t.activeSystem}
             value={
-              <div className="approval-pick">
+              <div className="system-pick">
                 <Select
                   name="sapProfile"
                   value={active}

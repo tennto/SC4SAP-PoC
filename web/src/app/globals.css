@@ -6649,6 +6649,18 @@ a.ghost.auth-submit .google-mark {
   max-width: 280px;
 }
 
+/* Wider than the approval picker beside it because it holds more: an approval
+   level is one or two words, an SAP system is an alias and the description
+   that tells two similarly-named systems apart. At 280px the description was
+   ellipsed off entirely, which left the picker showing the one part of the
+   label a reader already knows. Capped rather than full-width so it still
+   reads as a control on a row and not as the row itself, and it gives way
+   below that on a narrow window. */
+.system-pick {
+  width: 100%;
+  max-width: 460px;
+}
+
 /* ---- a skill that asks back: the reply composer under its result, and the
    line that says what the page's runs may spend. */
 .skill-spend {
