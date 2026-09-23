@@ -498,6 +498,8 @@ export class SessionManager {
   readonly #config: PocConfig;
   /** Deny half applies from the start; the auto-allow half fills in at discover(). */
   #policy: ToolPolicy = buildToolPolicy([]);
+  /** Why discovery came back empty, when it did. Read by the startup log. */
+  #discoveryNote: string | null = null;
   /** Every tool call, as it happens. See `tool-log.ts`. */
   readonly toolLog: ToolLog;
 
@@ -513,6 +515,11 @@ export class SessionManager {
 
   get policy(): ToolPolicy {
     return this.#policy;
+  }
+
+  /** What went wrong with discovery, or null when it went fine. */
+  get discoveryNote(): string | null {
+    return this.#discoveryNote;
   }
 
   /**
@@ -537,18 +544,50 @@ export class SessionManager {
       },
     });
 
+    // A holder rather than a bare `let`: the assignment happens inside the
+    // closure below, which TypeScript's flow analysis does not follow, so a
+    // plain variable reads as `never` at the point it is used.
+    const last: { error: Error | null } = { error: null };
+
+    /**
+     * One status read, and never a reason to abandon discovery.
+     *
+     * `mcpServerStatus()` is a control request over the transport to the CLI
+     * process, and early in a session that transport is not always ready:
+     * observed here as `ProcessTransport is not ready for writing`. Awaited
+     * bare, that throw left the loop below, hit the outer catch, and ended
+     * discovery with the empty fail-safe policy — a backend that had come up
+     * perfectly reporting zero SAP tools, which is the cold-start fault this
+     * has been chased through twice.
+     *
+     * A failed read means "ask again in a moment", not "give up": the caller
+     * loops until the deadline either way.
+     */
+    const readStatus = async (): Promise<
+      Awaited<ReturnType<typeof probe.mcpServerStatus>>
+    > => {
+      try {
+        return await probe.mcpServerStatus();
+      } catch (err) {
+        last.error = err as Error;
+        return [];
+      }
+    };
+
+
+
     try {
       for await (const message of probe) {
         if (message.type !== "system" || message.subtype !== "init") continue;
 
         const until = Date.now() + MCP_DISCOVERY_TIMEOUT_MS;
-        let statuses = await probe.mcpServerStatus();
+        let statuses = await readStatus();
         while (
           Date.now() < until &&
           (statuses.length === 0 || !statuses.every(mcpServerSettled))
         ) {
           await new Promise((r) => setTimeout(r, 500));
-          statuses = await probe.mcpServerStatus();
+          statuses = await readStatus();
         }
 
         const names = statuses
@@ -557,10 +596,19 @@ export class SessionManager {
           .map((t) => (typeof t === "string" ? t : t.name));
 
         this.#policy = buildToolPolicy(names);
+        if (names.length === 0) {
+          this.#discoveryNote =
+            last.error
+              ? `the MCP status could not be read: ${last.error.message}`
+              : "the MCP server published no tools before the timeout";
+        }
         break;
       }
-    } catch {
-      // Leave the fail-safe policy in place.
+    } catch (err) {
+      // Leave the fail-safe policy in place, but say what happened: this path
+      // used to be silent, and a silent empty policy reads as a credentials
+      // or permission bug from every screen that sees it.
+      this.#discoveryNote = `discovery failed: ${(err as Error).message}`;
     } finally {
       await probe.interrupt().catch(() => {});
     }
