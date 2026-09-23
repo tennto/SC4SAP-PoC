@@ -46,6 +46,9 @@ const ACTIVE_KEY = "sc4sap.activeSession";
  * not put the same question back after it has been sent or thrown away.
  */
 const DRAFT_KEY = "sc4sap.chatDraft";
+
+/** The model this browser last chose for a new chat. See `model` below. */
+const MODEL_KEY = "sc4sap.chatModel";
 /** Which backend session is running which stored chat — see `attached`. */
 const ATTACHED_KEY = "sc4sap.attached";
 
@@ -71,6 +74,27 @@ export function Chat({
   firstName,
 }: Props) {
   const [health, setHealth] = useState<Health | null>(initialHealth);
+  /**
+   * The model the next session opens on.
+   *
+   * `null` means the backend's own default, which is what this screen used to
+   * be fixed at. A running session's model cannot change — it is settled when
+   * the process starts — so this applies to the next conversation, and the
+   * chip under the composer shows the running one until then.
+   *
+   * Remembered per browser: someone who has decided their SAP reads run on
+   * Haiku should not re-decide it every morning. A value the backend no
+   * longer offers is ignored rather than sent.
+   */
+  const [model, setModel] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(MODEL_KEY);
+      if (stored) setModel(stored);
+    } catch {
+      // Private window, blocked storage. The default is the right fallback.
+    }
+  }, []);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [chats, setChats] = useState<StoredChat[]>([]);
   /** chat id → the backend session currently running it. */
@@ -127,6 +151,32 @@ export function Chat({
   // Read from localStorage after mount, not during render: the server has no
   // localStorage and a differing first render is a hydration mismatch.
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  const offered = health?.models ?? [];
+  const chosen = offered.some((entry) => entry.id === model) ? model : null;
+
+  /**
+   * The model the conversation on screen is actually running on, if it has a
+   * session. A session's model is settled when its process starts, so the
+   * picker cannot change this one — only the next.
+   */
+  const activeBackendId = activeId ? (attached[activeId] ?? activeId) : null;
+  const activeModel =
+    sessions.find((session) => session.id === activeBackendId)?.model ?? null;
+
+  /** What a new session is opened with. Undefined means the backend default. */
+  const spend = (): { model: string } | undefined =>
+    chosen ? { model: chosen } : undefined;
+
+  function pickModel(id: string): void {
+    setModel(id);
+    try {
+      localStorage.setItem(MODEL_KEY, id);
+    } catch {
+      // See above: remembering it is a convenience, not the feature.
+    }
+  }
+
   const [busy, setBusy] = useState(false);
   // Latches the empty state closed the instant a prompt is submitted from it,
   // so the composer starts gliding down on the keystroke rather than when the
@@ -706,7 +756,7 @@ export function Chat({
     setBusy(true);
     setError(null);
     try {
-      const session = await api.createSession();
+      const session = await api.createSession(undefined, undefined, spend());
       setSessions((current) => [...current, session]);
       setHistory(null);
       setActiveId(session.id);
@@ -807,6 +857,7 @@ export function Chat({
                 totalCostUsd: storedChat.totalCostUsd,
               }
             : undefined,
+          spend(),
         );
         setSessions((current) => [...current, session]);
         setAttached((current) => ({ ...current, [activeId]: session.id }));
@@ -871,7 +922,7 @@ export function Chat({
     setSendMark(0);
     setError(null);
     try {
-      const session = await api.createSession();
+      const session = await api.createSession(undefined, undefined, spend());
       setSessions((current) => [...current, session]);
       setHistory(null);
       setActiveId(session.id);
@@ -1104,7 +1155,12 @@ export function Chat({
           <div className="stage-composer">
             <Composer
               disabled={composerDisabled}
-              model={health?.model ?? null}
+              // The running session's model when there is one, otherwise the
+              // one the next session will open on — which is what the picker
+              // is changing.
+              model={activeModel ?? chosen ?? health?.model ?? null}
+              models={offered}
+              onModelChange={pickModel}
               autoFocus={hero}
               // The same test the transcript's indicator uses, so the button
               // and the dots are never in disagreement about whether the

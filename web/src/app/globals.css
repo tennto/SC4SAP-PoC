@@ -2322,6 +2322,27 @@ button.primary:hover:not(:disabled) {
   user-select: none;
 }
 
+/* The same chip, made pickable. Sized down and stripped of its border so it
+   still reads as the quiet label it replaced rather than as a form control
+   competing with the send button beside it. */
+.composer-model-pick {
+  min-width: 118px;
+}
+
+.composer-model-pick .select-button {
+  padding: 2px 6px 2px 8px;
+  font-size: 12px;
+  color: var(--ink-55);
+  background: transparent;
+  border-color: transparent;
+}
+
+.composer-model-pick .select-button:hover:not(:disabled),
+.composer-model-pick .select-button.is-open {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
 .composer-send {
   display: grid;
   place-items: center;

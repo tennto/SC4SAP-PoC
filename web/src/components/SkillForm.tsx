@@ -79,7 +79,7 @@ type Value = string | boolean;
 type Spend = { maxBudgetUsd: number; economy: boolean; model: string };
 
 /**
- * The models the dialog offers. The same two the backend accepts; listed
+ * The models the dialog offers. The same three the backend accepts; listed
  * here rather than fetched because the dialog opens before any session
  * exists to ask through, and a list of two is not worth a round trip.
  */
@@ -89,6 +89,7 @@ const MODELS: {
   /** The dictionary key for the line under the picker. */
   note: keyof Messages["skillForm"];
 }[] = [
+  { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "haikuNote" },
   { id: "claude-sonnet-5", label: "Sonnet 5", note: "sonnetNote" },
   { id: "claude-opus-5", label: "Opus 5", note: "opusNote" },
 ];
