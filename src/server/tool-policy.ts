@@ -54,6 +54,33 @@ export const WRITE_CLASS_PATTERNS: readonly string[] = [
   `${SAP_TOOL_PREFIX}ReloadProfile`,
 ];
 
+/**
+ * SAP tools the plugin's own workflow says not to call, superseded by ones
+ * that work.
+ *
+ * Not a safety rule — these two are simply wrong on this vendor build, and the
+ * skill files say so:
+ *
+ *   RuntimeListDumps    "Do NOT use ... it returns an empty list on some
+ *                        systems (verified on S/4HANA)" — use RuntimeListFeeds
+ *   RuntimeAnalyzeDump  "the summary facts pick the wrong chapter ('System
+ *                        environment', unrelated line) ... do not use
+ *                        RuntimeAnalyzeDump" — use RuntimeGetDumpById
+ *
+ * Written in a prompt, both bans were ignored: the logged `analyze-symptom`
+ * run on 2026-09-12 called `RuntimeListDumps` once and `RuntimeAnalyzeDump`
+ * twice, for 65 seconds of SAP round-trip that produced a wrong chapter and
+ * an empty list. Denied here instead, for every session, because the tools
+ * are not broken for one skill and sound for another.
+ *
+ * Tied to the vendor version, not to us: when abap-mcp-adt-powerup fixes
+ * them, this list is what to revisit.
+ */
+export const SUPERSEDED_SAP_TOOLS: readonly string[] = [
+  `${SAP_TOOL_PREFIX}RuntimeListDumps`,
+  `${SAP_TOOL_PREFIX}RuntimeAnalyzeDump`,
+];
+
 /** Bare tool names matching a write-class pattern, for classification. */
 const WRITE_CLASS_RE =
   /^(Create|Update|Delete|Patch|Write|Activate|RuntimeRun|RuntimeCreate)|^RunUnitTest$|^ReloadProfile$/;
@@ -492,7 +519,7 @@ export function buildToolPolicy(bareToolNames: readonly string[]): ToolPolicy {
     // list they are not discovered, so a discovery failure must not be able to
     // take them away and bury the operator in prompts.
     allowedTools: [...allowedTools, ...LOCAL_AUTO_ALLOW],
-    disallowedTools: [...WRITE_CLASS_PATTERNS],
+    disallowedTools: [...WRITE_CLASS_PATTERNS, ...SUPERSEDED_SAP_TOOLS],
     summary,
   };
 }

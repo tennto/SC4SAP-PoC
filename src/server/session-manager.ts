@@ -797,6 +797,36 @@ export class SessionManager {
                     };
                   }
 
+                  // The permission bootstrap, on a host that governs
+                  // permissions itself.
+                  //
+                  // Every skill that opens with it is told to skip it here —
+                  // its own spec says "Headless host → skip entirely", and
+                  // the system prompt declares `Host: sc4sap-web`. The logged
+                  // `analyze-symptom` run invoked it anyway, and spent about
+                  // ninety seconds on it and the file reads around it,
+                  // granting permissions through a settings file the SDK never
+                  // loads. Refused rather than repeated.
+                  if (input.tool_name === "Skill") {
+                    const asked = (input.tool_input ?? {}) as Record<string, unknown>;
+                    if (
+                      typeof asked.skill === "string" &&
+                      /(^|:)trust-session$/.test(asked.skill)
+                    ) {
+                      this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "deny" as const,
+                          permissionDecisionReason:
+                            "This host governs tool permissions itself, so the " +
+                            "session-trust bootstrap does nothing here. Skip it " +
+                            "and continue with the task.",
+                        },
+                      };
+                    }
+                  }
+
                   // Off the disk this app was given. Refused before the
                   // operator is asked, because there is no answer worth
                   // collecting: a SAP skill reaching into another directory
