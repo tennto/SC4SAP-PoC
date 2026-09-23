@@ -36,6 +36,17 @@ async function main(): Promise<void> {
       `${policy.disallowedTools.length} deny patterns, ` +
       `classes ${JSON.stringify(policy.summary)}`,
   );
+  // Discovery is best-effort by design, and a failed one is survivable: every
+  // SAP read simply prompts. It is also easy to mistake for a credentials or
+  // permission-hook bug, because what the operator sees is a dialog on a
+  // plain source read. Say so once, at the only moment it can be acted on.
+  if (policy.summary.read === 0) {
+    app.log.warn(
+      "tool discovery found no read-class SAP tools — every SAP read will " +
+        "raise an approval. The MCP server was slow to publish its tool " +
+        "list; restart the server to retry discovery.",
+    );
+  }
 
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info(`${signal} received, closing sessions`);

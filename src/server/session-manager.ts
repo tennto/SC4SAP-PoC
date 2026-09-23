@@ -49,6 +49,33 @@ import {
 /** How long discovery waits for the MCP server to leave `pending`. */
 const MCP_DISCOVERY_TIMEOUT_MS = 60_000;
 
+/**
+ * Whether an MCP server's status can be read as final.
+ *
+ * `pending` is the obvious not-yet, and it used to be the only one waited on.
+ * It is not sufficient: on a cold MCP boot the status reaches `connected`
+ * while `tools` is still empty, and discovery that stops there builds the
+ * policy from nothing. The symptom is a server that starts with no SAP tool
+ * auto-allowed — `classes {"read":0,…}` in the startup line — so every read
+ * raises an approval and the "read tool is auto-allowed" E2E scenario fails
+ * both its checks while the connection itself is perfectly healthy. Measured
+ * on 2026-09-23: a standalone probe against the same SDK call returned all
+ * 174 tools at a moment the freshly started server had discovered zero.
+ *
+ * So a `connected` server counts as settled only once it has named at least
+ * one tool. Any other status — failed, needs-auth, whatever the SDK adds
+ * later — is final by definition: waiting cannot improve it, and the policy
+ * falls back to prompting, which is the safe direction.
+ */
+function mcpServerSettled(status: {
+  status: string;
+  tools?: unknown[];
+}): boolean {
+  if (status.status === "pending") return false;
+  if (status.status === "connected") return (status.tools?.length ?? 0) > 0;
+  return true;
+}
+
 /** Per-session replay buffer cap. Oldest events drop first. */
 const HISTORY_LIMIT = 500;
 
@@ -499,8 +526,7 @@ export class SessionManager {
         let statuses = await probe.mcpServerStatus();
         while (
           Date.now() < until &&
-          (statuses.length === 0 ||
-            statuses.some((s) => s.status === "pending"))
+          (statuses.length === 0 || !statuses.every(mcpServerSettled))
         ) {
           await new Promise((r) => setTimeout(r, 500));
           statuses = await probe.mcpServerStatus();
