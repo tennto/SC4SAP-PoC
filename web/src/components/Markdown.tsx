@@ -10,9 +10,16 @@
  * is added, and model output is untrusted text that ends up in the DOM. GFM is
  * on for tables, strikethrough and task lists.
  *
- * Rendered while the text is still streaming, so a half-written table spends a
- * moment as plain paragraphs before it snaps into a grid. That is the honest
- * trade for not making the user wait for the turn to end.
+ * Rendered while the text is still streaming, which a markdown table does not
+ * survive on its own. GFM only recognises one once the `|---|---|` line under
+ * the header has arrived, so everything before that renders as a paragraph of
+ * raw pipes — `|BUKRS|BUTXT|ORT01|` sitting in the answer — and then snaps
+ * into a grid. On a T001 read that is a second or two of what looks like the
+ * renderer having failed.
+ *
+ * So `streaming` withholds the tail of the text while it cannot be drawn: see
+ * `trimStreamingTail` below. The table appears when it can appear as a table,
+ * and grows a row at a time after that.
  */
 import { Children, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
@@ -178,7 +185,66 @@ function DataTable({ node, children: cells }: { node?: Element; children?: React
   );
 }
 
-export function Markdown({ children }: { children: string }) {
+/** A `|---|:--:|---|` line, the thing that makes the lines around it a table. */
+const SEPARATOR = /^\s*\|?(?:\s*:?-+:?\s*\|)+\s*:?-*:?\s*\|?\s*$/;
+
+/** A line that is part of a table: GFM wants a pipe, and these always lead with one. */
+const TABLE_LINE = /^\s*\|/;
+
+/**
+ * Drops the part of a streaming answer that cannot be rendered yet.
+ *
+ * Two cases, both about tables, because tables are the only construct whose
+ * half-written form reads as a rendering bug rather than as text still
+ * arriving:
+ *
+ *   1. A run of table lines at the end with no separator among them. GFM has
+ *      no reason to call that a table yet, so it would draw the header as a
+ *      paragraph of pipes. Withheld whole.
+ *   2. A final line still being typed — the text does not end in a newline —
+ *      inside a table that does have its separator. Rendering it would put a
+ *      row on screen with half its cells, which then gains the rest. Withheld
+ *      until the newline arrives, so rows appear whole.
+ *
+ * Fenced code is left alone: inside a fence a pipe is just a character, and an
+ * unclosed fence is already handled by the code block renderer. An odd number
+ * of fences means the tail is inside one.
+ */
+function trimStreamingTail(text: string): string {
+  const fences = text.match(/^\s*```/gm);
+  if (fences && fences.length % 2 === 1) return text;
+
+  const lines = text.split("\n");
+  // Walk back over the trailing run of table lines.
+  let start = lines.length;
+  while (start > 0 && TABLE_LINE.test(lines[start - 1] ?? "")) start -= 1;
+  if (start === lines.length) return text;
+
+  const run = lines.slice(start);
+  const hasSeparator = run.some((line) => SEPARATOR.test(line));
+
+  // Case 1: not a table yet as far as GFM is concerned.
+  if (!hasSeparator) return lines.slice(0, start).join("\n");
+
+  // Case 2: the last line is still being written.
+  if (!text.endsWith("\n")) return lines.slice(0, lines.length - 1).join("\n");
+
+  return text;
+}
+
+export function Markdown({
+  children,
+  streaming = false,
+}: {
+  children: string;
+  /**
+   * The text is still arriving. Only set on the message being written — a
+   * finished answer renders whole, including a table someone pasted with no
+   * trailing newline.
+   */
+  streaming?: boolean;
+}) {
+  const body = streaming ? trimStreamingTail(children) : children;
   return (
     <div className="markdown">
       <ReactMarkdown
@@ -228,7 +294,7 @@ export function Markdown({ children }: { children: string }) {
           ),
         }}
       >
-        {children}
+        {body}
       </ReactMarkdown>
     </div>
   );

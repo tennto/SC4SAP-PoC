@@ -202,6 +202,19 @@ export function Chat({
   const listSeq = useRef(0);
   const closed = useRef<Set<string>>(new Set());
   const closing = useRef<Set<string>>(new Set());
+  /**
+   * The same shadow, for stored conversations rather than backend sessions.
+   *
+   * `refreshChats` replaced the list with whatever the server said, and during
+   * a run of quick closes the server is behind: the answer to the first close
+   * still lists the conversations the second and third clicks have already
+   * taken off screen, so they come back and go again. A chat is held here from
+   * the click until the server stops listing it.
+   */
+  const removedChats = useRef<Set<string>>(new Set());
+  const chatsSeq = useRef(0);
+  /** Pending coalesced refresh — see `scheduleRefresh`. */
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read inside async callbacks, where `sessions` would be the value it had
   // when the callback was created.
   const sessionsRef = useRef<Session[]>(initialSessions);
@@ -332,14 +345,50 @@ export function Chat({
   }, []);
 
   const refreshChats = useCallback(async () => {
+    const seq = ++chatsSeq.current;
     try {
-      setChats(await api.listChats());
+      const list = await api.listChats();
+      // A newer list has already been applied; this one is history.
+      if (seq !== chatsSeq.current) return;
+
+      // A conversation the server has stopped listing is really gone, so the
+      // shadow over it can be lifted. Kept, and the row stays off screen.
+      for (const id of [...removedChats.current]) {
+        if (!list.some((chat) => chat.id === id)) removedChats.current.delete(id);
+      }
+
+      setChats(list.filter((chat) => !removedChats.current.has(chat.id)));
     } catch (err) {
       // History being unavailable is not a reason to take the screen down:
       // live sessions still work without it.
       fail((err as Error).message);
     }
   }, []);
+
+  /**
+   * One refresh after a run of closes, rather than one per close.
+   *
+   * Each close ended with two list requests. Closing four conversations in as
+   * many seconds fired eight, overlapping, each replacing the list from a
+   * server at a different point in the deletions — which is what made a quick
+   * run of × feel like the rail was arguing with itself. The work is the same
+   * either way; only the last answer is worth drawing.
+   */
+  const scheduleRefresh = useCallback(() => {
+    if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    refreshTimer.current = setTimeout(() => {
+      refreshTimer.current = null;
+      void refresh();
+      void refreshChats();
+    }, 250);
+  }, [refresh, refreshChats]);
+
+  useEffect(
+    () => () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    },
+    [],
+  );
 
   /** What the composer opens with, if the monitor left something. */
   const [seed, setSeed] = useState<string | null>(null);
@@ -684,6 +733,7 @@ export function Chat({
 
     const backend = attached[id] ?? id;
     closed.current.add(backend);
+    removedChats.current.add(id);
 
     setSessions((current) =>
       current.filter((session) => session.id !== backend),
@@ -714,8 +764,9 @@ export function Chat({
       fail((err as Error).message);
     } finally {
       closing.current.delete(id);
-      await refresh();
-      await refreshChats();
+      // Not awaited, and not one per close: see `scheduleRefresh`. The row is
+      // already gone from the screen — this is only the list catching up.
+      scheduleRefresh();
     }
   };
 

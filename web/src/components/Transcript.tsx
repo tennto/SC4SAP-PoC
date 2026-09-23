@@ -436,7 +436,9 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
           <article key={row.id} className="msg assistant msg-in">
             <span className="who">{t.agent}</span>
             <div className="text">
-              <Markdown>{isLast ? smoothed : row.text}</Markdown>
+              <Markdown streaming={row.streaming}>
+                {isLast ? smoothed : row.text}
+              </Markdown>
               {row.streaming && <span className="caret" aria-hidden />}
               {isLast && waitingInline && (
                 <div className="dots-row">{dots}</div>
