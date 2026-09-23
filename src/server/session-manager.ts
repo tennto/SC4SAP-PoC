@@ -35,6 +35,7 @@ import {
   disallowedForProfile,
   needsHookApproval,
   outsideWorkspace,
+  rowScope,
   QUESTION_TOOL,
   SAP_TOOL_PREFIX,
   type ToolPolicy,
@@ -419,6 +420,24 @@ type LiveSession = {
   openToolBlocks: Set<number>;
   /** Approvals blocking a turn, keyed by reqId. */
   pending: Map<string, PendingEntry>;
+  /**
+   * Row-extraction answers already given in this turn, by table.
+   *
+   * One question about "the latest EKPO entry" raised six approval dialogs:
+   * four `GetSqlQuery` attempts that the ABAP dialect refused, then two
+   * `GetTableContents` reads — all of them the same table, all answered the
+   * same way. A dialog asked six times for one decision is not consent, it is
+   * a rhythm someone learns to clear without reading.
+   *
+   * So the answer is remembered for the rest of the turn, with the row count
+   * it was given for. A later call on the same table rides on it only if it
+   * asks for no more rows than the one that was approved: saying yes to twenty
+   * rows of EKPO is not saying yes to ten thousand. A refusal is remembered
+   * the same way — "no" means no for the turn, not until the model rephrases.
+   *
+   * Cleared when the next prompt arrives. See `send`.
+   */
+  turnGrants: Map<string, { decision: "allow" | "deny"; rows: number }>;
   /**
    * What this conversation had already spent before this session existed.
    *
@@ -956,6 +975,7 @@ export class SessionManager {
       seq: 0,
       openToolBlocks: new Set(),
       pending: new Map(),
+      turnGrants: new Map(),
       backgroundTasks: new Set(),
       priorCostUsd: 0,
     };
@@ -1007,6 +1027,9 @@ export class SessionManager {
       );
     }
     const meta: AttachmentMeta[] = attachments.map(toMeta);
+    // A new question is a new decision. Whatever was agreed about a table
+    // last turn does not carry into this one — see `turnGrants`.
+    live.turnGrants.clear();
     this.#setStatus(live, "busy");
     // A tab that sends and closes in the same breath unsubscribes while the
     // session is still idle, so the countdown has to be armed here too.
@@ -1224,6 +1247,24 @@ export class SessionManager {
       return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
 
+    // Already answered this turn, for this table, at least this many rows.
+    // See `turnGrants`.
+    const scope = rowScope(toolName, input);
+    const granted = scope ? live.turnGrants.get(scope.key) : undefined;
+    if (scope && granted && scope.rows <= granted.rows) {
+      this.toolLog.decide(context.toolUseID, granted.decision === "allow" ? "auto" : "denied");
+      return Promise.resolve(
+        granted.decision === "allow"
+          ? { behavior: "allow", updatedInput: input }
+          : {
+              behavior: "deny",
+              message:
+                "Already declined for this table earlier in this turn. Ask the " +
+                "operator in your answer rather than trying another query.",
+            },
+      );
+    }
+
     const reqId = randomUUID();
     const isQuestion = toolName === QUESTION_TOOL;
     const request: PendingApproval = {
@@ -1252,6 +1293,11 @@ export class SessionManager {
           context.toolUseID,
           decision === "allow" ? "allowed" : decision === "deny" ? "denied" : "expired",
         );
+        // Remembered for the rest of the turn, at the scale it was given for.
+        // An expiry is not an answer and is not kept.
+        if (scope && (decision === "allow" || decision === "deny")) {
+          live.turnGrants.set(scope.key, { decision, rows: scope.rows });
+        }
         this.#emit(live, { type: "permission_resolved", reqId, decision });
         resolve(result);
       };

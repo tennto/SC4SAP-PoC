@@ -311,6 +311,50 @@ export function outsideWorkspace(
   return inside ? null : target;
 }
 
+/**
+ * What a row-extraction call is asking for, as something two calls can be
+ * compared by: which table, and how many rows.
+ *
+ * Null for every other tool. Only the two gated reads are grouped, because
+ * they are the only ones a turn asks about repeatedly for the same target —
+ * everything else is either auto-allowed or a one-off.
+ *
+ * The table comes out of `table_name` where there is one, and otherwise out of
+ * the first `FROM` in the query. A query this cannot read falls back to the
+ * query itself, which groups an exact repeat and nothing looser.
+ */
+export function rowScope(
+  toolName: string,
+  input: Record<string, unknown>,
+): { key: string; rows: number } | null {
+  const bare = toolName.startsWith(SAP_TOOL_PREFIX)
+    ? toolName.slice(SAP_TOOL_PREFIX.length)
+    : toolName;
+  if (!NEVER_AUTO_ALLOW.has(bare)) return null;
+
+  const table =
+    typeof input.table_name === "string" && input.table_name.trim() !== ""
+      ? input.table_name.trim().toUpperCase()
+      : typeof input.sql_query === "string"
+        ? (/\bFROM\s+([A-Za-z_][A-Za-z0-9_/]*)/i.exec(input.sql_query)?.[1] ??
+            input.sql_query)
+            .trim()
+            .toUpperCase()
+        : "";
+  if (table === "") return null;
+
+  // Whichever of the two row caps this tool uses. Absent means the server's
+  // own default, which is not zero — treated as unbounded so a call with no
+  // cap never rides in on the back of one that named a small number.
+  const asked = input.max_rows ?? input.row_number;
+  const rows =
+    typeof asked === "number" && Number.isFinite(asked) && asked > 0
+      ? asked
+      : Number.POSITIVE_INFINITY;
+
+  return { key: `${bare}:${table}`, rows };
+}
+
 export type ToolClass = "write" | "row-extraction" | "read" | "other";
 
 export function classifySapTool(bareName: string): ToolClass {

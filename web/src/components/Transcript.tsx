@@ -328,13 +328,24 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
   //     the reader means by "don't show a loader while the answer is showing".
   //   - Real background work still shows them, even with an intro line already
   //     on screen: a tool running, an approval waiting, a retry, the session
-  //     booting. That is the SAP-fetch wait the dots exist to cover.
+  //     booting, or the gap between two of those. That is the SAP-fetch wait
+  //     the dots exist to cover.
   //   - With no answer text yet — an empty bubble, or a tool before the agent
   //     has said anything — they show, so the screen is never blank mid-turn.
+  //
+  // `working` belongs in that list and was the bug. `tool_end` moves the
+  // activity there, and so does `turn_end`, so every gap between one tool
+  // finishing and the next thing starting reported "working" — which counted
+  // as no background work at all. With an intro line already on screen the
+  // dots went out and the answer looked finished while the model was still
+  // deciding what to fetch next. Measured on a real run: a question about the
+  // latest EKPO entry made six tool calls over about 25 seconds, and the gaps
+  // between them are exactly this state.
   const hasAnswerText = lastAgent !== null && smoothed.trim() !== "";
   const workKind = activity?.kind;
   const backgroundWork =
     workKind === "tool" ||
+    workKind === "working" ||
     workKind === "waiting" ||
     workKind === "retrying" ||
     workKind === "starting";
