@@ -31,7 +31,12 @@ import {
   type SequencedEvent,
 } from "./session-manager.ts";
 import { claudeApiHealth } from "./claude-api.ts";
-import { APPROVAL_LEVELS, type ApprovalLevel } from "./tool-policy.ts";
+import {
+  APPROVAL_LEVELS,
+  TOOL_PROFILES,
+  type ApprovalLevel,
+  type ToolProfile,
+} from "./tool-policy.ts";
 import { BODY_LIMIT, validateAttachments } from "./attachments.ts";
 import {
   checkActiveProfile,
@@ -268,13 +273,12 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           /** Sub-agents on Sonnet whatever the skill asked for. */
           economy?: boolean;
           /**
-           * Whether the session does work on the machine — sub-agents, files,
-           * the shell — or only asks things of SAP. Absent means questions
-           * only, which is what the chat screen wants and what keeps 26,431
-           * tokens of unused machinery out of every turn. The skill screen
-           * asks for the other one.
+           * What the session may reach for: `ask`, `analyse` or `build`.
+           * Absent means `ask` — the chat screen, which keeps 26,431 tokens
+           * of unused machinery out of every turn. Each skill declares its
+           * own; see `ToolProfile`.
            */
-          runsWork?: boolean;
+          profile?: string;
           /** One of the models this backend offers — see `/health`. */
           model?: string;
         }
@@ -284,7 +288,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     // by the web app when it revives a stored chat. Only a finite number is
     // worth carrying: a bad one would be added to every later figure, so it
     // is refused here rather than poisoning the count downstream.
-    const { priorTurns, priorCostUsd, maxBudgetUsd, economy, runsWork } =
+    const { priorTurns, priorCostUsd, maxBudgetUsd, economy, profile } =
       request.body ?? {};
     for (const [name, value] of [
       ["priorTurns", priorTurns],
@@ -301,8 +305,13 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     if (economy !== undefined && typeof economy !== "boolean") {
       return reply.code(400).send({ error: "body.economy must be a boolean" });
     }
-    if (runsWork !== undefined && typeof runsWork !== "boolean") {
-      return reply.code(400).send({ error: "body.runsWork must be a boolean" });
+    if (
+      profile !== undefined &&
+      !TOOL_PROFILES.includes(profile as ToolProfile)
+    ) {
+      return reply
+        .code(400)
+        .send({ error: `body.profile must be one of: ${TOOL_PROFILES.join(", ")}` });
     }
     const model = request.body?.model;
     if (model !== undefined && !MODELS.some((entry) => entry.id === model)) {
@@ -315,7 +324,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       priorCostUsd,
       maxBudgetUsd: maxBudgetUsd ? maxBudgetUsd : undefined,
       economy,
-      runsWork,
+      profile: profile as ToolProfile | undefined,
       model,
       userId: userOf(request.headers),
       approval: approvalOf(request.headers),

@@ -32,11 +32,13 @@ import { ToolLog } from "./tool-log.ts";
 import {
   buildToolPolicy,
   isSapReadTool,
-  LOCAL_NOT_FOR_READING,
+  disallowedForProfile,
   needsHookApproval,
+  outsideWorkspace,
   QUESTION_TOOL,
   SAP_TOOL_PREFIX,
   type ToolPolicy,
+  type ToolProfile,
   allowedByLevel,
   type ApprovalLevel,
 } from "./tool-policy.ts";
@@ -462,27 +464,21 @@ type SessionShape = {
   model?: string;
   approval?: ApprovalLevel;
   /**
-   * Whether this session does work on the machine, or only asks things of SAP.
+   * What this session may reach for — see `ToolProfile`.
    *
-   * Off unless asked for, and it governs two things with one cause. A session
-   * that runs work needs to dispatch sub-agents and to touch files and the
-   * shell; a session that answers questions about a table needs neither, and
-   * was carrying both on every turn.
-   *
-   * What it costs to carry, measured on this machine: `Agent` is 17,665
-   * tokens, because its description is every agent the plugin declares, all
-   * 26 of them. The file, shell and web tools are another 8,766. Together
-   * that is 61% of what a chat turn used to be billed for, on machinery a
-   * chat never reaches for.
-   *
-   * What needs it on is a skill run — `create-program` sends work to a
-   * reviewer and writes its artifacts down. What does not is the chat screen.
+   * `ask` unless stated, which is the chat screen: no sub-agents, no files,
+   * no shell, no web. A skill declares its own, and most of them declare
+   * `build`; the two that only investigate declare `analyse`, which keeps the
+   * specialist dispatch and the web lookup and takes the shell away.
    *
    * Removing the tools rather than merely declining to auto-approve them is
-   * the point. `allowedTools` decides what is waved through; only
-   * `disallowedTools` takes a tool out of the prompt, and out of reach.
+   * the point, and it is the lesson of a logged `analyze-symptom` run: the
+   * skill forbids filesystem search in its own prompt and the model spent
+   * four minutes doing it anyway, because `Bash` was there. `allowedTools`
+   * decides what is waved through; only `disallowedTools` takes a tool out of
+   * the prompt, and out of reach.
    */
-  runsWork?: boolean;
+  profile?: ToolProfile;
 };
 
 type PendingEntry = {
@@ -667,8 +663,8 @@ export class SessionManager {
       options.maxBudgetUsd ?? "",
       // A warm session opened for questions cannot serve a skill run: the
       // tools are missing from a process that has already started. Different
-      // shapes, different pools.
-      options.runsWork === true,
+      // profiles, different pools.
+      options.profile ?? "ask",
     ].join(" ");
   }
 
@@ -705,17 +701,13 @@ export class SessionManager {
       ? this.#policy.allowedTools.filter((tool) => tool !== "Agent")
       : this.#policy.allowedTools;
 
-    // See `runsWork` on SessionShape. Appended rather than folded into the
+    // See `profile` on SessionShape. Appended rather than folded into the
     // policy, because this is a property of one session and the policy
     // describes the SAP tool surface every session shares.
-    const disallowedTools =
-      options.runsWork === true
-        ? this.#policy.disallowedTools
-        : [
-            ...this.#policy.disallowedTools,
-            AGENT_TOOL,
-            ...LOCAL_NOT_FOR_READING,
-          ];
+    const disallowedTools = [
+      ...this.#policy.disallowedTools,
+      ...disallowedForProfile(options.profile ?? "ask"),
+    ];
 
     const session = query({
       prompt: pump,
@@ -801,6 +793,30 @@ export class SessionManager {
                         ...(typeof requested === "string" && /opus/i.test(requested)
                           ? { updatedInput: { ...toolInput, model: "sonnet" } }
                           : {}),
+                      },
+                    };
+                  }
+
+                  // Off the disk this app was given. Refused before the
+                  // operator is asked, because there is no answer worth
+                  // collecting: a SAP skill reaching into another directory
+                  // is a mistake, and a dialog would only invite waving it
+                  // through. See `outsideWorkspace`.
+                  const strayPath = outsideWorkspace(
+                    input.tool_name,
+                    (input.tool_input ?? {}) as Record<string, unknown>,
+                    this.#config.workspace,
+                  );
+                  if (strayPath) {
+                    this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                    return {
+                      hookSpecificOutput: {
+                        hookEventName: "PreToolUse" as const,
+                        permissionDecision: "deny" as const,
+                        permissionDecisionReason:
+                          `Outside this session's workspace: ${strayPath}. ` +
+                          "Everything you need is under the working directory; " +
+                          "paths above it are not part of this task.",
                       },
                     };
                   }

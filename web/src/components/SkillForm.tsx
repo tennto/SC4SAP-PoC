@@ -48,7 +48,7 @@ import { ApprovalModal } from "@/components/ApprovalModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { EditModal } from "@/components/settings/EditModal";
 import type { PermissionResponse } from "@/lib/types";
-import { findSkill, type SkillField } from "@/lib/skills";
+import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
 import { skillDisplay } from "@/lib/i18n/skills";
 import type { Messages } from "@/lib/i18n/messages";
@@ -237,6 +237,7 @@ export function SkillForm({
   command,
   title,
   fields,
+  tools,
   /** The skill cannot run here — see `blockedReason`. */
   blocked,
   autorun = null,
@@ -247,6 +248,8 @@ export function SkillForm({
   command: string;
   title: string;
   fields: readonly SkillField[];
+  /** What this skill's session may reach for — see `Skill.tools`. */
+  tools: SkillTools;
   blocked: boolean;
   /**
    * Start a run the moment the page opens, with this as its context.
@@ -660,15 +663,15 @@ export function SkillForm({
     setStarting(true);
     setError(null);
     try {
-      // `runsWork` on purpose, and only here. A skill dispatches sub-agents
-      // and writes its artifacts down — `create-program` sends work to a
-      // reviewer before it produces anything — so this is the one screen that
-      // needs the file, shell and dispatch tools. The chat screen only asks
-      // things of SAP, and carrying that machinery cost it 26,431 tokens of
-      // every turn. See `SessionShape.runsWork`.
+      // Each skill says what it needs; none of them gets everything by
+      // default. `analyse` keeps the specialist dispatch and the web lookup
+      // and takes the shell and file writes away, which is what a read-only
+      // investigation like `analyze-symptom` actually runs on — its own
+      // prompt forbids filesystem search, and a logged run spent four minutes
+      // doing it anyway because `Bash` was in reach. See `Skill.tools`.
       const session = await api.createSession(undefined, undefined, {
         ...(how ?? {}),
-        runsWork: true,
+        profile: tools,
       });
       setSessionId(session.id);
       await api.sendMessage(

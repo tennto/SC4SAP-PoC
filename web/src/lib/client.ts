@@ -105,11 +105,11 @@ export const api = {
       economy?: boolean;
       model?: string;
       /**
-       * Whether the run does work on the machine — sub-agents, files, the
-       * shell. The skill screen sets it; chat leaves it out, and a session
-       * that only asks things of SAP carries none of that machinery.
+       * What the run may reach for: `analyse` or `build`. Each skill declares
+       * its own. Chat leaves it out and gets `ask`, which carries neither
+       * sub-agents nor the file, shell and web tools.
        */
-      runsWork?: boolean;
+      profile?: "analyse" | "build";
     },
   ): Promise<Session> =>
     (
@@ -122,7 +122,7 @@ export const api = {
             : {}),
           ...(spend?.maxBudgetUsd ? { maxBudgetUsd: spend.maxBudgetUsd } : {}),
           ...(spend?.economy !== undefined ? { economy: spend.economy } : {}),
-          ...(spend?.runsWork ? { runsWork: true } : {}),
+          ...(spend?.profile ? { profile: spend.profile } : {}),
           ...(spend?.model ? { model: spend.model } : {}),
         }),
       })

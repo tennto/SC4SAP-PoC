@@ -1,3 +1,5 @@
+import { isAbsolute, relative, resolve } from "node:path";
+
 /**
  * Phase 2-5 — read-only tool policy.
  *
@@ -159,34 +161,117 @@ export const LOCAL_AUTO_ALLOW: readonly string[] = [
 ];
 
 /**
- * The agent's own tools a question does not need.
+ * What a session is allowed to reach for, as one word.
  *
- * Removed from the prompt for a session that only asks things of SAP, which
- * is what the chat screen is: it reads tables, programs and module
- * configuration and renders the answer. None of these has a part in that, and
- * carrying their schemas costs 8,766 tokens of every turn — measured, 22% of
- * a chat session's whole context.
+ * Three shapes, because measurement said two was not enough. A chat asks
+ * questions. A read-only skill investigates — it dispatches a specialist,
+ * looks things up on the web, and reads the local customization cache, but
+ * changes nothing. A build skill does work: it writes its artifacts down and
+ * runs commands.
  *
- * The saving is the smaller half of why. `disallowedTools` is the only thing
- * that makes a tool genuinely unavailable: everything here was already gated
- * behind the PreToolUse hook and an approval, but gated means someone is
- * asked, and a read-only conversation that can propose a shell command is a
- * dialog waiting to be waved through. Out of context, it cannot be proposed.
- *
- * `Skill` and `SlashCommand` are deliberately not here. A plugin skill
- * invoked from the chat is still reading, and the two of them are cheap.
+ * The distinction is not decoration. `analyze-symptom` is read-only by its own
+ * rules — "No filesystem search: paths are resolved once in Step 1" — and in a
+ * logged run on 2026-09-12 it spent its first four minutes and nineteen `Bash`
+ * calls on `find`, `grep`, `mkdir` and `cp`, then went on to grep the
+ * developer's own Claude Code transcripts under `~/.claude/projects`. A rule
+ * written in a prompt is a request; a tool that is absent is an answer.
  */
-export const LOCAL_NOT_FOR_READING: readonly string[] = [
+export type ToolProfile = "ask" | "analyse" | "build";
+
+/** Every profile, for validating one off the wire. */
+export const TOOL_PROFILES: readonly ToolProfile[] = ["ask", "analyse", "build"];
+
+/**
+ * Tools that change the machine this server runs on, or run commands on it.
+ *
+ * Out of reach for everything but a build skill. Nothing else in this app has
+ * a reason to write a file or open a shell: a chat renders an answer, and a
+ * read-only skill returns a report.
+ */
+const LOCAL_WRITES: readonly string[] = [
   "Write",
   "Edit",
   "NotebookEdit",
   "Bash",
   "BashOutput",
   "KillShell",
-  "WebFetch",
-  "WebSearch",
-  "TodoWrite",
 ];
+
+/**
+ * Tools that leave the machine, plus the model's own bookkeeping.
+ *
+ * A read-only skill keeps these: `analyze-symptom` looks up SAP Notes as its
+ * known-issue step, and a multi-round investigation has a list to keep. A chat
+ * has neither, and carrying them costs it tokens on every turn.
+ */
+const LOCAL_LOOKUP: readonly string[] = ["WebFetch", "WebSearch", "TodoWrite"];
+
+/** The sub-agent dispatch. Its description is every agent the plugin declares. */
+const AGENT = "Agent";
+
+/**
+ * What a profile may not touch, on top of the SAP write patterns every session
+ * is denied.
+ *
+ * Measured per turn on this machine: `Agent` is 17,665 tokens, and the local
+ * tools together are 8,766. A chat that carried all of it was paying 61% of
+ * its context for machinery it never reached for.
+ */
+export function disallowedForProfile(profile: ToolProfile): readonly string[] {
+  if (profile === "build") return [];
+  if (profile === "analyse") return LOCAL_WRITES;
+  return [AGENT, ...LOCAL_WRITES, ...LOCAL_LOOKUP];
+}
+
+/**
+ * Local read tools, and the input field each one takes a path in.
+ *
+ * Read, Grep and Glob are kept for every profile: a read-only skill needs them
+ * for the customization cache the workflow hands it a path to. What they are
+ * not for is the rest of the disk, which is the next function's job.
+ */
+const PATH_ARG: Record<string, string> = {
+  Read: "file_path",
+  Grep: "path",
+  Glob: "path",
+  Write: "file_path",
+  Edit: "file_path",
+  NotebookEdit: "notebook_path",
+};
+
+/**
+ * The path a tool call is reaching for, when that is outside the workspace.
+ *
+ * Returns the offending path, or null when the call stays inside.
+ *
+ * This exists because of one line in a logged run. `analyze-symptom`, a
+ * read-only SAP skill, ran `Grep` against the developer's own Claude Code
+ * transcripts under `~/.claude/projects` three times, and five `Bash`
+ * commands into the same directory. Nothing about a SAP short dump lives
+ * there. The session's `cwd` is the workspace and everything it legitimately
+ * reads is under it, so anything above it is a mistake at best.
+ *
+ * Relative paths resolve against the workspace and are therefore inside by
+ * construction; only an absolute path that climbs out is refused.
+ */
+export function outsideWorkspace(
+  toolName: string,
+  input: Record<string, unknown>,
+  workspace: string,
+): string | null {
+  const field = PATH_ARG[toolName];
+  if (!field) return null;
+  const raw = input[field];
+  if (typeof raw !== "string" || raw === "") return null;
+
+  const target = resolve(workspace, raw);
+  const root = resolve(workspace);
+  // Case-insensitive because Windows is, and a case-flipped prefix would
+  // otherwise read as an escape. `relative` handles the separators.
+  const rel = relative(root.toLowerCase(), target.toLowerCase());
+  const inside = rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+  return inside ? null : target;
+}
 
 export type ToolClass = "write" | "row-extraction" | "read" | "other";
 

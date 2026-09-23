@@ -37,6 +37,18 @@ export type SkillField = {
   images?: boolean;
 };
 
+/**
+ * What a skill's session may reach for. Mirrors `ToolProfile` in
+ * `src/server/tool-policy.ts`, and is declared per skill rather than derived
+ * from `group`, which is a shelf in the sidebar and would silently regrant
+ * permissions the day someone re-shelves something.
+ *
+ *   analyse — dispatches specialists, looks things up, reads the local cache,
+ *             and changes nothing. No shell, no file writes.
+ *   build   — writes its artifacts down and runs commands.
+ */
+export type SkillTools = "analyse" | "build";
+
 export type Skill = {
   /** Route segment: `/skills/<slug>`. */
   slug: string;
@@ -51,6 +63,12 @@ export type Skill = {
   icon: string;
   summary: string;
   group: SkillGroupId;
+  /**
+   * Required, not defaulted. A skill that does not say what it needs gets the
+   * benefit of the doubt nowhere: the compiler asks, and whoever adds the next
+   * one has to answer.
+   */
+  tools: SkillTools;
   status: SkillStatus;
   /** Why it cannot run yet. Required when `status` is `blocked`. */
   blockedReason?: string;
@@ -122,6 +140,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "ask-consultant",
     command: "/sc4sap:ask-consultant",
+    tools: "analyse",
     title: "Ask a Consultant",
     icon: "chat-teardrop-text",
     summary:
@@ -136,6 +155,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "analyze-code",
     command: "/sc4sap:analyze-code",
+    tools: "build",
     title: "Analyze Code",
     icon: "code",
     summary:
@@ -155,6 +175,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "analyze-symptom",
     command: "/sc4sap:analyze-symptom",
+    tools: "analyse",
     title: "Analyze a Symptom",
     icon: "bug",
     summary:
@@ -220,6 +241,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "analyze-cbo-obj",
     command: "/sc4sap:analyze-cbo-obj",
+    tools: "build",
     title: "Inventory a CBO Package",
     icon: "package",
     summary:
@@ -235,6 +257,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "compare-programs",
     command: "/sc4sap:compare-programs",
+    tools: "build",
     title: "Compare Programs",
     icon: "git-diff",
     summary:
@@ -255,6 +278,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "program-to-spec",
     command: "/sc4sap:program-to-spec",
+    tools: "build",
     title: "Program → Spec",
     icon: "file-text",
     summary:
@@ -273,6 +297,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "package-to-process",
     command: "/sc4sap:package-to-process",
+    tools: "build",
     title: "Package → Process",
     icon: "flow-arrow",
     summary:
@@ -294,6 +319,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "create-program",
     command: "/sc4sap:create-program",
+    tools: "build",
     title: "Create a Program",
     icon: "file-plus",
     summary:
@@ -313,6 +339,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "create-object",
     command: "/sc4sap:create-object",
+    tools: "build",
     title: "Create an Object",
     icon: "cube",
     summary:
@@ -336,6 +363,7 @@ export const SKILLS: Skill[] = [
   {
     slug: "sap-doctor",
     command: "/sc4sap:sap-doctor",
+    tools: "build",
     title: "SAP Doctor",
     icon: "stethoscope",
     summary:

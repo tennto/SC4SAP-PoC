@@ -125,6 +125,7 @@ export default async function SkillPage({
           command={skill.command}
           title={skill.title}
           fields={skill.fields}
+          tools={skill.tools}
           blocked={showsNotice}
           autorun={autorun}
           cost={skill.cost ?? null}
