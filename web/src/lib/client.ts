@@ -105,12 +105,11 @@ export const api = {
       economy?: boolean;
       model?: string;
       /**
-       * Whether the run may dispatch sub-agents. The skill screen sets it;
-       * chat leaves it out. Off, the `Agent` tool is gone from the session's
-       * context along with the description of every agent the plugin
-       * declares — about a third of the tokens a turn is billed for.
+       * Whether the run does work on the machine — sub-agents, files, the
+       * shell. The skill screen sets it; chat leaves it out, and a session
+       * that only asks things of SAP carries none of that machinery.
        */
-      subagents?: boolean;
+      runsWork?: boolean;
     },
   ): Promise<Session> =>
     (
@@ -123,7 +122,7 @@ export const api = {
             : {}),
           ...(spend?.maxBudgetUsd ? { maxBudgetUsd: spend.maxBudgetUsd } : {}),
           ...(spend?.economy !== undefined ? { economy: spend.economy } : {}),
-          ...(spend?.subagents ? { subagents: true } : {}),
+          ...(spend?.runsWork ? { runsWork: true } : {}),
           ...(spend?.model ? { model: spend.model } : {}),
         }),
       })

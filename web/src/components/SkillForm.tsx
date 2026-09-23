@@ -660,14 +660,15 @@ export function SkillForm({
     setStarting(true);
     setError(null);
     try {
-      // `subagents` on purpose, and only here. A skill is built out of
-      // sub-agents — `create-program` dispatches a reviewer before it writes
-      // anything — so this is the one screen that needs the dispatch tool.
-      // Chat does not, and the tool costs about a third of every turn's
-      // context, so it is absent there. See `SessionShape.subagents`.
+      // `runsWork` on purpose, and only here. A skill dispatches sub-agents
+      // and writes its artifacts down — `create-program` sends work to a
+      // reviewer before it produces anything — so this is the one screen that
+      // needs the file, shell and dispatch tools. The chat screen only asks
+      // things of SAP, and carrying that machinery cost it 26,431 tokens of
+      // every turn. See `SessionShape.runsWork`.
       const session = await api.createSession(undefined, undefined, {
         ...(how ?? {}),
-        subagents: true,
+        runsWork: true,
       });
       setSessionId(session.id);
       await api.sendMessage(

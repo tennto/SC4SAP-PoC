@@ -32,6 +32,7 @@ import { ToolLog } from "./tool-log.ts";
 import {
   buildToolPolicy,
   isSapReadTool,
+  LOCAL_NOT_FOR_READING,
   needsHookApproval,
   QUESTION_TOOL,
   SAP_TOOL_PREFIX,
@@ -461,23 +462,27 @@ type SessionShape = {
   model?: string;
   approval?: ApprovalLevel;
   /**
-   * Whether this session may dispatch sub-agents.
+   * Whether this session does work on the machine, or only asks things of SAP.
    *
-   * Off unless asked for, because `Agent` is not a tool-sized thing in the
-   * prompt: its description carries every agent the plugin declares — 26 of
-   * them — and measured on this machine that is 17,665 tokens, 31% of a
-   * session's whole context, re-read on every turn of every conversation.
+   * Off unless asked for, and it governs two things with one cause. A session
+   * that runs work needs to dispatch sub-agents and to touch files and the
+   * shell; a session that answers questions about a table needs neither, and
+   * was carrying both on every turn.
    *
-   * What needs it is a skill run: `create-program` and `analyze-code` are
-   * built out of sub-agents. What does not is a question typed in the chat
-   * screen, which is most of the traffic and was paying for the dispatch
-   * machinery on every turn without ever using it.
+   * What it costs to carry, measured on this machine: `Agent` is 17,665
+   * tokens, because its description is every agent the plugin declares, all
+   * 26 of them. The file, shell and web tools are another 8,766. Together
+   * that is 61% of what a chat turn used to be billed for, on machinery a
+   * chat never reaches for.
    *
-   * Removing the tool rather than merely declining to auto-approve it is the
-   * point. `allowedTools` decides what is waved through; only
-   * `disallowedTools` takes the description out of the prompt.
+   * What needs it on is a skill run — `create-program` sends work to a
+   * reviewer and writes its artifacts down. What does not is the chat screen.
+   *
+   * Removing the tools rather than merely declining to auto-approve them is
+   * the point. `allowedTools` decides what is waved through; only
+   * `disallowedTools` takes a tool out of the prompt, and out of reach.
    */
-  subagents?: boolean;
+  runsWork?: boolean;
 };
 
 type PendingEntry = {
@@ -660,10 +665,10 @@ export class SessionManager {
       options.economy === true,
       options.approval ?? "all",
       options.maxBudgetUsd ?? "",
-      // A warm session opened without sub-agents cannot serve a skill run that
-      // needs them: the tool is missing from a process that has already
-      // started. Different shapes, different pools.
-      options.subagents === true,
+      // A warm session opened for questions cannot serve a skill run: the
+      // tools are missing from a process that has already started. Different
+      // shapes, different pools.
+      options.runsWork === true,
     ].join(" ");
   }
 
@@ -700,13 +705,17 @@ export class SessionManager {
       ? this.#policy.allowedTools.filter((tool) => tool !== "Agent")
       : this.#policy.allowedTools;
 
-    // See `subagents` on SessionShape. Appended rather than folded into the
+    // See `runsWork` on SessionShape. Appended rather than folded into the
     // policy, because this is a property of one session and the policy
     // describes the SAP tool surface every session shares.
     const disallowedTools =
-      options.subagents === true
+      options.runsWork === true
         ? this.#policy.disallowedTools
-        : [...this.#policy.disallowedTools, "Agent"];
+        : [
+            ...this.#policy.disallowedTools,
+            AGENT_TOOL,
+            ...LOCAL_NOT_FOR_READING,
+          ];
 
     const session = query({
       prompt: pump,

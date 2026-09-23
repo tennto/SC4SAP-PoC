@@ -268,12 +268,13 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           /** Sub-agents on Sonnet whatever the skill asked for. */
           economy?: boolean;
           /**
-           * Whether the session may dispatch sub-agents. Absent means no,
-           * which is what a chat turn wants: the `Agent` tool's description
-           * carries every agent the plugin declares and costs 17,665 tokens
-           * of every turn's context. The skill screen asks for it.
+           * Whether the session does work on the machine — sub-agents, files,
+           * the shell — or only asks things of SAP. Absent means questions
+           * only, which is what the chat screen wants and what keeps 26,431
+           * tokens of unused machinery out of every turn. The skill screen
+           * asks for the other one.
            */
-          subagents?: boolean;
+          runsWork?: boolean;
           /** One of the models this backend offers — see `/health`. */
           model?: string;
         }
@@ -283,7 +284,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     // by the web app when it revives a stored chat. Only a finite number is
     // worth carrying: a bad one would be added to every later figure, so it
     // is refused here rather than poisoning the count downstream.
-    const { priorTurns, priorCostUsd, maxBudgetUsd, economy, subagents } =
+    const { priorTurns, priorCostUsd, maxBudgetUsd, economy, runsWork } =
       request.body ?? {};
     for (const [name, value] of [
       ["priorTurns", priorTurns],
@@ -300,8 +301,8 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     if (economy !== undefined && typeof economy !== "boolean") {
       return reply.code(400).send({ error: "body.economy must be a boolean" });
     }
-    if (subagents !== undefined && typeof subagents !== "boolean") {
-      return reply.code(400).send({ error: "body.subagents must be a boolean" });
+    if (runsWork !== undefined && typeof runsWork !== "boolean") {
+      return reply.code(400).send({ error: "body.runsWork must be a boolean" });
     }
     const model = request.body?.model;
     if (model !== undefined && !MODELS.some((entry) => entry.id === model)) {
@@ -314,7 +315,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       priorCostUsd,
       maxBudgetUsd: maxBudgetUsd ? maxBudgetUsd : undefined,
       economy,
-      subagents,
+      runsWork,
       model,
       userId: userOf(request.headers),
       approval: approvalOf(request.headers),

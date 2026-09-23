@@ -158,6 +158,36 @@ export const LOCAL_AUTO_ALLOW: readonly string[] = [
   "EnterPlanMode",
 ];
 
+/**
+ * The agent's own tools a question does not need.
+ *
+ * Removed from the prompt for a session that only asks things of SAP, which
+ * is what the chat screen is: it reads tables, programs and module
+ * configuration and renders the answer. None of these has a part in that, and
+ * carrying their schemas costs 8,766 tokens of every turn — measured, 22% of
+ * a chat session's whole context.
+ *
+ * The saving is the smaller half of why. `disallowedTools` is the only thing
+ * that makes a tool genuinely unavailable: everything here was already gated
+ * behind the PreToolUse hook and an approval, but gated means someone is
+ * asked, and a read-only conversation that can propose a shell command is a
+ * dialog waiting to be waved through. Out of context, it cannot be proposed.
+ *
+ * `Skill` and `SlashCommand` are deliberately not here. A plugin skill
+ * invoked from the chat is still reading, and the two of them are cheap.
+ */
+export const LOCAL_NOT_FOR_READING: readonly string[] = [
+  "Write",
+  "Edit",
+  "NotebookEdit",
+  "Bash",
+  "BashOutput",
+  "KillShell",
+  "WebFetch",
+  "WebSearch",
+  "TodoWrite",
+];
+
 export type ToolClass = "write" | "row-extraction" | "read" | "other";
 
 export function classifySapTool(bareName: string): ToolClass {
