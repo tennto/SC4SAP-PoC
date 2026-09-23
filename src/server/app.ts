@@ -10,6 +10,7 @@
  *   POST   /sessions/:id/auto-approve  wave SAP reads through for this session
  *   GET    /monitor/stream        SSE of every tool call the caller's account runs
  *   GET    /profiles              the SAP systems configured, and which is live
+ *   POST   /profiles              add a SAP system and move onto it
  *   POST   /profiles/active       point the workspace at another SAP system
  *
  * The caller's account arrives as `x-sc4sap-user`, set by the web app's proxy
@@ -31,7 +32,7 @@ import {
 import { claudeApiHealth } from "./claude-api.ts";
 import { APPROVAL_LEVELS, type ApprovalLevel } from "./tool-policy.ts";
 import { BODY_LIMIT, validateAttachments } from "./attachments.ts";
-import { listProfiles, switchProfile } from "./profiles.ts";
+import { createProfile, listProfiles, switchProfile } from "./profiles.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
 const HEARTBEAT_MS = 15_000;
@@ -125,6 +126,73 @@ export function buildApp(manager: SessionManager): FastifyInstance {
    * dressed. The count of what was closed comes back so the caller can say so
    * rather than leaving a reader wondering where their chat went.
    */
+  /**
+   * Add a SAP system, and move onto it.
+   *
+   * The password arrives in the body and goes straight to the profile CLI on
+   * stdin, which puts it in the OS keychain. It is never logged, never
+   * returned, and never written to `sap.env` in the clear.
+   *
+   * The caller is expected to have proved the logon works first — the web app
+   * runs the same ADT probe the setup wizard does before it posts here. This
+   * endpoint does not re-run it: a system that answered seconds ago would be
+   * asked twice for one answer nobody sees.
+   */
+  app.post<{ Body: Record<string, unknown> | undefined }>(
+    "/profiles",
+    async (request, reply) => {
+      const body = request.body ?? {};
+      const text = (key: string): string =>
+        typeof body[key] === "string" ? (body[key] as string).trim() : "";
+
+      const required = ["alias", "host", "client", "username", "abapRelease"];
+      for (const key of required) {
+        if (!text(key)) {
+          return reply.code(400).send({ error: `body.${key} is required`, field: key });
+        }
+      }
+      // Not trimmed: a password may legitimately begin or end with a space.
+      const password =
+        typeof body.password === "string" ? (body.password as string) : "";
+
+      try {
+        const outcome = await createProfile(manager, {
+          alias: text("alias"),
+          tier: text("tier") || "DEV",
+          host: text("host"),
+          client: text("client"),
+          username: text("username"),
+          password,
+          version: text("version") || "S4",
+          abapRelease: text("abapRelease"),
+          language: text("language") || "EN",
+          industry: text("industry") || "other",
+          description: text("description"),
+        });
+        if (!outcome.ok) {
+          return reply
+            .code(400)
+            .send({ error: outcome.error, field: outcome.field });
+        }
+        app.log.info(
+          `added SAP profile ${text("alias")} and switched to it; ` +
+            `closed ${outcome.closedSessions} session(s), ` +
+            `re-discovered ${manager.policy.summary.read} read-class tool(s)`,
+        );
+        return reply.code(201).send({
+          active: outcome.list.active,
+          profiles: outcome.list.profiles,
+          closedSessions: outcome.closedSessions,
+        });
+      } catch (err) {
+        app.log.error({ err }, "profile create failed");
+        return reply
+          .code(503)
+          .send({ error: `could not add the system: ${(err as Error).message}` });
+      }
+    },
+  );
+
   app.post<{ Body: { alias?: string } | undefined }>(
     "/profiles/active",
     async (request, reply) => {

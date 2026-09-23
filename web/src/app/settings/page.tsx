@@ -23,10 +23,8 @@ import { findById } from "@/lib/auth/users";
 import { readConnection } from "@/lib/setup-store";
 import { BACKEND } from "@/lib/backend";
 import type { Health, ProfileList } from "@/lib/types";
-import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { AccountSettings } from "@/components/settings/AccountSettings";
-import { ConnectionSettings } from "@/components/settings/ConnectionSettings";
 import { ScopeSettings } from "@/components/settings/ScopeSettings";
 import { SettingRow } from "@/components/settings/EditModal";
 import { ApprovalSettings } from "@/components/settings/ApprovalSettings";
@@ -117,28 +115,14 @@ export default async function SettingsPage() {
           />
         </div>
 
+        {/* One SAP card, not two. The system picker and the account's stored
+            connection were separate panels showing the same four facts from
+            different sources, disagreeing the moment anyone switched systems.
+            It sits above the sessions panel because which system a session
+            talks to is a bigger question than how it asks, and switching it
+            closes what the panel below configures. */}
         <div className="rise" style={{ "--delay": "180ms" } as React.CSSProperties}>
-          {connection ? (
-            <ConnectionSettings connection={connection} />
-          ) : (
-            // Reachable only by deleting the row from under a live session:
-            // every page behind the gate redirects an account with no
-            // connection to the wizard. Drawn anyway, because the alternative
-            // is a settings screen that crashes on a state the app can be in.
-            <section className="panel">
-              <div className="panel-head">
-                <h2>
-                  <Icon name="database" /> {t.sapConnection}
-                </h2>
-              </div>
-              <p className="field-note">
-                {t.noConnection}{" "}
-                <Link className="link-button" href="/setup">
-                  {t.runSetup}
-                </Link>
-              </p>
-            </section>
-          )}
+          <SystemSettings initial={profiles} />
         </div>
 
         {connection ? (
@@ -153,14 +137,7 @@ export default async function SettingsPage() {
           </div>
         ) : null}
 
-        {/* Above the sessions panel on purpose: which system a session talks
-            to is a bigger question than how it asks, and switching it closes
-            what the panel below configures. */}
-        <div className="rise" style={{ "--delay": "290ms" } as React.CSSProperties}>
-          <SystemSettings initial={profiles} />
-        </div>
-
-        <div className="rise" style={{ "--delay": "360ms" } as React.CSSProperties}>
+        <div className="rise" style={{ "--delay": "320ms" } as React.CSSProperties}>
           <section className="panel">
             <div className="panel-head">
               <h2>

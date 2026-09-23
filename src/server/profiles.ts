@@ -27,6 +27,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join } from "node:path";
+import { homedir } from "node:os";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 
 const run = promisify(execFile);
 
@@ -101,6 +103,45 @@ async function cli<T>(
   return JSON.parse(stdout) as T;
 }
 
+/**
+ * The same, for the verbs that read their payload from stdin.
+ *
+ * stdin rather than arguments because one of the fields is a password, and a
+ * process argument is readable by anything that can list processes. The CLI is
+ * written for this: `add`, `keychain-set` and `migrate` all parse stdin JSON.
+ */
+async function cliJson<T>(
+  pluginPath: string,
+  workspace: string,
+  args: string[],
+  payload: unknown,
+): Promise<T> {
+  const script = join(pluginPath, "scripts", "sap-profile-cli.mjs");
+  const child = execFile(process.execPath, [script, ...args], {
+    cwd: workspace,
+    timeout: CLI_TIMEOUT_MS,
+    windowsHide: true,
+  });
+
+  const done = new Promise<string>((resolve, reject) => {
+    let out = "";
+    let err = "";
+    child.stdout?.on("data", (chunk) => (out += chunk));
+    child.stderr?.on("data", (chunk) => (err += chunk));
+    child.on("error", reject);
+    child.on("close", (code) =>
+      code === 0
+        ? resolve(out)
+        : // The CLI puts its refusal on stderr and exits non-zero. That text
+          // names the field it is about, so it is worth more than "exit 2".
+          reject(new Error(err.trim() || `profile CLI exited ${code}`)),
+    );
+  });
+
+  child.stdin?.end(JSON.stringify(payload));
+  return JSON.parse(await done) as T;
+}
+
 export async function listProfiles(
   pluginPath: string,
   workspace: string,
@@ -113,6 +154,149 @@ export async function listProfiles(
   return {
     active: raw.active ? String(raw.active) : null,
     profiles: (raw.profiles ?? []).map(toProfile),
+  };
+}
+
+/**
+ * Where the profile directories live. Mirrors `sc4sapHome()` in the CLI.
+ *
+ * Only ever read from, and written to in exactly one place: the RFC backend
+ * line below, which the CLI does not carry. Everything else about a profile
+ * goes through the CLI, which owns the format.
+ */
+function profileDir(alias: string): string {
+  const home = process.env.SC4SAP_HOME_DIR || join(homedir(), ".sc4sap");
+  return join(home, "profiles", alias);
+}
+
+/**
+ * Copies `SAP_RFC_BACKEND` from one profile's `sap.env` to another's.
+ *
+ * The CLI's `copyFrom` carries language, system type, version, release,
+ * industry and modules — not this. It is read by the vendor MCP server to
+ * decide how RFC-shaped calls are made, and it defaults to `odata` when
+ * absent. A system added next to one running on `soap` that silently came up
+ * on a different backend would fail only inside particular tools, which reads
+ * as those tools being broken rather than as a missing line in a file.
+ *
+ * Best-effort on purpose: a profile that was created correctly must not be
+ * reported as a failure because this could not be copied.
+ */
+function carryRfcBackend(from: string | null, to: string): void {
+  if (!from) return;
+  try {
+    const source = join(profileDir(from), "sap.env");
+    if (!existsSync(source)) return;
+    const line = readFileSync(source, "utf8")
+      .split(/\r?\n/)
+      .find((l) => l.startsWith("SAP_RFC_BACKEND="));
+    if (!line) return;
+
+    const target = join(profileDir(to), "sap.env");
+    if (!existsSync(target)) return;
+    if (readFileSync(target, "utf8").includes("SAP_RFC_BACKEND=")) return;
+    appendFileSync(target, `\n# --- RFC backend (carried from ${from}) ---\n${line}\n`);
+  } catch {
+    // See above: the profile itself is fine without this.
+  }
+}
+
+/** What the web app sends to add a system. Secrets are not part of the result. */
+export type NewProfile = {
+  alias: string;
+  tier: string;
+  host: string;
+  client: string;
+  username: string;
+  password: string;
+  version: string;
+  abapRelease: string;
+  language: string;
+  industry: string;
+  description: string;
+};
+
+export type CreateOutcome =
+  | { ok: true; list: ProfileList; closedSessions: number }
+  | { ok: false; error: string; field?: string };
+
+/**
+ * Adds a SAP system and moves the workspace onto it.
+ *
+ * Adding without switching would be the more conservative pair of verbs, and
+ * it is the wrong one here: this is reached from a screen whose whole purpose
+ * is "connect me to that system", and a profile that exists but is not live
+ * would look like the operation silently failed.
+ *
+ * The password reaches the CLI on stdin, never as an argument — an argument is
+ * visible to anything that can list processes on the machine. The CLI puts it
+ * in the OS keychain and leaves a `keychain:` reference in `sap.env`.
+ */
+export async function createProfile(
+  manager: {
+    config: { pluginPath: string; workspace: string };
+    list(): unknown[];
+    closeAll(): Promise<void>;
+    discoverToolPolicy(): Promise<unknown>;
+  },
+  input: NewProfile,
+): Promise<CreateOutcome> {
+  const { pluginPath, workspace } = manager.config;
+
+  // The CLI enforces this too. Checked here so the refusal names the field,
+  // which is what the form needs to put the message next to the input.
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(input.alias)) {
+    return { ok: false, error: "alias must match [A-Za-z0-9_-]", field: "alias" };
+  }
+  if (!["DEV", "QA", "PRD"].includes(input.tier)) {
+    return { ok: false, error: "tier must be DEV, QA or PRD", field: "tier" };
+  }
+  if (!input.password) {
+    return { ok: false, error: "a password is required", field: "password" };
+  }
+
+  const before = await listProfiles(pluginPath, workspace);
+  if (before.profiles.some((p) => p.alias === input.alias)) {
+    return {
+      ok: false,
+      error: `a system named ${input.alias} already exists`,
+      field: "alias",
+    };
+  }
+
+  const closedSessions = manager.list().length;
+
+  // `host`, not `url` — the CLI's key for the ADT base URL. A payload using
+  // `url` is accepted in silence and writes an empty SAP_URL.
+  await cliJson<{ ok: boolean }>(pluginPath, workspace, ["add"], {
+    alias: input.alias,
+    tier: input.tier,
+    host: input.host,
+    client: input.client,
+    username: input.username,
+    password: input.password,
+    version: input.version,
+    abapRelease: input.abapRelease,
+    language: input.language,
+    industry: input.industry,
+    description: input.description,
+    systemType: "onprem",
+  });
+
+  carryRfcBackend(before.active, input.alias);
+
+  // `switch` takes its alias as an argument, not on stdin.
+  await cli<{ ok: boolean; active: string }>(pluginPath, workspace, [
+    "switch",
+    input.alias,
+  ]);
+  await manager.closeAll();
+  await manager.discoverToolPolicy();
+
+  return {
+    ok: true,
+    list: await listProfiles(pluginPath, workspace),
+    closedSessions,
   };
 }
 
