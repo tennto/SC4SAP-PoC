@@ -1,6 +1,6 @@
 # Dispatch Prompts
 
-Full `Agent(...)` prompt bodies for create-object. Referenced from `workflow-steps.md` to keep that file under the 200-line cap.
+Full `Agent(...)` prompt bodies for create-object (Steps 4-6) plus the Step 7 main-thread report render rules. Referenced from `workflow-steps.md` to keep that file under the 200-line cap.
 
 ## Step 4+5+6 — sap-executor (standard flow, Opus override)
 
@@ -102,9 +102,9 @@ Return:
   }
 ```
 
-## Step 7 — sap-writer (completion report, Haiku base)
+## Step 7 — Completion report render rules (main thread, no dispatch)
 
-Pure formatting from the executor's structured return. Writer localizes to the user's current conversation language.
+Pure formatting from the executor's structured return, done by the main thread. Localize to the user's current conversation language.
 
 ```
 Render the completion report for a just-executed create-object workflow.
@@ -117,7 +117,7 @@ User conversation language: <LANG>
 Render rules:
 - flow = "standard" AND activation_status = "ACTIVE":
     5–7 line block — object name · type · package · transport · ACTIVE status + 1-line next-step hint
-    (e.g., "Add methods with direct UpdateClass MCP calls" or "Release with /sc4sap:release").
+    (e.g., "Add methods with direct UpdateClass MCP calls" or "Release the transport via CTS").
 
 - flow = "standard" AND activation_status = "FAILED":
     error message + suggested fix + retry hint.

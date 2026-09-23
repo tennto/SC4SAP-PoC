@@ -1,12 +1,12 @@
 # Workflow Steps
 
-Main thread runs on Haiku 4.5 (skill frontmatter). Every MCP read is pushed into an agent so the orchestrator context stays small even for 5 programs × full source + AST + screens.
+Main thread runs on Sonnet 4.6 (skill frontmatter). Every MCP read is pushed into an agent so the orchestrator context stays small even for 5 programs × full source + AST + screens.
 
 ## Step 0 — Trust Session (mandatory, see SKILL.md)
 
 Invoke `/sc4sap:trust-session` with `parent_skill=sc4sap:compare-programs`. Skip silently if already trusted within 24h.
 
-## Step 1 — Program Input (main thread, Haiku)
+## Step 1 — Program Input (main thread)
 
 **Accepts**:
 - User passes 2–5 program names in the initial argument: `"compare ZMMR_GR_LIST and ZCOR_GR_LIST"` / `"ZMMR_GR_LIST, ZCOR_GR_LIST, ZFIR_GR_LIST"`.
@@ -20,11 +20,11 @@ Invoke `/sc4sap:trust-session` with `parent_skill=sc4sap:compare-programs`. Skip
 
 Store the confirmed list as `compared_objects` (array of `{name, type, package}`).
 
-## Step 2 — Scope Confirmation (main thread, Haiku)
+## Step 2 — Scope Confirmation (main thread)
 
 Show the **Scope Prompt** from `comparison-scope.md` with defaults pre-ticked. Render the prompt in the user's current conversation language. Wait for user response. Accept `ok` / `proceed` / `+N` / `-N` / `only N,M` / `all` (and equivalent phrasings in other languages).
 
-Store the confirmed dimension set as `active_dimensions` (subset of 1–10). Echo back one line confirming the selection, e.g.: *"Dimensions confirmed: 1·2·3·5·6·7·10 (7 of 10). Starting analysis."*
+Store the confirmed dimension set as `active_dimensions` (subset of 1–10) and the output choice as `formats` (`[md]` default, `[md, html]` on `html`, `[html]` on `html only`). Echo back one line confirming the selection, e.g.: *"Dimensions confirmed: 1·2·3·5·6·7·10 (7 of 10) · output: Markdown + HTML. Starting analysis."*
 
 ## Step 3 — Facts Extraction (per-program `sap-code-reviewer` dispatch, Sonnet 4.6 override)
 
@@ -41,8 +41,7 @@ Agent({
   subagent_type: "sc4sap:sap-code-reviewer",
   model: "sonnet",   // override base Opus — facts-only extraction doesn't need Opus judgment
   description: "Facts — <PROG>",
-  prompt: "<facts-extraction prompt per dispatch-prompts.md § Step 3>, target=<PROG>, type=<TYPE>",
-  mode: "dontAsk"
+  prompt: "<facts-extraction prompt per dispatch-prompts.md § Step 3>, target=<PROG>, type=<TYPE>"
 })
 ```
 
@@ -87,8 +86,7 @@ Agent({
        out to module-specialist consultants in Step 4b. Output: module_set: [MM, CO, ...].
 
     All narrative text in the user's current conversation language.
-  """,
-  mode: "dontAsk"
+  """
 })
 ```
 
@@ -114,8 +112,7 @@ Agent({
     <subset of program_facts relevant to this module>
 
     Answer in the user's current conversation language.
-  """,
-  mode: "dontAsk"
+  """
 })
 ```
 
@@ -148,26 +145,28 @@ Agent({
     Write the Markdown file to .sc4sap/comparisons/<filename>.md (path rule in SKILL.md
     <Output_Location>). Return a short confirmation block with file path + dimension counts
     + headline divergence.
-  """,
-  mode: "dontAsk"
+  """
 })
 ```
+
+**HTML** (main thread, when `formats` has `html`): `node "<PLUGIN_ROOT>/scripts/spec/md-to-html.mjs" <report.md> <same path .html>` — `<PLUGIN_ROOT>` = two levels above this skill folder. One self-contained file (images inlined, Mermaid via CDN). If `md` is not in `formats`, delete the `.md` after the HTML is written.
 
 Emit a concise completion block to the user (in the user's current conversation language — English skeleton below):
 
 ```
 Comparison report generated.
-File: .sc4sap/comparisons/ZMMR_GR_LIST__vs__ZCOR_GR_LIST-20260423.md
+File: .sc4sap/comparisons/ZMMR_GR_LIST__vs__ZCOR_GR_LIST-20260423.md   (one line per written format: .md / .html)
 Dimensions: 7 · Divergent: 3 · Variant: 2 · Same: 2
 Key divergence: ZMMR = quantity-centric (MSEG, M_MSEG_WWA) / ZCOR = cost-value-centric (ACDOCA, F_BKPF_*)
 ```
 
-## Step 6 — Follow-up Options (main thread, Haiku — offer, don't execute)
+## Step 6 — Follow-up Options (main thread — offer, don't execute)
 
 Present as a short menu (localized to the user's language at render time):
 
 - Deeper analysis of a specific dimension — user specifies the number
 - Add more programs to the comparison (current N → up to 5)
+- HTML copy of the report (when it was generated as Markdown only) — same `md-to-html.mjs` conversion as Step 5
 - Convert to Excel (.xlsx) *(deferred — stub for future parity with program-to-spec)*
 - Generate the report in another language
 - Add Where-used analysis to compare actual call-site frequency

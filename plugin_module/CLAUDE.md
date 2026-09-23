@@ -1,6 +1,6 @@
 # SuperClaude for SAP (sc4sap) — Development Rules
 
-This file is the **index** of development rules — NOT a payload to preload. Detailed rules live in `common/` and `exceptions/`. Consult files on demand per [`common/context-loading-protocol.md`](common/context-loading-protocol.md) — 4-tier model: **Tier 1** global mandatory safety baseline (always loaded: `data-extraction-policy`, `sap-version-reference`, `naming-conventions`, `context-loading-protocol`, `model-routing-rule`), **Tier 2** role-mandatory per agent group, **Tier 3** triggered reads, **Tier 4** per-task kit. Everything referenced below is MANDATORY for every sc4sap session (agents, skills, direct user requests, pipelines).
+This file is the **index** of development rules — NOT a payload to preload. Detailed rules live in `common/` and `exceptions/`. Consult files on demand per [`common/context-loading-protocol.md`](common/context-loading-protocol.md) — 4-tier model: **Tier 1** global mandatory safety baseline (always loaded by every agent: `data-extraction-policy`, `sap-version-reference`, `naming-conventions`; `context-loading-protocol` + `model-routing-rule` are orchestrator-only, read by skills), **Tier 2** role-mandatory per agent group, **Tier 3** triggered reads, **Tier 4** per-task kit. Everything referenced below is MANDATORY for every sc4sap session (agents, skills, direct user requests, pipelines).
 
 ## Development Standards — References
 
@@ -56,9 +56,6 @@ Enforcement: L1 agent instructions → L2 this file → L3 `PreToolUse` hook (`s
 - `/sc4sap:analyze-cbo-obj` — Inventory a CBO package → save frequently-used Z objects to `.sc4sap/cbo/<MODULE>/<PACKAGE>/` for reuse by `create-program` / `program-to-spec` (auto-invokes `trust-session`)
 - `/sc4sap:package-to-process` — Reverse-engineer a CBO package into an End-to-End Business Process document (Markdown): auto-detected TCode entry points → AI process grouping (PR→PO→GR→IR style) → per-process narrative + Mermaid flowchart + sequenceDiagram + step tables. Auto-chains `sap-stocker` if CBO inventory missing. Progress bar at each step. Output: `.sc4sap/processes/<MODULE>/<PACKAGE>/process-<YYYYMMDD>-<lang>.md` (auto-invokes `trust-session`)
 - `/sc4sap:ask-consultant` — Direct user-facing Q&A with a module consultant agent (SD/MM/FI/CO/PP/PS/PM/QM/TR/HCM/WM/TM/BW/Ariba/BC). Auto-routes by keywords, answers against the configured SAP environment. Read-only (no writes, no row extraction).
-- `/sc4sap:team` — Parallel multi-agent orchestration
-- `/sc4sap:deep-interview` — Socratic interview to crystallize a spec before code generation
-- `/sc4sap:release` — CTS transport release workflow
 - `/sc4sap:mcp-setup` — MCP ABAP ADT server configuration guide
 - `/sc4sap:sap-option` — View and edit `.sc4sap/sap.env` (credentials, industry, blocklist profile, HUD limits)
 - `/sc4sap:sap-doctor` — Diagnose plugin / MCP / SAP connection health

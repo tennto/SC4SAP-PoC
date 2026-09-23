@@ -53,9 +53,6 @@
 | `sc4sap:analyze-symptom` | SAP 운영 에러/증상 단계별 분석 (덤프, 로그, SAP Note 후보) |
 | `sc4sap:ask-consultant` | 모듈 컨설턴트 에이전트(SD/MM/FI/CO/PP/PS/PM/QM/TR/HCM/WM/TM/BW/Ariba/BC)에 직접 질의. 읽기 전용 — 설정된 SAP 환경에 맞추어 답변. |
 | `sc4sap:trust-session` | INTERNAL-ONLY — 세션 전체 MCP 권한 부트스트랩 |
-| `sc4sap:deep-interview` | 구현 전 Socratic 요구사항 수집 |
-| `sc4sap:team` | 조정된 병렬 에이전트 실행 (네이티브 Claude Code teams) |
-| `sc4sap:release` | CTS 전송 릴리즈 워크플로우 |
 
 ## 스킬 — 예시 & 워크플로우
 
@@ -109,12 +106,6 @@ Z 패키지 탐색, 재사용 자산 카탈로그, 교차 모듈 갭 분석.
 
 ### `/sc4sap:program-to-spec`
 Socratic scope narrowing으로 ABAP 프로그램을 스펙으로 역공학 (Markdown/Excel).
-
-### `/sc4sap:team`
-네이티브 Claude Code teams로 조정된 병렬 에이전트 실행.
-
-### `/sc4sap:release`
-CTS 전송 릴리즈 워크플로우 — 리스트, 검증, 릴리즈, 임포트 확인.
 
 ### `/sc4sap:sap-doctor`
 플러그인 + MCP + SAP 연결 진단. 뭔가 이상할 때 가장 먼저 실행.
@@ -177,7 +168,7 @@ sc4sap의 규칙 코퍼스는 방대함 — 25+ `common/*.md` + 14 `configs/{MOD
 
 | Tier | 로드 시점 | 파일 |
 |------|-----------|------|
-| **Tier 1 — 글로벌 필수** | 모든 agent, 모든 skill, 세션 시작 | `data-extraction-policy.md`, `sap-version-reference.md`, `naming-conventions.md`, `context-loading-protocol.md`, `model-routing-rule.md` |
+| **Tier 1 — 글로벌 필수** | 모든 agent, 모든 skill, 세션 시작 | `data-extraction-policy.md`, `sap-version-reference.md`, `naming-conventions.md` |
 | **Tier 2 — 역할별 필수** | agent의 역할 그룹 고정 세트, 세션 시작 | 역할 그룹에 따라 상이 (아래 참조) |
 | **Tier 3 — 트리거 로드** | 현재 task가 조건 매칭 시 | ALV → `alv-rules.md` · Procedural → `clean-code-procedural.md` + `ok-code-pattern.md` · `CALL SCREEN` → `ok-code-pattern.md` · ECC → `ecc-ddic-fallback.md` · industry/country 설정 시 → 해당 파일 · 등 |
 | **Tier 4 — Per-Task 킷** | dispatch하는 skill/phase/bucket이 선언 | `phase4-parallel.md`의 wave별, `phase6-review.md`의 §1-§12별 |
@@ -191,7 +182,7 @@ sc4sap의 규칙 코퍼스는 방대함 — 25+ `common/*.md` + 14 `configs/{MOD
 | **Planner / Architect** | `sap-planner`, `sap-architect` | `include-structure.md`, `active-modules.md`, `customization-lookup.md`, `field-typing-rule.md` |
 | **Analyst / Writer** | `sap-analyst`, `sap-writer` | `active-modules.md` |
 | **Doc Specialist** | `sap-doc-specialist` | *(없음 — task 구동)* |
-| **Module Consultant** | 14개 모듈 컨설턴트 (SD, MM, FI, CO, PP, PS, PM, QM, TR, HCM, WM, TM, BW, Ariba) | `spro-lookup.md`, `customization-lookup.md`, `active-modules.md`, `configs/{MODULE}/{spro,tcodes,bapi,tables,enhancements,workflows}.md` |
+| **Module Consultant** | 14개 모듈 컨설턴트 (SD, MM, FI, CO, PP, PS, PM, QM, TR, HCM, WM, TM, BW, Ariba) | `spro-lookup.md`, `customization-lookup.md`, `active-modules.md`, `configs/{MODULE}/*.md` (on demand — only the file the question needs) |
 | **Basis Consultant** | `sap-bc-consultant` | `transport-client-rule.md`, `configs/common/*.md` |
 
 ### 강제 적용
