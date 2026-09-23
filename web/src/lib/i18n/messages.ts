@@ -634,6 +634,9 @@ const en = {
     addSystemBody:
       "The next screen asks for the host and logon, tries them for real, and only then writes the system.",
     addSystemConfirm: "Add a system",
+    switchHeading: (alias: string) => `Switch to ${alias}?`,
+    switchConfirm: "Switch",
+    clientShort: (client: string) => `client ${client}`,
   },
 
   addSystem: {
@@ -1464,6 +1467,9 @@ const ko: Messages = {
     addSystemHeading: "SAP 시스템을 추가할까요?",
     addSystemBody: "다음 화면에서 호스트와 로그온 정보를 받아 실제로 접속을 시도하고, 성공한 뒤에야 시스템을 저장합니다.",
     addSystemConfirm: "시스템 추가",
+    switchHeading: (alias: string) => `${alias}(으)로 전환할까요?`,
+    switchConfirm: "전환",
+    clientShort: (client: string) => `클라이언트 ${client}`,
   },
 
   addSystem: {
@@ -2271,6 +2277,9 @@ const ja: Messages = {
     addSystemHeading: "SAP システムを追加しますか?",
     addSystemBody: "次の画面でホストとログオン情報を受け取り、実際に接続を試したうえでシステムを保存します。",
     addSystemConfirm: "システムを追加",
+    switchHeading: (alias: string) => `${alias} に切り替えますか?`,
+    switchConfirm: "切り替える",
+    clientShort: (client: string) => `クライアント ${client}`,
   },
 
   addSystem: {

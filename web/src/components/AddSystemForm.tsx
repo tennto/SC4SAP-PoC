@@ -561,6 +561,11 @@ export function AddSystemForm() {
 
         {error?.error && <p className="field-error">{error.error}</p>}
 
+        {/* Above the buttons, not beside them. It is a sentence, and a
+            sentence sharing a flex row with two controls either squeezes them
+            or wraps the row — on a Korean build it wrapped. */}
+        {last && <p className="setup-warning">{t.switchWarning}</p>}
+
         <div className="setup-actions">
           <button
             className="link-button setup-escape"
@@ -572,8 +577,6 @@ export function AddSystemForm() {
           </button>
 
           <span className="setup-spacer" />
-
-          {last && <span className="setup-note">{t.switchWarning}</span>}
 
           <button className="primary" type="submit" disabled={!complete || busy}>
             <Icon

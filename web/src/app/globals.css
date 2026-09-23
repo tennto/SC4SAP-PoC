@@ -5832,6 +5832,21 @@ a.ghost.auth-submit .google-mark {
   flex: 1;
 }
 
+/* What the button below is about to do, when that is more than the button's
+   own label can say — "adding switches to it, which closes every open
+   session". A block above the row rather than a third item inside it: a
+   sentence in a flex row either squeezes the two controls or wraps the row,
+   and at Korean line lengths it wrapped. */
+.setup-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--ink-55);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .setup-actions .primary {
   padding: 9px 20px;
   font-size: 13px;

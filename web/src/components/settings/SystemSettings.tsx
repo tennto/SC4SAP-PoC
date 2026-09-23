@@ -15,20 +15,16 @@
  * The plus in the head goes to `/setup/system`, which proves a logon before
  * it writes a profile and switches onto it.
  *
- * A select that saves on pick, like the approval row: the choice is one of a
- * handful of named systems, and a dialog to pick one of three would be a step
- * for nothing.
+ * Picking another system asks first. The approval row beside this one saves on
+ * pick, because being asked to confirm a preference is a step for nothing —
+ * this is not a preference. It closes every open session, other people's
+ * included, since the workspace is a single directory every session shares. So
+ * the select opens a question naming the host, client and user it is about,
+ * and the row stays on the current system until that question is answered.
  *
- * It is not an account setting and is not drawn as one. The workspace is a
- * single directory every session shares, so this switches the system for the
- * whole backend — other people's sessions included, which is why the hint says
- * so before the pick rather than after it. The rows under the select are the
- * chosen system's host, client and user, so the thing being switched to is
- * legible without opening another screen.
- *
- * The select shows the pending alias while the request is in flight and falls
- * back to the previous one if it fails, so the row never claims a system the
- * backend is not actually on.
+ * Once it is answered the select shows the new system while the request is in
+ * flight and falls back to the previous one if it fails, so the row never
+ * claims a system the backend is not actually on.
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -51,10 +47,29 @@ export function SystemSettings({ initial }: { initial: ProfileList | null }) {
   const [active, setActive] = useState<string>(initial?.active ?? "");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  /**
+   * The system picked but not yet confirmed.
+   *
+   * The select stays on the current system while this is set, so the row never
+   * shows a system the backend is not on. Switching is not a preference that
+   * takes effect quietly — it closes every open session, other people's
+   * included — so the pick opens a question rather than performing it.
+   */
+  const [pending, setPending] = useState<SapProfile | null>(null);
 
-  async function pick(next: string): Promise<void> {
+  function pick(next: string): void {
     if (next === active || busy) return;
+    const target = profiles.find((p) => p.alias === next);
+    if (!target) return;
+    setNote(null);
+    setPending(target);
+  }
+
+  async function confirmSwitch(): Promise<void> {
+    const next = pending?.alias;
+    if (!next || busy) return;
     const previous = active;
+    setPending(null);
     setActive(next);
     setBusy(true);
     setNote(t.systemSwitching);
@@ -127,7 +142,7 @@ export function SystemSettings({ initial }: { initial: ProfileList | null }) {
                       ? `${p.alias} · ${p.description}`
                       : p.alias,
                   }))}
-                  onChange={(next) => void pick(next)}
+                  onChange={(next) => pick(next)}
                   disabled={busy}
                 />
               </div>
@@ -155,6 +170,20 @@ export function SystemSettings({ initial }: { initial: ProfileList | null }) {
           )}
 
         </div>
+      )}
+
+      {pending && (
+        <ConfirmModal
+          kind={t.systems}
+          heading={t.switchHeading(pending.alias)}
+          description={`${pending.host} · ${t.clientShort(pending.client)} · ${pending.username}`}
+          confirmLabel={t.switchConfirm}
+          confirmIcon="plugs-connected"
+          note={t.systemHint}
+          busy={busy}
+          onConfirm={() => void confirmSwitch()}
+          onCancel={() => setPending(null)}
+        />
       )}
 
       {asking && (
