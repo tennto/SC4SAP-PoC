@@ -84,6 +84,15 @@ export type Skill = {
   cost?: {
     note: string;
     defaultBudgetUsd: number;
+    /**
+     * Which model the dialog opens on.
+     *
+     * Stated per skill rather than taken from the first entry of the picker's
+     * list, which is how it worked until Haiku was added to that list and
+     * silently became every skill's default. A default that moves when someone
+     * reorders an array is not a default, it is an accident.
+     */
+    defaultModel: string;
   };
   /**
    * The skill answers in rounds and asks back.
@@ -233,8 +242,16 @@ export const SKILLS: Skill[] = [
       },
     ],
     cost: {
-      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code. A plain short dump is triaged on Sonnet for cents; anything wider — an error message, a wrong result, a dump tied to a recent change — runs on Opus, as the skill asks, at a few dollars a round.",
+      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code. A short dump is triaged on the cheap path; the skill escalates to Opus by itself, and only when the dump alone cannot explain the failure. Note that this choice moves the orchestrator, not the debugger: the plugin's agents pin their own model today, so the heavy half of a run ignores it until that changes.",
       defaultBudgetUsd: 3,
+      // Haiku, on the evidence rather than to be cheap: asked to analyse an
+      // ST22 screenshot it produced a report at least as good as Sonnet's —
+      // it caught the "(Source code changed)" flag, compared both function
+      // module interfaces field by field and found the one-digit name typo.
+      // The work is retrieval and comparison, which is the shape it is good
+      // at, and the skill's own `BLOCKED — needs full` escalation is the
+      // safety net that makes starting cheap safe.
+      defaultModel: "claude-haiku-4-5",
     },
     followUp: true,
   },

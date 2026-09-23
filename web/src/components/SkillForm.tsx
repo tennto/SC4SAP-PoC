@@ -266,7 +266,12 @@ export function SkillForm({
    * set, the first Run opens a dialog for a budget ceiling and the Sonnet
    * switch, and the choice is kept for "Run again" on this page.
    */
-  cost?: { note: string; defaultBudgetUsd: number } | null;
+  cost?: {
+    note: string;
+    defaultBudgetUsd: number;
+    /** Which model the dialog opens on — see `Skill.cost`. */
+    defaultModel?: string;
+  } | null;
   /**
    * The skill answers in rounds and asks back — see `Skill.followUp`. With
    * this set, a composer sits under the result while the session is open,
@@ -324,7 +329,8 @@ export function SkillForm({
   const [askingCost, setAskingCost] = useState(false);
   const [costForm, setCostForm] = useState<{ budget: string; model: string }>(() => ({
     budget: String(cost?.defaultBudgetUsd ?? 0),
-    model: MODELS[0].id,
+    // The skill's own choice, not whatever happens to be first in the list.
+    model: cost?.defaultModel ?? MODELS[0].id,
   }));
   /** The context a run was asked with while the cost dialog was up. */
   const pendingContext = useRef<string | null>(null);
