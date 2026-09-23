@@ -370,6 +370,34 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
   const waitingInline = waiting && !pending && last?.kind === "agent";
 
   /**
+   * Whether an agent row should play the arrival animation — decided the first
+   * time the row is seen, and never revisited.
+   *
+   * The row that replaces the standalone waiting one must not animate. Same
+   * label, same place: while a turn runs the waiting row is the last thing on
+   * screen, and the moment the first content block opens it unmounts and the
+   * real one mounts in its stead. With `msg-in` on both, that swap plays a
+   * second fade from transparent under the same heading — the blink people
+   * see just before an answer appears. It is not arriving; it is what the
+   * waiting row already was, now with words in it.
+   *
+   * Deciding it per render instead would trade one flicker for another: the
+   * test is true while the turn runs and false when it ends, so the class
+   * would land on an element that is already mounted and play the animation
+   * at the end of the turn instead of the start. And it would fire again on
+   * every older row the moment a new one pushed it out of last place. Hence
+   * the ref: first sight settles it.
+   */
+  const entrances = useRef<Map<string, boolean>>(new Map());
+  const entrance = (id: string, replacingWaitingRow: boolean): boolean => {
+    const known = entrances.current.get(id);
+    if (known !== undefined) return known;
+    const animate = !replacingWaitingRow;
+    entrances.current.set(id, animate);
+    return animate;
+  };
+
+  /**
    * Follow the tail as tokens arrive — and as the waiting row appears.
    *
    * Smoothly only when the number of rows changes, which is a message landing
@@ -444,7 +472,10 @@ export function Transcript({ items, idle, busy, pending, activity }: Props) {
         }
 
         return (
-          <article key={row.id} className="msg assistant msg-in">
+          <article
+            key={row.id}
+            className={`msg assistant${entrance(row.id, isLast && busy) ? " msg-in" : ""}`}
+          >
             <span className="who">{t.agent}</span>
             <div className="text">
               <Markdown streaming={row.streaming}>
