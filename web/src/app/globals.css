@@ -5538,31 +5538,6 @@ a.ghost.auth-submit .google-mark {
   }
 }
 
-/* One long form instead of four short questions.
- *
- * The wizard's screen centres one card in the window and holds every card to
- * a single height, because four cards that each changed size would move the
- * box under the reader between answers. Adding a system asks all of it at
- * once, so the card is taller than the window on most screens — and a card
- * taller than a centred container is a card whose top is off the screen, with
- * the masthead drawn over it.
- *
- * So this variant does the plain thing: start at the top, grow as tall as the
- * content, let the page scroll. No centring to fight, no floor to overflow.
- */
-.setup.setup-long {
-  align-content: start;
-  height: auto;
-  min-height: 100dvh;
-  gap: 32px;
-}
-
-.setup.setup-long .setup-card {
-  min-height: 0;
-  justify-content: flex-start;
-  padding: 36px 44px 32px;
-}
-
 /* The screen's own masthead: the mark, then what this screen is. Stacked and
    centred above the card rather than inside it, so the card stays one question
    and nothing else.

@@ -218,7 +218,25 @@ export type NewProfile = {
 
 export type CreateOutcome =
   | { ok: true; list: ProfileList; closedSessions: number }
-  | { ok: false; error: string; field?: string };
+  | {
+      ok: false;
+      error: string;
+      field?: string;
+      /** Set when the refusal is "this system is already here, under this name". */
+      duplicateAlias?: string;
+    };
+
+/**
+ * Whether two ADT URLs name the same stack.
+ *
+ * Scheme, trailing slash and case are levelled: these are typed by hand,
+ * months apart, and `http://HOST:50000/` is not a second system.
+ */
+function sameHost(a: string, b: string): boolean {
+  const strip = (url: string): string =>
+    url.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  return strip(a) === strip(b);
+}
 
 /**
  * Adds a SAP system and moves the workspace onto it.
@@ -264,6 +282,25 @@ export async function createProfile(
     };
   }
 
+  // Already here under another name. Host, client and user together, because
+  // that triple is what a profile actually is — the same stack on a different
+  // client, or with a different logon, is a different system worth having
+  // twice, and only all three matching means this one exists already.
+  const duplicate = before.profiles.find(
+    (p) =>
+      sameHost(p.host, input.host) &&
+      p.client === input.client &&
+      p.username.toUpperCase() === input.username.toUpperCase(),
+  );
+  if (duplicate) {
+    return {
+      ok: false,
+      error: `that system is already registered as ${duplicate.alias}`,
+      field: "host",
+      duplicateAlias: duplicate.alias,
+    };
+  }
+
   const closedSessions = manager.list().length;
 
   // `host`, not `url` — the CLI's key for the ADT base URL. A payload using
@@ -298,6 +335,101 @@ export async function createProfile(
     list: await listProfiles(pluginPath, workspace),
     closedSessions,
   };
+}
+
+/**
+ * Is the live system answering, with the logon the profile carries?
+ *
+ * The password is a `keychain:` reference in `sap.env`, so this borrows the
+ * vendor MCP server's own resolver rather than growing a second one — that
+ * module is what the running sessions use, which is the point: a check that
+ * resolved credentials differently from the thing it is checking could pass
+ * while sessions fail, or the reverse.
+ *
+ * `loadActiveProfile` is required lazily and from the plugin's vendor tree,
+ * because the path is only known at runtime and a machine without the native
+ * keychain binding must still be able to start this server.
+ *
+ * The probe itself is ADT's discovery document, the cheapest authenticated
+ * call the stack offers: it proves the host is up, the client exists and the
+ * logon is accepted, and it reads nothing.
+ */
+export async function checkActiveProfile(
+  pluginPath: string,
+  workspace: string,
+): Promise<{ ok: true; detail: string } | { ok: false; error: string }> {
+  let env: Record<string, string | undefined>;
+  let alias: string | undefined;
+  try {
+    const modulePath = join(
+      pluginPath,
+      "vendor",
+      "abap-mcp-adt",
+      "dist",
+      "lib",
+      "profile.js",
+    );
+    const { createRequire } = await import("node:module");
+    const requireFromHere = createRequire(import.meta.url);
+    const profileModule = requireFromHere(modulePath) as {
+      loadActiveProfile: (cwd?: string) => {
+        alias?: string;
+        // `envVars`, not `env` — the vendor's own name for the parsed file,
+        // with the `keychain:` password already resolved into it.
+        envVars: Record<string, string>;
+      };
+    };
+    const loaded = profileModule.loadActiveProfile(workspace);
+    env = loaded.envVars;
+    alias = loaded.alias;
+  } catch (err) {
+    return {
+      ok: false,
+      error: `could not read the active profile: ${(err as Error).message}`,
+    };
+  }
+
+  const url = env.SAP_URL ?? "";
+  const client = env.SAP_CLIENT ?? "";
+  const user = env.SAP_USERNAME ?? "";
+  const password = env.SAP_PASSWORD ?? "";
+  if (!url || !user || !password) {
+    return { ok: false, error: "the active profile has no URL or logon" };
+  }
+
+  const target = `${url.replace(/\/+$/, "")}/sap/bc/adt/discovery${
+    client ? `?sap-client=${encodeURIComponent(client)}` : ""
+  }`;
+
+  try {
+    const response = await fetch(target, {
+      headers: {
+        authorization: `Basic ${Buffer.from(`${user}:${password}`).toString("base64")}`,
+        accept: "application/atomsvc+xml",
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (response.status === 401 || response.status === 403) {
+      // Named rather than folded into "did not answer": a refused logon is a
+      // password or a locked user, and the fix is nothing like the fix for an
+      // unreachable host.
+      return {
+        ok: false,
+        error: `${user} was refused by ${url} (${response.status}). The password may have changed, or the user may be locked.`,
+      };
+    }
+    if (!response.ok) {
+      return { ok: false, error: `${url} answered ${response.status}.` };
+    }
+    return {
+      ok: true,
+      detail: `ADT answered at ${url}${client ? ` · client ${client}` : ""}${
+        alias ? ` · ${alias}` : ""
+      }`,
+    };
+  } catch (err) {
+    return { ok: false, error: `${url} did not answer: ${(err as Error).message}` };
+  }
 }
 
 export type SwitchOutcome =

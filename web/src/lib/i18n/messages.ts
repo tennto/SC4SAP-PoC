@@ -70,6 +70,7 @@ const en = {
     notSet: "Not set",
 
     sapSystemCard: "SAP system",
+    systemUnknown: "The backend did not say which system it is on.",
     profile: "Profile",
     host: "Host",
     systemClient: "System / client",
@@ -130,10 +131,10 @@ const en = {
 
     connectedHeading: "Everything is connected",
     connectedBody:
-      "Re-checked just now: the agent backend is answering, its Claude API key was accepted, and the SAP system accepted the stored logon. Nothing needed reconnecting. Run diagnostics if you want the detail behind that.",
+      "Re-checked just now: the agent backend is answering, its Claude API key was accepted, and the active SAP system accepted its logon. Nothing needed reconnecting. Run diagnostics if you want the detail behind that.",
     reconnectedHeading: "Reconnected",
     reconnectedBody:
-      "Something was failing a moment ago and is answering again: the agent backend responded, its Claude API key was accepted, and the SAP system accepted the stored logon. The connection panel behind this has caught up.",
+      "Something was failing a moment ago and is answering again: the agent backend responded, its Claude API key was accepted, and the active SAP system accepted its logon. The connection panel behind this has caught up.",
     problemsHeading: "Still not connected",
     problemsBody: (detail: string, remedy: string) =>
       `Re-checked just now, and ${detail}. ${remedy}`,
@@ -656,6 +657,28 @@ const en = {
     description: "Description",
     descriptionPlaceholder: "Korea development — S/4HANA 758",
     descriptionHint: "Optional. Shown beside the short name in the picker.",
+    next: "Next",
+    stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
+    steps: [
+      {
+        title: "Where is the system?",
+        short: "Connection",
+        lede: "The host, and a logon that may read it. Tried for real before anything is written.",
+      },
+      {
+        title: "What is it running?",
+        short: "System",
+        lede: "What decides which tables exist, which syntax is allowed, and what the consultants read first.",
+      },
+      {
+        title: "What should it be called?",
+        short: "Name",
+        lede: "The name in the system picker, and the folder on disk.",
+      },
+    ],
+    duplicateHeading: (alias: string) => `Already registered as ${alias}.`,
+    duplicateBody: "That host, client and user are a system this machine already has.",
+    duplicateGoing: "Taking you back to settings, where you can switch to it.",
     checkAndAdd: "Check and add",
     checking: "Trying the logon…",
     saving: "Adding the system…",
@@ -880,6 +903,7 @@ const ko: Messages = {
     notSet: "미설정",
 
     sapSystemCard: "SAP 시스템",
+    systemUnknown: "백엔드가 어느 시스템에 연결되어 있는지 알려주지 않았습니다.",
     profile: "프로필",
     host: "호스트",
     systemClient: "시스템 / 클라이언트",
@@ -936,10 +960,10 @@ const ko: Messages = {
 
     connectedHeading: "모두 연결되어 있습니다",
     connectedBody:
-      "방금 다시 확인했습니다. 에이전트 백엔드가 응답하고, Claude API 키가 승인되었으며, SAP 시스템이 저장된 로그온을 받아들였습니다. 다시 연결할 것이 없었습니다. 자세한 내용은 진단 실행으로 확인하세요.",
+      "방금 다시 확인했습니다. 에이전트 백엔드가 응답하고, Claude API 키가 승인되었으며, 활성 SAP 시스템이 자기 로그온을 받아들였습니다. 다시 연결할 것이 없었습니다. 자세한 내용은 진단 실행으로 확인하세요.",
     reconnectedHeading: "다시 연결되었습니다",
     reconnectedBody:
-      "조금 전까지 실패하던 것이 다시 응답합니다. 에이전트 백엔드가 응답하고, Claude API 키가 승인되었으며, SAP 시스템이 저장된 로그온을 받아들였습니다. 뒤의 연결 패널도 갱신되었습니다.",
+      "조금 전까지 실패하던 것이 다시 응답합니다. 에이전트 백엔드가 응답하고, Claude API 키가 승인되었으며, 활성 SAP 시스템이 자기 로그온을 받아들였습니다. 뒤의 연결 패널도 갱신되었습니다.",
     problemsHeading: "아직 연결되지 않았습니다",
     problemsBody: (detail, remedy) =>
       `방금 다시 확인했으나, ${detail}. ${remedy}`,
@@ -1463,6 +1487,28 @@ const ko: Messages = {
     description: "설명",
     descriptionPlaceholder: "한국 개발 — S/4HANA 758",
     descriptionHint: "선택 사항입니다. 선택기에서 짧은 이름 옆에 표시됩니다.",
+    next: "다음",
+    stepOf: (n: number, total: number) => `${total}단계 중 ${n}단계`,
+    steps: [
+      {
+        title: "시스템이 어디에 있나요?",
+        short: "연결",
+        lede: "호스트와 읽을 수 있는 로그온입니다. 저장하기 전에 실제로 접속해 봅니다.",
+      },
+      {
+        title: "무엇이 돌고 있나요?",
+        short: "시스템",
+        lede: "어떤 테이블이 존재하는지, 어떤 문법을 쓸 수 있는지, 컨설턴트가 무엇을 먼저 읽을지를 정합니다.",
+      },
+      {
+        title: "뭐라고 부를까요?",
+        short: "이름",
+        lede: "시스템 선택기에 표시되는 이름이자 디스크의 폴더 이름입니다.",
+      },
+    ],
+    duplicateHeading: (alias: string) => `이미 ${alias}(으)로 등록되어 있습니다.`,
+    duplicateBody: "그 호스트와 클라이언트, 사용자 조합은 이 머신에 이미 있는 시스템입니다.",
+    duplicateGoing: "설정으로 돌아갑니다. 거기서 그 시스템으로 전환할 수 있습니다.",
     checkAndAdd: "확인하고 추가",
     checking: "로그온 시도 중…",
     saving: "시스템 추가 중…",
@@ -1664,6 +1710,7 @@ const ja: Messages = {
     notSet: "未設定",
 
     sapSystemCard: "SAP システム",
+    systemUnknown: "バックエンドがどのシステムに接続しているか答えませんでした。",
     profile: "プロファイル",
     host: "ホスト",
     systemClient: "システム / クライアント",
@@ -1720,10 +1767,10 @@ const ja: Messages = {
 
     connectedHeading: "すべて接続されています",
     connectedBody:
-      "たった今再確認しました。エージェントバックエンドは応答し、Claude API キーは受理され、SAP システムは保存されたログオンを受け付けました。再接続の必要はありませんでした。詳細は「診断を実行」で確認できます。",
+      "たった今再確認しました。エージェントバックエンドは応答し、Claude API キーは受理され、使用中の SAP システムがそのログオンを受け付けました。再接続の必要はありませんでした。詳細は「診断を実行」で確認できます。",
     reconnectedHeading: "再接続しました",
     reconnectedBody:
-      "少し前まで失敗していたものが再び応答しています。エージェントバックエンドは応答し、Claude API キーは受理され、SAP システムは保存されたログオンを受け付けました。背後の接続パネルも更新されています。",
+      "少し前まで失敗していたものが再び応答しています。エージェントバックエンドは応答し、Claude API キーは受理され、使用中の SAP システムがそのログオンを受け付けました。背後の接続パネルも更新されています。",
     problemsHeading: "まだ接続されていません",
     problemsBody: (detail, remedy) =>
       `たった今再確認しましたが、${detail}。${remedy}`,
@@ -2247,6 +2294,28 @@ const ja: Messages = {
     description: "説明",
     descriptionPlaceholder: "韓国開発 — S/4HANA 758",
     descriptionHint: "任意です。選択画面で短い名前の横に表示されます。",
+    next: "次へ",
+    stepOf: (n: number, total: number) => `${total} ステップ中 ${n}`,
+    steps: [
+      {
+        title: "システムはどこにありますか?",
+        short: "接続",
+        lede: "ホストと、読み取りできるログオンです。保存する前に実際に接続します。",
+      },
+      {
+        title: "何が動いていますか?",
+        short: "システム",
+        lede: "どのテーブルが存在し、どの構文が使えて、コンサルタントが何を先に読むかを決めます。",
+      },
+      {
+        title: "何と呼びますか?",
+        short: "名前",
+        lede: "システム選択に表示される名前で、ディスク上のフォルダ名にもなります。",
+      },
+    ],
+    duplicateHeading: (alias: string) => `すでに ${alias} として登録されています。`,
+    duplicateBody: "そのホスト、クライアント、ユーザーの組み合わせはこのマシンに既にあります。",
+    duplicateGoing: "設定に戻ります。そこで切り替えられます。",
     checkAndAdd: "確認して追加",
     checking: "ログオンを試しています…",
     saving: "システムを追加しています…",

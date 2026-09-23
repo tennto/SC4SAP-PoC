@@ -33,7 +33,7 @@ export default async function AddSystemPage() {
   const { t } = await readMessages();
 
   return (
-    <main className="setup setup-long">
+    <main className="setup">
       <div className="setup-brand">
         <Sc4Mark className="setup-logo" />
         <h1 className="setup-title">{t.addSystem.title}</h1>

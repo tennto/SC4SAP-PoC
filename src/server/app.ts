@@ -11,6 +11,7 @@
  *   GET    /monitor/stream        SSE of every tool call the caller's account runs
  *   GET    /profiles              the SAP systems configured, and which is live
  *   POST   /profiles              add a SAP system and move onto it
+ *   POST   /profiles/check        is the live system answering?
  *   POST   /profiles/active       point the workspace at another SAP system
  *
  * The caller's account arrives as `x-sc4sap-user`, set by the web app's proxy
@@ -32,7 +33,12 @@ import {
 import { claudeApiHealth } from "./claude-api.ts";
 import { APPROVAL_LEVELS, type ApprovalLevel } from "./tool-policy.ts";
 import { BODY_LIMIT, validateAttachments } from "./attachments.ts";
-import { createProfile, listProfiles, switchProfile } from "./profiles.ts";
+import {
+  checkActiveProfile,
+  createProfile,
+  listProfiles,
+  switchProfile,
+} from "./profiles.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
 const HEARTBEAT_MS = 15_000;
@@ -119,14 +125,6 @@ export function buildApp(manager: SessionManager): FastifyInstance {
   });
 
   /**
-   * Point the workspace at another SAP system.
-   *
-   * Every open session is closed by this, including other people's — the
-   * workspace is process-wide, so this is a server-wide switch however it is
-   * dressed. The count of what was closed comes back so the caller can say so
-   * rather than leaving a reader wondering where their chat went.
-   */
-  /**
    * Add a SAP system, and move onto it.
    *
    * The password arrives in the body and goes straight to the profile CLI on
@@ -138,6 +136,26 @@ export function buildApp(manager: SessionManager): FastifyInstance {
    * endpoint does not re-run it: a system that answered seconds ago would be
    * asked twice for one answer nobody sees.
    */
+  /**
+   * Is the live system reachable, with the logon its profile carries?
+   *
+   * What the dashboard's Reconnect asks. It probes the profile every session
+   * runs on, not a copy of connection details stored per account — those were
+   * two different systems the moment anyone switched, and a green row about
+   * the wrong one is worse than no row.
+   *
+   * 502 rather than 500 when the system refuses or does not answer: this
+   * endpoint worked, the stack behind it did not.
+   */
+  app.post("/profiles/check", async (_request, reply) => {
+    const result = await checkActiveProfile(
+      manager.config.pluginPath,
+      manager.config.workspace,
+    );
+    if (!result.ok) return reply.code(502).send({ error: result.error });
+    return { ok: true, detail: result.detail };
+  });
+
   app.post<{ Body: Record<string, unknown> | undefined }>(
     "/profiles",
     async (request, reply) => {
@@ -170,9 +188,17 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           description: text("description"),
         });
         if (!outcome.ok) {
+          // 409 for "it is already here": the request was well-formed and the
+          // caller has nothing to correct, which is not what 400 means. The
+          // web app turns this one into a sentence and a way back, rather than
+          // into a field error on a form nobody needs to fix.
           return reply
-            .code(400)
-            .send({ error: outcome.error, field: outcome.field });
+            .code(outcome.duplicateAlias ? 409 : 400)
+            .send({
+              error: outcome.error,
+              field: outcome.field,
+              duplicateAlias: outcome.duplicateAlias,
+            });
         }
         app.log.info(
           `added SAP profile ${text("alias")} and switched to it; ` +
@@ -193,6 +219,14 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     },
   );
 
+  /**
+   * Point the workspace at another SAP system.
+   *
+   * Every open session is closed by this, including other people's — the
+   * workspace is process-wide, so this is a server-wide switch however it is
+   * dressed. The count of what was closed comes back so the caller can say so
+   * rather than leaving a reader wondering where their chat went.
+   */
   app.post<{ Body: { alias?: string } | undefined }>(
     "/profiles/active",
     async (request, reply) => {
