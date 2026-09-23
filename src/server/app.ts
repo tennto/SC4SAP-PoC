@@ -9,6 +9,8 @@
  *   GET    /sessions/:id/stream   SSE of everything the SDK emits
  *   POST   /sessions/:id/auto-approve  wave SAP reads through for this session
  *   GET    /monitor/stream        SSE of every tool call the caller's account runs
+ *   GET    /profiles              the SAP systems configured, and which is live
+ *   POST   /profiles/active       point the workspace at another SAP system
  *
  * The caller's account arrives as `x-sc4sap-user`, set by the web app's proxy
  * after it has checked the session cookie. The backend does not verify it —
@@ -29,6 +31,7 @@ import {
 import { claudeApiHealth } from "./claude-api.ts";
 import { APPROVAL_LEVELS, type ApprovalLevel } from "./tool-policy.ts";
 import { BODY_LIMIT, validateAttachments } from "./attachments.ts";
+import { listProfiles, switchProfile } from "./profiles.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
 const HEARTBEAT_MS = 15_000;
@@ -90,6 +93,66 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       classes: manager.policy.summary,
     },
   }));
+
+  /**
+   * The SAP systems this backend can reach, and the one it is on.
+   *
+   * Spawns the plugin's profile CLI, so it is not free — cheap enough for a
+   * settings screen, not for a poll. A failure is a 503 rather than an empty
+   * list: "no systems configured" and "the CLI did not answer" are different
+   * states and a screen that renders them the same way invites deleting a
+   * profile that is actually there.
+   */
+  app.get("/profiles", async (_request, reply) => {
+    try {
+      return await listProfiles(
+        manager.config.pluginPath,
+        manager.config.workspace,
+      );
+    } catch (err) {
+      app.log.error({ err }, "profile list failed");
+      return reply
+        .code(503)
+        .send({ error: `could not read profiles: ${(err as Error).message}` });
+    }
+  });
+
+  /**
+   * Point the workspace at another SAP system.
+   *
+   * Every open session is closed by this, including other people's — the
+   * workspace is process-wide, so this is a server-wide switch however it is
+   * dressed. The count of what was closed comes back so the caller can say so
+   * rather than leaving a reader wondering where their chat went.
+   */
+  app.post<{ Body: { alias?: string } | undefined }>(
+    "/profiles/active",
+    async (request, reply) => {
+      const alias = request.body?.alias;
+      if (typeof alias !== "string" || alias === "") {
+        return reply.code(400).send({ error: "body.alias is required" });
+      }
+      try {
+        const outcome = await switchProfile(manager, alias);
+        if (!outcome.ok) return reply.code(400).send({ error: outcome.error });
+        app.log.info(
+          `active SAP profile is now ${alias}; ` +
+            `closed ${outcome.closedSessions} session(s), ` +
+            `re-discovered ${manager.policy.summary.read} read-class tool(s)`,
+        );
+        return {
+          active: outcome.list.active,
+          profiles: outcome.list.profiles,
+          closedSessions: outcome.closedSessions,
+        };
+      } catch (err) {
+        app.log.error({ err }, "profile switch failed");
+        return reply
+          .code(503)
+          .send({ error: `could not switch profile: ${(err as Error).message}` });
+      }
+    },
+  );
 
   app.post<{
     Body:

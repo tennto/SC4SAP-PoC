@@ -22,7 +22,7 @@ import { requireAccount } from "@/lib/auth/session";
 import { findById } from "@/lib/auth/users";
 import { readConnection } from "@/lib/setup-store";
 import { BACKEND } from "@/lib/backend";
-import type { Health } from "@/lib/types";
+import type { Health, ProfileList } from "@/lib/types";
 import Link from "next/link";
 import { Icon } from "@/components/Icon";
 import { AccountSettings } from "@/components/settings/AccountSettings";
@@ -30,6 +30,7 @@ import { ConnectionSettings } from "@/components/settings/ConnectionSettings";
 import { ScopeSettings } from "@/components/settings/ScopeSettings";
 import { SettingRow } from "@/components/settings/EditModal";
 import { ApprovalSettings } from "@/components/settings/ApprovalSettings";
+import { SystemSettings } from "@/components/settings/SystemSettings";
 import { readMessages } from "@/lib/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -59,6 +60,24 @@ async function loadModel(): Promise<string | null> {
   }
 }
 
+/**
+ * The SAP systems configured on the machine the backend runs on.
+ *
+ * `null` means the list could not be read at all, which the panel draws
+ * differently from an empty list: a backend that is down and a machine with no
+ * profiles are not the same problem, and a screen that renders them alike
+ * invites re-running setup against a system that is already there.
+ */
+async function loadProfiles(): Promise<ProfileList | null> {
+  try {
+    const response = await fetch(`${BACKEND}/profiles`, { cache: "no-store" });
+    if (!response.ok) return null;
+    return (await response.json()) as ProfileList;
+  } catch {
+    return null;
+  }
+}
+
 export default async function SettingsPage() {
   // Same guard as the dashboard: `proxy.ts` checks that a cookie exists, this
   // checks that it still resolves to a user before rendering.
@@ -67,10 +86,11 @@ export default async function SettingsPage() {
   // The row itself, not the `Account` built from it: this screen needs the two
   // name parts apart, which `Account` joins, and whether a password exists at
   // all, which `Account` deliberately does not carry.
-  const [doc, connection, model, { t: messages }] = await Promise.all([
+  const [doc, connection, model, profiles, { t: messages }] = await Promise.all([
     findById(account.id),
     readConnection(account.id),
     loadModel(),
+    loadProfiles(),
     readMessages(),
   ]);
   const t = messages.settings;
@@ -133,7 +153,14 @@ export default async function SettingsPage() {
           </div>
         ) : null}
 
-        <div className="rise" style={{ "--delay": "320ms" } as React.CSSProperties}>
+        {/* Above the sessions panel on purpose: which system a session talks
+            to is a bigger question than how it asks, and switching it closes
+            what the panel below configures. */}
+        <div className="rise" style={{ "--delay": "290ms" } as React.CSSProperties}>
+          <SystemSettings initial={profiles} />
+        </div>
+
+        <div className="rise" style={{ "--delay": "360ms" } as React.CSSProperties}>
           <section className="panel">
             <div className="panel-head">
               <h2>

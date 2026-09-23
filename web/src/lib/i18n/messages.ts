@@ -613,6 +613,22 @@ const en = {
     backendNotAnswering: "Backend not answering",
     defaultModelHint:
       "What chat opens with. A skill that dispatches a reviewer asks which model to use before it runs.",
+
+    systems: "SAP system",
+    systemsNote:
+      "Which system every session talks to. One setting for the whole backend, not for this account.",
+    activeSystem: "Active system",
+    systemHint:
+      "Switching closes every open session, including other people's. The next session you open starts on the new system.",
+    systemSwitched: (alias: string, closed: number) =>
+      closed === 0
+        ? `Now on ${alias}.`
+        : `Now on ${alias}. ${closed} open session${closed === 1 ? "" : "s"} closed.`,
+    systemSwitching: "Switching…",
+    noSystems: "No SAP systems are configured on this machine.",
+    systemsUnavailable: "The backend could not read the system list.",
+    systemUser: "User",
+    systemPasswordPlaintext: "Password is in plaintext, not the keychain.",
   },
 
   configuration: {
@@ -1371,6 +1387,19 @@ const ko: Messages = {
     defaultModel: "기본 모델",
     backendNotAnswering: "백엔드 응답 없음",
     defaultModelHint: "채팅이 시작할 때 쓰는 모델입니다. 리뷰어를 파견하는 스킬은 실행 전에 어떤 모델을 쓸지 묻습니다.",
+
+    systems: "SAP 시스템",
+    systemsNote: "모든 세션이 연결되는 시스템입니다. 이 계정이 아니라 백엔드 전체에 적용됩니다.",
+    activeSystem: "활성 시스템",
+    systemHint:
+      "전환하면 다른 사람의 것까지 열려 있는 모든 세션이 닫힙니다. 다음에 여는 세션부터 새 시스템에서 시작합니다.",
+    systemSwitched: (alias: string, closed: number) =>
+      closed === 0 ? `${alias}(으)로 전환했습니다.` : `${alias}(으)로 전환했습니다. 열려 있던 세션 ${closed}개를 닫았습니다.`,
+    systemSwitching: "전환 중…",
+    noSystems: "이 머신에 설정된 SAP 시스템이 없습니다.",
+    systemsUnavailable: "백엔드가 시스템 목록을 읽지 못했습니다.",
+    systemUser: "사용자",
+    systemPasswordPlaintext: "비밀번호가 키체인이 아니라 평문으로 저장되어 있습니다.",
   },
 
   configuration: {
@@ -2106,6 +2135,19 @@ const ja: Messages = {
     defaultModel: "既定のモデル",
     backendNotAnswering: "バックエンド応答なし",
     defaultModelHint: "チャットが最初に使うモデルです。レビュアーを派遣するスキルは実行前にどのモデルを使うか尋ねます。",
+
+    systems: "SAP システム",
+    systemsNote: "すべてのセッションが接続するシステムです。このアカウントではなくバックエンド全体の設定です。",
+    activeSystem: "使用中のシステム",
+    systemHint:
+      "切り替えると、他の人のものも含め開いているセッションがすべて閉じます。次に開くセッションから新しいシステムになります。",
+    systemSwitched: (alias: string, closed: number) =>
+      closed === 0 ? `${alias} に切り替えました。` : `${alias} に切り替えました。開いていたセッション ${closed} 件を閉じました。`,
+    systemSwitching: "切り替え中…",
+    noSystems: "このマシンに設定された SAP システムがありません。",
+    systemsUnavailable: "バックエンドがシステム一覧を読めませんでした。",
+    systemUser: "ユーザー",
+    systemPasswordPlaintext: "パスワードがキーチェーンではなく平文で保存されています。",
   },
 
   configuration: {

@@ -161,6 +161,32 @@ export type Health = {
 };
 
 /**
+ * One SAP system the backend can be pointed at — `GET /profiles`.
+ *
+ * Mirrors `SapProfile` in `src/server/profiles.ts`, which is itself a reduced
+ * form of what the plugin's profile CLI reports. No password or password
+ * reference reaches this shape; `passwordInKeychain` is all that is left of it.
+ */
+export type SapProfile = {
+  alias: string;
+  tier: string;
+  host: string;
+  client: string;
+  username: string;
+  language: string;
+  version: string;
+  abapRelease: string;
+  description: string;
+  passwordInKeychain: boolean;
+};
+
+export type ProfileList = {
+  /** Alias of the live system, or null when the workspace has no pointer. */
+  active: string | null;
+  profiles: SapProfile[];
+};
+
+/**
  * One tool call, as the backend logs it. Mirrors `ToolCall` in
  * `src/server/tool-log.ts`; the monitor page draws these both from the live
  * stream and from Mongo, so the two must agree.
