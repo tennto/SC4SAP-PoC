@@ -237,6 +237,30 @@ const LOCAL_LOOKUP: readonly string[] = ["WebFetch", "WebSearch", "TodoWrite"];
 const AGENT = "Agent";
 
 /**
+ * The Claude Code CLI's own scheduling, notification and workspace tools.
+ *
+ * Out of reach for every profile, `build` included: each of them assumes a
+ * terminal session a person is sitting at, and none of them does anything a
+ * web run can use. Measured on 2026-09-27: an `analyze-code` run, with the
+ * reviewer's findings already back, called `ScheduleWakeup` — which is not on
+ * the auto-allow list, so it raised a dialog and the run sat on it for 226
+ * seconds before writing the report it already had everything for.
+ */
+const CLI_ONLY: readonly string[] = [
+  "ScheduleWakeup",
+  "CronCreate",
+  "CronDelete",
+  "CronList",
+  "Monitor",
+  "PushNotification",
+  "RemoteTrigger",
+  "EnterWorktree",
+  "ExitWorktree",
+  "DesignSync",
+  "Workflow",
+];
+
+/**
  * What a profile may not touch, on top of the SAP write patterns every session
  * is denied.
  *
@@ -245,9 +269,9 @@ const AGENT = "Agent";
  * its context for machinery it never reached for.
  */
 export function disallowedForProfile(profile: ToolProfile): readonly string[] {
-  if (profile === "build") return [];
-  if (profile === "analyse") return LOCAL_WRITES;
-  return [AGENT, ...LOCAL_WRITES, ...LOCAL_LOOKUP];
+  if (profile === "build") return CLI_ONLY;
+  if (profile === "analyse") return [...CLI_ONLY, ...LOCAL_WRITES];
+  return [...CLI_ONLY, AGENT, ...LOCAL_WRITES, ...LOCAL_LOOKUP];
 }
 
 /**
