@@ -239,7 +239,9 @@ function TopToolsTile({
                 role="listitem"
                 tabIndex={0}
                 aria-label={t.toolCalls(entry.tool, entry.calls.toLocaleString(tag))}
-                style={{ "--h": `${(entry.calls / max) * 100}%` } as React.CSSProperties}
+                style={
+                  { "--h": `${(entry.calls / max) * 100}%`, "--i": index } as React.CSSProperties
+                }
               >
                 <span className="mon-bar-value" aria-hidden="true">
                   {entry.calls.toLocaleString(tag)}

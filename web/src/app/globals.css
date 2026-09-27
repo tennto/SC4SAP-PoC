@@ -7514,6 +7514,68 @@ button.mon-clear:hover:not(:disabled) {
   transform: translate(-50%, 0);
 }
 
+/* ---- drawing in on load ----
+   Once, as the page arrives: the split fills left to right, the ring's
+   segments draw from twelve o'clock in turn, and the columns rise from the
+   baseline one after another with their counts landing last. Started after
+   the panel's own rise has mostly settled, so the tiles are in place before
+   anything inside them moves. Nothing here for a reader who asked for less
+   motion — the charts are simply there. */
+@media (prefers-reduced-motion: no-preference) {
+  .mon-split-part {
+    transform-origin: left center;
+    animation: mon-grow-x 700ms var(--ease) 450ms both;
+  }
+
+  .mon-split-part + .mon-split-part {
+    animation-delay: 650ms;
+  }
+
+  .mon-donut-arc {
+    animation: mon-draw-arc 800ms var(--ease) 450ms both;
+  }
+
+  .mon-donut-arc.is-refused {
+    animation-delay: 700ms;
+  }
+
+  .mon-bar-fill {
+    transform-origin: center bottom;
+    animation: mon-grow-y 700ms var(--ease) both;
+    animation-delay: calc(450ms + var(--i, 0) * 80ms);
+  }
+
+  .mon-bar-value {
+    animation: mon-fade 300ms var(--ease) both;
+    animation-delay: calc(950ms + var(--i, 0) * 80ms);
+  }
+}
+
+@keyframes mon-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes mon-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+/* To the arc's own dash pattern, which the element carries as an attribute. */
+@keyframes mon-draw-arc {
+  from {
+    stroke-dasharray: 0 1000;
+  }
+}
+
+@keyframes mon-fade {
+  from {
+    opacity: 0;
+  }
+}
+
 .mon-bars-lead {
   margin-top: auto;
   overflow: hidden;
