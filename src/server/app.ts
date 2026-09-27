@@ -158,8 +158,12 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       manager.config.pluginPath,
       manager.config.workspace,
     );
-    if (!result.ok) return reply.code(502).send({ error: result.error });
-    return { ok: true, detail: result.detail };
+    // `alias` on both answers, so the caller can file the result under the
+    // system it describes and not under whichever one is live when it reads.
+    if (!result.ok) {
+      return reply.code(502).send({ error: result.error, alias: result.alias });
+    }
+    return { ok: true, detail: result.detail, alias: result.alias };
   });
 
   app.post<{ Body: Record<string, unknown> | undefined }>(

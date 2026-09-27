@@ -182,6 +182,12 @@ export type ConnectionDoc = {
     /** The sentence `checkSap` returned or threw. Never a credential. */
     detail: string;
     at: Date;
+    /**
+     * The backend profile the probe ran against. Only the dashboard's
+     * Reconnect sets it; setup and a settings save probe this account's own
+     * stored connection, which is not a profile and leaves it absent.
+     */
+    alias?: string | null;
   };
 };
 
