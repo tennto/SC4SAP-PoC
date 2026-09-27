@@ -162,21 +162,39 @@ function OutcomeTile({
             role="img"
             aria-label={`${t.failedOrRefused}: ${t.percentOfWeek(Math.round(share))}`}
           >
-            <circle className="mon-donut-track" cx="40" cy="40" r={radius} />
-            {arcs.map((arc) =>
-              arc.drawn > 0 ? (
+            {/* The whole ring — succeeded track and both problem segments —
+                is revealed by one sweep of this mask, clockwise from twelve
+                o'clock, so the ring draws as a single stroke rather than
+                segment by segment. At rest the mask is a full circle. */}
+            <defs>
+              <mask id="mon-ring-reveal">
                 <circle
-                  key={arc.key}
-                  className={`mon-donut-arc ${arc.className}`}
+                  className="mon-donut-reveal"
                   cx="40"
                   cy="40"
                   r={radius}
-                  strokeDasharray={`${arc.drawn} ${circumference - arc.drawn}`}
-                  // Clockwise from twelve o'clock.
-                  strokeDashoffset={circumference / 4 - arc.offset}
+                  pathLength={100}
+                  transform="rotate(-90 40 40)"
                 />
-              ) : null,
-            )}
+              </mask>
+            </defs>
+            <g mask="url(#mon-ring-reveal)">
+              <circle className="mon-donut-track" cx="40" cy="40" r={radius} />
+              {arcs.map((arc) =>
+                arc.drawn > 0 ? (
+                  <circle
+                    key={arc.key}
+                    className={`mon-donut-arc ${arc.className}`}
+                    cx="40"
+                    cy="40"
+                    r={radius}
+                    strokeDasharray={`${arc.drawn} ${circumference - arc.drawn}`}
+                    // Clockwise from twelve o'clock.
+                    strokeDashoffset={circumference / 4 - arc.offset}
+                  />
+                ) : null,
+              )}
+            </g>
             <text className="mon-donut-figure" x="40" y="40">
               {share < 10 && share > 0 ? share.toFixed(1) : Math.round(share)}%
             </text>
