@@ -46,11 +46,21 @@
   /* Shadow channels, as bare numbers for `rgba()`. A grey shadow is invisible
      on a dark ground; black is the only colour that reads as depth there. */
   --shadow-rgb: 56, 56, 56;
+  /* The names are the dark theme's opacities; the light theme runs higher.
+     At 0.55 and 0.38 these measured 3.0:1 and 2.0:1 on #f7f7f7 — hints,
+     panel notes and the rail's group headings were barely there. 0.7 clears
+     4.5:1 on every light surface, which is body-text contrast; 0.55 clears
+     3:1, which is what a hint or a disabled label needs to be read at all.
+     The dark theme already sat at 5.4:1 and 3.2:1 and is left alone. */
   --ink-80: rgba(56, 56, 56, 0.8);
-  --ink-55: rgba(56, 56, 56, 0.55);
-  --ink-38: rgba(56, 56, 56, 0.38);
-  --line: rgba(56, 56, 56, 0.14);
-  --line-soft: rgba(56, 56, 56, 0.08);
+  --ink-55: rgba(56, 56, 56, 0.7);
+  --ink-38: rgba(56, 56, 56, 0.55);
+  --line: rgba(56, 56, 56, 0.2);
+  --line-soft: rgba(56, 56, 56, 0.1);
+  /* The edge of something you type into. A hairline was enough for a card,
+     whose inside is a different shade from the page; an input is white on a
+     white panel, and at `--line` its box all but disappeared. */
+  --line-strong: rgba(56, 56, 56, 0.34);
 
   /* ---- Status ----
      The one deliberate exception to the single-ink palette above. Connection
@@ -184,6 +194,7 @@
     --ink-38: rgba(237, 237, 237, 0.38);
     --line: rgba(237, 237, 237, 0.16);
     --line-soft: rgba(237, 237, 237, 0.09);
+    --line-strong: rgba(237, 237, 237, 0.28);
 
     --ok: #4ade80;
     --warn: #fbbf24;
@@ -211,6 +222,7 @@
   --ink-38: rgba(237, 237, 237, 0.38);
   --line: rgba(237, 237, 237, 0.16);
   --line-soft: rgba(237, 237, 237, 0.09);
+  --line-strong: rgba(237, 237, 237, 0.28);
 
   --ok: #4ade80;
   --warn: #fbbf24;
@@ -763,16 +775,18 @@ button.primary:hover:not(:disabled) {
      height mid-collapse. Clipped instead — it is transparent by then. */
   white-space: nowrap;
   overflow: hidden;
-  font-size: 9px;
+  /* 11px, up from 9: at 9px a Korean group name was a smudge, and the
+     heading is what splits a dozen identical rows into groups. */
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-38);
+  color: var(--ink-55);
 }
 
 .nav-heading-hint {
   margin-top: 2px;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
@@ -904,7 +918,7 @@ button.primary:hover:not(:disabled) {
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--panel);
-  color: var(--ink-55);
+  color: var(--ink-80);
   font-size: 15px;
   transition:
     background-color var(--t-base) var(--ease),
@@ -3693,7 +3707,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .skill .panel-head h2 {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .skill .fields {
@@ -3701,7 +3715,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .skill .field-label {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.07em;
 }
 
@@ -3717,7 +3731,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .skill .field-hint {
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .skill .panel-actions {
@@ -4065,7 +4079,7 @@ button.primary:hover:not(:disabled) {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-55);
+  color: var(--ink-80);
 }
 
 .panel-note,
@@ -4101,7 +4115,7 @@ button.primary:hover:not(:disabled) {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-55);
+  color: var(--ink-80);
 }
 
 .field input[type="text"],
@@ -4113,7 +4127,7 @@ button.primary:hover:not(:disabled) {
   width: 100%;
   color: var(--ink);
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   padding: 9px 12px;
 }
@@ -5422,14 +5436,14 @@ a.ghost.auth-submit .google-mark {
   padding: 9px 11px 9px 12px;
   color: var(--ink);
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   text-align: left;
 }
 
 .select-button:hover:not(:disabled) {
-  border-color: var(--ink-38);
+  border-color: var(--ink-55);
 }
 
 /* The base button rule drops every control a pixel on press. A form field
