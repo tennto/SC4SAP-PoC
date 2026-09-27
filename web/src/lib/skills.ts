@@ -165,6 +165,9 @@ export const SKILLS: Skill[] = [
       { label: "Module", kind: "select", options: MODULES, hint: "Auto-route picks the agent from your question's keywords." },
       { label: "Question", kind: "textarea", placeholder: "e.g. Why does the PO release strategy skip the second approver?" },
     ],
+    // A consultant's answer invites the next question, and asking it here
+    // keeps the module routing and the context the first one built.
+    followUp: true,
   },
   {
     slug: "analyze-code",
@@ -204,6 +207,10 @@ export const SKILLS: Skill[] = [
       // triage was.
       defaultModel: "claude-sonnet-5",
     },
+    // The report ends on a menu — explain finding #N, show the callers — and
+    // the reply goes to the same session, where the reviewer's findings are
+    // already in context. Starting over in chat would pay for them again.
+    followUp: true,
   },
   {
     slug: "analyze-symptom",
