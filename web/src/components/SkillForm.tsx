@@ -50,6 +50,7 @@ import { EditModal } from "@/components/settings/EditModal";
 import type { PermissionResponse } from "@/lib/types";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
+import type { Locale } from "@/lib/i18n/locale";
 import { skillDisplay } from "@/lib/i18n/skills";
 import type { Messages } from "@/lib/i18n/messages";
 import { FileChip } from "@/components/FileChip";
@@ -118,6 +119,12 @@ function initial(fields: readonly SkillField[]): Record<string, Value> {
  * package left alone should look like it was not given, not like it was given
  * as nothing — and a toggle only appears when it is on, for the same reason.
  */
+/** The locale's language as the model should be told it. */
+const REPORT_LANGUAGE: Record<Exclude<Locale, "en">, string> = {
+  ko: "Korean",
+  ja: "Japanese",
+};
+
 function composePrompt(
   command: string,
   fields: readonly SkillField[],
@@ -129,6 +136,12 @@ function composePrompt(
    * it.
    */
   context: string | null = null,
+  /**
+   * The screen's language, which the report should be written in. Without it
+   * a skill answers in English whatever the form was filled in — measured on
+   * a Korean screen, the code review came back in English.
+   */
+  locale: Locale = "en",
 ): string {
   const lines: string[] = [];
   for (const field of fields) {
@@ -144,6 +157,7 @@ function composePrompt(
   const parts = [command];
   if (lines.length > 0) parts.push(lines.join("\n"));
   if (context) parts.push(context);
+  if (locale !== "en") parts.push(`Write the report in ${REPORT_LANGUAGE[locale]}.`);
   return parts.join("\n\n");
 }
 
@@ -682,7 +696,7 @@ export function SkillForm({
       setSessionId(session.id);
       await api.sendMessage(
         session.id,
-        composePrompt(command, fields, values, context),
+        composePrompt(command, fields, values, context, locale),
         null,
         images.map(toAttachment),
       );

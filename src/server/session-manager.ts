@@ -185,6 +185,44 @@ export type SessionStatus = "starting" | "idle" | "busy" | "closed" | "error";
 /** The sub-agent dispatch. Its input carries the model the skill asked for. */
 const AGENT_TOOL = "Agent";
 
+/**
+ * A plugin sub-agent's prompt, with where the plugin lives appended.
+ *
+ * The plugin's agents name their rule files relative to their own file —
+ * `../common/clean-code.md` — and a sub-agent runs with the session's cwd,
+ * which is the workspace, where none of those paths resolve. Measured on
+ * 2026-09-27: `sap-code-reviewer` globbed for them, found nothing, then ran
+ * `find` across the home directory for 22 seconds and read twelve of them
+ * with `Bash cat` from an installed copy of the plugin rather than the one
+ * this server loads. Stated to the model as a request this would be ignored
+ * the way the dump-tool bans were; appended to the dispatch here, every
+ * plugin sub-agent starts out knowing the answer.
+ *
+ * Only `sc4sap:` agents — the root means nothing to a general-purpose one —
+ * and only once, so a re-dispatch with the note already in it is left alone.
+ */
+export function withPluginRoot(
+  input: Record<string, unknown>,
+  pluginPath: string,
+): Record<string, unknown> | null {
+  const type = input.subagent_type;
+  const prompt = input.prompt;
+  if (typeof type !== "string" || !type.startsWith("sc4sap:")) return null;
+  if (typeof prompt !== "string" || prompt.includes(PLUGIN_ROOT_MARK)) return null;
+  const root = pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  return {
+    ...input,
+    prompt:
+      `${prompt}\n\n${PLUGIN_ROOT_MARK} ${root}\n` +
+      "Every relative path in your instructions and in the skill files " +
+      `(\`../common/…\`, \`common/…\`, \`skills/…\`, \`configs/…\`) is under this root: ` +
+      `read \`../common/clean-code.md\` as \`${root}/common/clean-code.md\` with Read. ` +
+      "Do not search the disk for them.",
+  };
+}
+
+const PLUGIN_ROOT_MARK = "sc4sap plugin root:";
+
 /** The raw Anthropic stream event, reached through SDKMessage so no transitive import is needed. */
 type StreamEvent = Extract<SDKMessage, { type: "stream_event" }>["event"];
 
@@ -868,19 +906,43 @@ export class SessionManager {
                   // one place the SDK does stop for every tool.
                   const economyLive = this.#sessions.get(id);
                   if (input.tool_name === AGENT_TOOL && economyLive?.record.economy) {
-                    const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+                    const original = (input.tool_input ?? {}) as Record<string, unknown>;
+                    const toolInput =
+                      withPluginRoot(original, this.#config.pluginPath) ?? original;
                     const requested = toolInput.model;
                     this.toolLog.decide(toolUseID ?? input.tool_use_id, "auto");
+                    const updated =
+                      typeof requested === "string" && /opus/i.test(requested)
+                        ? { ...toolInput, model: "sonnet" }
+                        : toolInput;
                     return {
                       hookSpecificOutput: {
                         hookEventName: "PreToolUse" as const,
                         permissionDecision: "allow" as const,
                         permissionDecisionReason: "Economy: sub-agents run on Sonnet.",
-                        ...(typeof requested === "string" && /opus/i.test(requested)
-                          ? { updatedInput: { ...toolInput, model: "sonnet" } }
-                          : {}),
+                        ...(updated !== original ? { updatedInput: updated } : {}),
                       },
                     };
+                  }
+
+                  // Not economy: the same root note, and the dispatch goes
+                  // through as `Agent` always has — it is on the auto-allow
+                  // list, so allowing it here decides nothing new.
+                  if (input.tool_name === AGENT_TOOL) {
+                    const rooted = withPluginRoot(
+                      (input.tool_input ?? {}) as Record<string, unknown>,
+                      this.#config.pluginPath,
+                    );
+                    if (rooted) {
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "allow" as const,
+                          permissionDecisionReason: "Plugin root added to the dispatch.",
+                          updatedInput: rooted,
+                        },
+                      };
+                    }
                   }
 
                   // The permission bootstrap, on a host that governs

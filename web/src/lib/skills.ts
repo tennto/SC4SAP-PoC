@@ -164,7 +164,13 @@ export const SKILLS: Skill[] = [
   {
     slug: "analyze-code",
     command: "/sc4sap:analyze-code",
-    tools: "build",
+    // `analyse`, not `build`: a review changes nothing. Measured on
+    // 2026-09-27 against ZMMR00020 under `build`, the reviewer could not
+    // resolve its rule files, ran `find` across the home directory for 22
+    // seconds, then read twelve of them with `Bash cat` from a different copy
+    // of the plugin than the one this app ships — `Read` had been refused
+    // outside the workspace, and the shell simply went around it.
+    tools: "analyse",
     title: "Analyze Code",
     icon: "code",
     summary:
@@ -180,6 +186,15 @@ export const SKILLS: Skill[] = [
       { label: "Object name", kind: "text", placeholder: "ZMM_PO_REPORT" },
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
     ],
+    cost: {
+      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the orchestrator only formats them. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus. Note that this choice moves the orchestrator, not the reviewer: the plugin's agents pin their own model today, so the heavy half of a run ignores it until that changes.",
+      defaultBudgetUsd: 3,
+      // Sonnet rather than Haiku for the half this choice does move: the
+      // orchestrator's job here is to turn a findings list into the report,
+      // and that part has not been measured on Haiku the way the symptom
+      // triage was.
+      defaultModel: "claude-sonnet-5",
+    },
   },
   {
     slug: "analyze-symptom",
