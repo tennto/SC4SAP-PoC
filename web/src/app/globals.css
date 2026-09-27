@@ -3851,11 +3851,20 @@ button.primary:hover:not(:disabled) {
 }
 
 .skill-doc-kind {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  /* Icon then label, the way the table view's bar opens — the two bars sit
+     on the same screen and should read as one kind of header. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ink-38);
+  color: var(--ink-55);
+}
+
+.skill-doc-kind .ph {
+  font-size: 13px;
 }
 
 .skill-doc-save {

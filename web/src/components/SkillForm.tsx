@@ -1082,7 +1082,9 @@ export function SkillForm({
                   belongs on its own edge, not on the panel that happens to
                   contain it. */}
               <div className="skill-doc-bar">
-                <span className="skill-doc-kind">Markdown</span>
+                <span className="skill-doc-kind">
+                  <Icon name="markdown-logo" /> Markdown
+                </span>
                 <button
                   type="button"
                   className={`ghost skill-doc-everything${everything ? " is-on" : ""}`}
