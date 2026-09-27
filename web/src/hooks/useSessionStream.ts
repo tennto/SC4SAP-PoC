@@ -204,9 +204,10 @@ function closeOpenBubbles(state: State): State {
 }
 
 /**
- * Marks the turn's last answer as final, so the next turn's words are drawn
- * after it rather than over it. Only the last assistant item: the earlier ones
- * in the same turn are interim, and `toRows` still folds them away.
+ * Marks the last answer as final, so what the next turn says is drawn after
+ * it rather than over it. Only the last assistant item: the earlier ones are
+ * interim, and `toRows` still folds them away. Called when the session goes
+ * idle — see the `status` case.
  */
 function endTurn(state: State): State {
   for (let index = state.items.length - 1; index >= 0; index -= 1) {
@@ -240,7 +241,13 @@ function reduce(state: State, action: Action): State {
       // and leaving a stale label up would be the exact lie this is here to
       // stop.
       if (event.status !== "busy") {
-        return { ...state, status: event.status, activity: null };
+        const settled = { ...state, status: event.status, activity: null };
+        // Idle, and not the end of a turn, is when an answer is final: the
+        // backend holds a session busy while a background reviewer it
+        // dispatched is still working, so a turn that ended on "I've sent it
+        // to the reviewer, waiting" does not get here, and the report that
+        // follows still replaces it.
+        return event.status === "idle" ? endTurn(settled) : settled;
       }
       /*
        * A prompt sent into a session that is still booting is queued behind
@@ -392,7 +399,7 @@ function reduce(state: State, action: Action): State {
         return { ...state, items };
       }
 
-      if (message.type === "result") return endTurn(closeOpenBubbles(state));
+      if (message.type === "result") return closeOpenBubbles(state);
 
       /*
        * The SDK says out loud when the API refused it and it is going to try
