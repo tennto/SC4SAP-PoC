@@ -43,7 +43,7 @@ const LIST_LIMIT = 1000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 type Feed = "connecting" | "live" | "offline";
-type Status = "all" | "ok" | "failed" | "running";
+type Status = "all" | "ok" | "failed" | "refused" | "running";
 type Order = "newest" | "oldest";
 
 type Filters = {
@@ -70,6 +70,7 @@ const STATUS_OPTIONS: { value: Status; label: keyof Messages["monitor"] }[] = [
   { value: "all", label: "anyStatus" },
   { value: "ok", label: "succeeded" },
   { value: "failed", label: "failed" },
+  { value: "refused", label: "refusedOnly" },
   { value: "running", label: "running" },
 ];
 
@@ -123,12 +124,14 @@ function size(bytes: number | null): string {
 }
 
 /**
- * What the row's dot means. Running is the only state without a verdict; a
- * refusal is drawn as a failure because from the SAP system's point of view
- * that call never happened, and from the reader's it is the thing to look at.
+ * What the row's dot means. Running is the only state without a verdict. A
+ * refusal has its own colour — it used to be drawn as a failure, and the
+ * week's tile counted eleven refusals the list showed no sign of. The
+ * "failed" filter still takes both, since that is what a reader scanning for
+ * trouble means by it.
  */
-function stateOf(call: ToolCall): "running" | "ok" | "bad" {
-  if (call.decision === "denied" || call.decision === "expired") return "bad";
+function stateOf(call: ToolCall): "running" | "ok" | "bad" | "refused" {
+  if (call.decision === "denied" || call.decision === "expired") return "refused";
   if (call.ok === null) return "running";
   return call.ok ? "ok" : "bad";
 }
@@ -151,7 +154,8 @@ function matches(call: ToolCall, filters: Filters): boolean {
   if (filters.mcpOnly && call.kind !== "mcp") return false;
   const state = stateOf(call);
   if (filters.status === "ok" && state !== "ok") return false;
-  if (filters.status === "failed" && state !== "bad") return false;
+  if (filters.status === "failed" && state !== "bad" && state !== "refused") return false;
+  if (filters.status === "refused" && state !== "refused") return false;
   if (filters.status === "running" && state !== "running") return false;
   const at = Date.parse(call.startedAt);
   if (filters.from && at < Date.parse(dayStart(filters.from))) return false;

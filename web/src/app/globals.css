@@ -75,6 +75,10 @@
      (validated against --bad: ΔE 22.6, CVD 17.4). Marks only — it is 2.9:1
      on white, so a chart using it carries labels. */
   --chart-refused: #ca8a04;
+  /* Succeeded, in the same chart: a pale green, so the ring still reads as
+     "mostly fine" while the two problem colours carry the weight. Lighter
+     than 3:1 on white by design; the legend names it. */
+  --chart-ok: #86efac;
   --bad: #b91c1c;
 
   /* ---- Type ----
@@ -204,6 +208,7 @@
     --ok: #4ade80;
     --warn: #fbbf24;
     --chart-refused: #fbbf24;
+    --chart-ok: #2e7d4f;
     --bad: #f87171;
   }
 }
@@ -233,6 +238,7 @@
   --ok: #4ade80;
   --warn: #fbbf24;
   --chart-refused: #fbbf24;
+  --chart-ok: #2e7d4f;
   --bad: #f87171;
 }
 
@@ -7248,7 +7254,7 @@ button.mon-clear:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 40px;
+  gap: 56px;
   flex: 1;
 }
 
@@ -7265,7 +7271,7 @@ button.mon-clear:hover:not(:disabled) {
 }
 
 .mon-donut-track {
-  stroke: var(--panel-3);
+  stroke: var(--chart-ok);
 }
 
 .mon-donut-arc {
@@ -7285,8 +7291,7 @@ button.mon-clear:hover:not(:disabled) {
 }
 
 .mon-key.is-ok {
-  background: var(--panel-3);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: var(--chart-ok);
 }
 
 .mon-donut-figure {
@@ -7686,6 +7691,11 @@ button.mon-switch.is-on {
   border-color: var(--bad);
 }
 
+.mon-row.is-refused .mon-dot {
+  background: var(--chart-refused);
+  border-color: var(--chart-refused);
+}
+
 .mon-row.is-running .mon-dot {
   border-color: var(--ink);
   animation: conn-breathe 1.2s ease-in-out infinite;
@@ -7747,6 +7757,11 @@ button.mon-switch.is-on {
 
 .mon-row.is-bad .mon-decision {
   color: var(--bad);
+}
+
+/* Text, so the amber that holds 4.5:1 rather than the chart's yellow. */
+.mon-row.is-refused .mon-decision {
+  color: var(--warn);
 }
 
 .mon-running {

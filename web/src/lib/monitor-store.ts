@@ -43,7 +43,7 @@ export type ToolCallFilter = {
    * `failed` is an error result or a refusal at the gate — the two things a
    * reader scanning for trouble means by it. `running` has no result yet.
    */
-  status?: "ok" | "failed" | "running";
+  status?: "ok" | "failed" | "refused" | "running";
   /** Matched against the tool name and the input preview, case-insensitive. */
   q?: string;
   /** Inclusive start and exclusive end of a date range. */
@@ -73,6 +73,9 @@ function filterOf(userId: string, options: ToolCallFilter): Record<string, unkno
       break;
     case "failed":
       filter.$or = [{ ok: false }, { decision: { $in: ["denied", "expired"] } }];
+      break;
+    case "refused":
+      filter.decision = { $in: ["denied", "expired"] };
       break;
     case "running":
       filter.ok = null;
