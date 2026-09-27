@@ -2195,7 +2195,10 @@ button.primary:hover:not(:disabled) {
   text-align: left;
   padding: 5px 10px;
   border-bottom: 1px solid var(--line-soft);
-  border-right: 1px solid var(--line-soft);
+  /* `--line`, not `--line-soft`: the column rules are what a reader follows
+     down a 100-row result, and at the softer weight they vanished below the
+     first screen. Row rules stay soft — the striping already carries them. */
+  border-right: 1px solid var(--line);
   max-width: 44ch;
   white-space: normal;
   overflow-wrap: break-word;
@@ -2215,10 +2218,13 @@ button.primary:hover:not(:disabled) {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
+  /* A step darker than the bar above it and the stripes below it. At
+     `--panel-2` it was the same grey as both, and the header read as one
+     more row. */
+  background: var(--panel-3);
+  border-bottom: 1px solid var(--line-strong);
   font-weight: 600;
-  color: var(--ink-80);
+  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -2229,8 +2235,10 @@ button.primary:hover:not(:disabled) {
   min-width: 14px;
   max-width: 14px;
   padding: 0;
-  background: var(--panel-2);
-  border-right: 1px solid var(--line);
+  /* The header's shade, so the two frame the data as one L, the way SE16
+     frames it. */
+  background: var(--panel-3);
+  border-right: 1px solid var(--line-strong);
 }
 
 .markdown-table tbody tr:nth-child(even) td:not(.markdown-table-gutter) {
