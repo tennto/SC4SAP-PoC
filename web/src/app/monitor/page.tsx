@@ -146,9 +146,9 @@ function OutcomeTile({
   const share = total > 0 ? (bad / total) * 100 : 0;
   const radius = 30;
   const circumference = 2 * Math.PI * radius;
-  // A 2px surface gap between segments, taken off the end of each one — but
-  // never more than a segment has, so a sliver still draws.
-  const gap = 2;
+  // No gap between segments. The ring sits on a grey track, so a gap showed
+  // the track rather than the card and read as a crack, and at a few
+  // percent a segment is only a few pixels long to begin with.
   const segments = [
     { key: "failed", value: summary.failedWeek, className: "is-failed" },
     { key: "refused", value: summary.refusedWeek, className: "is-refused" },
@@ -156,8 +156,7 @@ function OutcomeTile({
   let offset = 0;
   const arcs = segments.map((segment) => {
     const length = total > 0 ? (segment.value / total) * circumference : 0;
-    const drawn = Math.max(0, length - (length > gap * 2 ? gap : 0));
-    const arc = { ...segment, drawn, offset };
+    const arc = { ...segment, drawn: length, offset };
     offset += length;
     return arc;
   });
