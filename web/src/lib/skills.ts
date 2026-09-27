@@ -69,6 +69,11 @@ export type Skill = {
    * one has to answer.
    */
   tools: SkillTools;
+  /**
+   * How hard the run thinks. Absent leaves the model's default, which is
+   * `high`. Set where a measurement showed thinking was most of the bill.
+   */
+  effort?: "low" | "medium" | "high";
   status: SkillStatus;
   /** Why it cannot run yet. Required when `status` is `blocked`. */
   blockedReason?: string;
@@ -171,6 +176,10 @@ export const SKILLS: Skill[] = [
     // of the plugin than the one this app ships — `Read` had been refused
     // outside the workspace, and the shell simply went around it.
     tools: "analyse",
+    // Measured on 2026-09-27: of the reviewer's 14.5k output tokens about
+    // 11k were thinking, and that thinking was most of both the $0.90 it
+    // cost and the three minutes it took.
+    effort: "medium",
     title: "Analyze Code",
     icon: "code",
     summary:

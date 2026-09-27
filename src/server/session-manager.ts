@@ -19,8 +19,10 @@
  * sdkSessionId is what makes them recoverable.
  */
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   query,
+  type EffortLevel,
   type PermissionResult,
   type Query,
   type SDKMessage,
@@ -212,12 +214,15 @@ const AGENT_TOOL = "Agent";
 export function withPluginRoot(
   input: Record<string, unknown>,
   pluginPath: string,
+  /** The run's `Review focus:` line, where the prompt had one. */
+  focus?: string,
 ): Record<string, unknown> | null {
   const type = input.subagent_type;
   const prompt = input.prompt;
   if (typeof type !== "string" || !type.startsWith("sc4sap:")) return null;
   if (typeof prompt !== "string" || prompt.includes(PLUGIN_ROOT_MARK)) return null;
   const root = pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const rules = type === REVIEWER_AGENT ? reviewerBrief(root, focus) : "";
   return {
     ...input,
     prompt:
@@ -225,11 +230,123 @@ export function withPluginRoot(
       "Every relative path in your instructions and in the skill files " +
       `(\`../common/…\`, \`common/…\`, \`skills/…\`, \`configs/…\`) is under this root: ` +
       `read \`../common/clean-code.md\` as \`${root}/common/clean-code.md\` with Read. ` +
-      "Do not search the disk for them.",
+      "Do not search the disk for them." +
+      rules,
   };
 }
 
+/** The plugin's code reviewer, whose rule files this host hands over itself. */
+const REVIEWER_AGENT = "sc4sap:sap-code-reviewer";
+
+/**
+ * The rule files a code review applies, relative to the plugin root.
+ *
+ * The analyze-code skill's own list, less the two in `REVIEWER_SKIPS`, plus
+ * the module-aware naming extension it names and the OK-code pattern the ALV
+ * and screen checks lean on. About 38 KB.
+ *
+ * Handed over in the dispatch rather than left for the reviewer to read.
+ * Measured on 2026-09-27: at `effort: medium` the reviewer read none of them
+ * — half the cost of a `high` run, but it missed every finding that comes
+ * from these conventions (OK-code binding, constants for screen numbers and
+ * function codes) and flagged the include layout they prescribe as a
+ * violation. In the prompt, they apply whatever the effort.
+ */
+const REVIEWER_RULES: readonly string[] = [
+  "skills/analyze-code/analysis-dimensions.md",
+  "common/naming-conventions.md",
+  "configs/common/naming-conventions.md",
+  "common/constant-rule.md",
+  "common/oop-pattern.md",
+  "common/procedural-form-naming.md",
+  "common/include-structure.md",
+  "common/text-element-rule.md",
+  "common/alv-rules.md",
+  "common/ok-code-pattern.md",
+];
+
+/**
+ * Which rule files each review focus needs. "All", and any focus not listed,
+ * gets every one. Performance and security findings come from the source and
+ * the reviewer's own checklist, not from these naming and layout
+ * conventions, so those two carry only the dimension list.
+ */
+const RULES_BY_FOCUS: Readonly<Record<string, readonly string[]>> = {
+  "Clean ABAP": [
+    "skills/analyze-code/analysis-dimensions.md",
+    "common/naming-conventions.md",
+    "configs/common/naming-conventions.md",
+    "common/constant-rule.md",
+    "common/oop-pattern.md",
+    "common/procedural-form-naming.md",
+    "common/include-structure.md",
+    "common/text-element-rule.md",
+  ],
+  "SAP standard compliance": [
+    "skills/analyze-code/analysis-dimensions.md",
+    "common/naming-conventions.md",
+    "configs/common/naming-conventions.md",
+    "common/include-structure.md",
+    "common/text-element-rule.md",
+    "common/alv-rules.md",
+    "common/ok-code-pattern.md",
+  ],
+  Performance: ["skills/analyze-code/analysis-dimensions.md"],
+  Security: ["skills/analyze-code/analysis-dimensions.md"],
+};
+
+/**
+ * How the findings should come back. The orchestrator rewrites them into the
+ * report anyway, so prose and a code sample for every LOW finding are Opus
+ * output tokens written once and read once.
+ */
+const REVIEWER_FORMAT =
+  "Return the findings compactly: one line per MEDIUM or LOW finding " +
+  "(location · rule · what to change); a root cause and a code fix only for " +
+  "CRITICAL and HIGH. No preamble and no restating of the source.";
+
+/** The reviewer's scope, output shape and rule files, appended to its dispatch. */
+function reviewerBrief(root: string, focus?: string): string {
+  const narrowed = focus && focus !== "All" ? RULES_BY_FOCUS[focus] : undefined;
+  const scope = narrowed
+    ? `\n\nReview focus: ${focus}. Evaluate and report only findings in this ` +
+      "area; skip the other dimensions."
+    : "";
+  return `${scope}\n\n${REVIEWER_FORMAT}${reviewerRules(root, narrowed ?? REVIEWER_RULES)}`;
+}
+
+/** The rule files' text for the reviewer's prompt, or "" if none could be read. */
+function reviewerRules(root: string, files: readonly string[]): string {
+  const parts: string[] = [];
+  for (const file of files) {
+    try {
+      parts.push(`### ${file}\n\n${readFileSync(`${root}/${file}`, "utf8").trim()}`);
+    } catch {
+      // A plugin update that moved a file costs that one rule, not the run;
+      // the reviewer can still Read whatever it finds missing.
+    }
+  }
+  if (parts.length === 0) return "";
+  return (
+    "\n\nThe review's rule files are below, already loaded. Apply them; do not " +
+    "Read them again.\n\n" +
+    parts.join("\n\n")
+  );
+}
+
 const PLUGIN_ROOT_MARK = "sc4sap plugin root:";
+
+/**
+ * Rule files `sap-code-reviewer` loads at start that a static review never
+ * applies: the table-extraction policy governs pulling rows, and the SPRO
+ * lookup is for configuration questions. About 11 KB between them, written
+ * into the Opus reviewer's cache on every run. Refused for that agent only —
+ * other skills that read table rows need the first one.
+ */
+const REVIEWER_SKIPS: readonly string[] = [
+  "data-extraction-policy.md",
+  "spro-lookup.md",
+];
 
 /** The raw Anthropic stream event, reached through SDKMessage so no transitive import is needed. */
 type StreamEvent = Extract<SDKMessage, { type: "stream_event" }>["event"];
@@ -539,6 +656,11 @@ type LiveSession = {
    */
   collectNudge?: ReturnType<typeof setTimeout>;
   /**
+   * The `Review focus:` of an analyze-code run, read from its first prompt.
+   * Narrows the rule files handed to the reviewer — see `reviewerBrief`.
+   */
+  reviewFocus?: string;
+  /**
    * Set while this session sits in the warm pool: the key it was opened
    * under and the countdown to shutting it down unclaimed. Cleared the
    * moment `create()` hands it out. See `warm()`.
@@ -569,6 +691,12 @@ type SessionShape = {
    * the prompt, and out of reach.
    */
   profile?: ToolProfile;
+  /**
+   * How hard the model thinks, where a skill says. Absent leaves the SDK's
+   * default. Passed as the session's `effort`; whether the plugin's
+   * sub-agents follow it is what the analyze-code measurement is for.
+   */
+  effort?: EffortLevel;
 };
 
 type PendingEntry = {
@@ -803,6 +931,7 @@ export class SessionManager {
       // tools are missing from a process that has already started. Different
       // profiles, different pools.
       options.profile ?? "ask",
+      options.effort ?? "",
     ].join(" ");
   }
 
@@ -879,6 +1008,7 @@ export class SessionManager {
         allowedTools,
         // A ceiling the SDK enforces. Undefined means none, as before.
         maxBudgetUsd: options.maxBudgetUsd,
+        ...(options.effort ? { effort: options.effort } : {}),
         // Plan 2-4 — every tool call parks here until a human answers over
         // the SSE channel. Plan 2-5 adds allowedTools on top; note this
         // callback is NOT a complete chokepoint (ToolSearch was observed
@@ -922,7 +1052,11 @@ export class SessionManager {
                   if (input.tool_name === AGENT_TOOL && economyLive?.record.economy) {
                     const original = (input.tool_input ?? {}) as Record<string, unknown>;
                     const toolInput =
-                      withPluginRoot(original, this.#config.pluginPath) ?? original;
+                      withPluginRoot(
+                        original,
+                        this.#config.pluginPath,
+                        economyLive.reviewFocus,
+                      ) ?? original;
                     const requested = toolInput.model;
                     this.toolLog.decide(toolUseID ?? input.tool_use_id, "auto");
                     const updated =
@@ -946,6 +1080,7 @@ export class SessionManager {
                     const rooted = withPluginRoot(
                       (input.tool_input ?? {}) as Record<string, unknown>,
                       this.#config.pluginPath,
+                      this.#sessions.get(id)?.reviewFocus,
                     );
                     if (rooted) {
                       return {
@@ -984,6 +1119,45 @@ export class SessionManager {
                             "This host governs tool permissions itself, so the " +
                             "session-trust bootstrap does nothing here. Skip it " +
                             "and continue with the task.",
+                        },
+                      };
+                    }
+                  }
+
+                  // Rule files the code reviewer's baseline loads that no
+                  // static review here uses. See `REVIEWER_SKIPS`.
+                  if (
+                    input.tool_name === "Read" &&
+                    (input as { agent_type?: string }).agent_type === REVIEWER_AGENT
+                  ) {
+                    const path = String(
+                      ((input.tool_input ?? {}) as Record<string, unknown>).file_path ?? "",
+                    ).replace(/\\/g, "/");
+                    // Already in its prompt — see `REVIEWER_RULES`. A second
+                    // copy is 38 KB more of Opus cache for nothing.
+                    if (REVIEWER_RULES.some((file) => path.endsWith(`/${file}`))) {
+                      this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "deny" as const,
+                          permissionDecisionReason:
+                            "This rule file is either already in your prompt, " +
+                            "under its own heading, or outside this review's " +
+                            "focus. Use what the prompt gives you.",
+                        },
+                      };
+                    }
+                    if (REVIEWER_SKIPS.some((name) => path.endsWith(`/common/${name}`))) {
+                      this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "deny" as const,
+                          permissionDecisionReason:
+                            "Not needed for a static code review on this host: " +
+                            "no table rows are extracted and no SPRO lookup is " +
+                            "made. Continue without it.",
                         },
                       };
                     }
@@ -1120,6 +1294,10 @@ export class SessionManager {
       live.record.title = titleFrom(
         text.trim() !== "" ? text : (attachments[0]?.name ?? ""),
       );
+    }
+    if (live.reviewFocus === undefined && /^\/sc4sap:analyze-code\b/.test(text)) {
+      const focus = /^Review focus: (.+)$/m.exec(text)?.[1]?.trim();
+      if (focus) live.reviewFocus = focus;
     }
     const meta: AttachmentMeta[] = attachments.map(toMeta);
     // A new question is a new decision. Whatever was agreed about a table

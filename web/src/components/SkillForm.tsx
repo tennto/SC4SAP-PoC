@@ -689,9 +689,11 @@ export function SkillForm({
       // investigation like `analyze-symptom` actually runs on — its own
       // prompt forbids filesystem search, and a logged run spent four minutes
       // doing it anyway because `Bash` was in reach. See `Skill.tools`.
+      const effort = findSkill(slug)?.effort;
       const session = await api.createSession(undefined, undefined, {
         ...(how ?? {}),
         profile: tools,
+        ...(effort ? { effort } : {}),
       });
       setSessionId(session.id);
       await api.sendMessage(
