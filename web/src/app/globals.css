@@ -7243,12 +7243,13 @@ button.mon-clear:hover:not(:disabled) {
 
 /* ---- failed / refused ring ---- */
 
+/* Ring and legend as one group, centred in the tile. */
 .mon-outcome {
   display: flex;
   align-items: center;
-  gap: 28px;
+  justify-content: center;
+  gap: 40px;
   flex: 1;
-  padding-left: 4px;
 }
 
 .mon-donut {
