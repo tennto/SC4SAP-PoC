@@ -7336,16 +7336,13 @@ button.mon-clear:hover:not(:disabled) {
 }
 
 .mon-donut-track {
+  stroke: var(--line-soft);
+}
+
+.mon-donut-arc.is-ok {
   stroke: var(--panel-3);
 }
 
-/* White shows, black hides; wider than the ring so its edges never clip. */
-.mon-donut-reveal {
-  fill: none;
-  stroke: #fff;
-  stroke-width: 14;
-  stroke-dasharray: 100 0;
-}
 
 .mon-donut-arc {
   stroke-linecap: butt;
@@ -7539,11 +7536,22 @@ button.mon-clear:hover:not(:disabled) {
     animation-delay: 650ms;
   }
 
-  /* Ease in and out, not the app's --ease: that curve is 90% done in its
-     first twentieth, and a sweep that front-loaded reads as the ring simply
-     appearing. */
-  .mon-donut-reveal {
-    animation: mon-sweep 1000ms cubic-bezier(0.65, 0, 0.35, 1) 450ms both;
+  /* One segment at a time, clockwise: succeeded, then refused, then failed,
+     each starting as the one before it finishes. Ease in and out, not the
+     app's --ease: that curve is 90% done in its first twentieth, and an arc
+     drawn that way reads as simply appearing. */
+  .mon-donut-arc {
+    animation: mon-draw-arc 700ms cubic-bezier(0.65, 0, 0.35, 1) 450ms both;
+  }
+
+  .mon-donut-arc.is-refused {
+    animation-duration: 400ms;
+    animation-delay: 1250ms;
+  }
+
+  .mon-donut-arc.is-failed {
+    animation-duration: 400ms;
+    animation-delay: 1750ms;
   }
 
   .mon-bar-fill {
@@ -7570,10 +7578,10 @@ button.mon-clear:hover:not(:disabled) {
   }
 }
 
-/* The reveal mask's stroke, 0 to the full circle (its pathLength is 100). */
-@keyframes mon-sweep {
+/* To the arc's own dash pattern, which it carries as an attribute. */
+@keyframes mon-draw-arc {
   from {
-    stroke-dasharray: 0 100;
+    stroke-dasharray: 0 1000;
   }
 }
 

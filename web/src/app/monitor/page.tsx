@@ -137,14 +137,14 @@ function OutcomeTile({
   // No gap between segments. The ring sits on a grey track, so a gap showed
   // the track rather than the card and read as a crack, and at a few
   // percent a segment is only a few pixels long to begin with.
-  // Clockwise from twelve o'clock: succeeded (the track), then refused, then
-  // failed, so the sweep that draws the ring in lays them down in that order
-  // and the two problem segments close the circle just left of twelve.
+  // Clockwise from twelve o'clock: succeeded, then refused, then failed. On
+  // load each one draws in on its own, in that order — see `.mon-donut-arc`.
   const segments = [
+    { key: "ok", value: total - bad, className: "is-ok" },
     { key: "refused", value: summary.refusedWeek, className: "is-refused" },
     { key: "failed", value: summary.failedWeek, className: "is-failed" },
   ];
-  let offset = total > 0 ? ((total - bad) / total) * circumference : 0;
+  let offset = 0;
   const arcs = segments.map((segment) => {
     const length = total > 0 ? (segment.value / total) * circumference : 0;
     const arc = { ...segment, drawn: length, offset };
@@ -165,24 +165,10 @@ function OutcomeTile({
             role="img"
             aria-label={`${t.failedOrRefused}: ${t.percentOfWeek(Math.round(share))}`}
           >
-            {/* The whole ring — succeeded track and both problem segments —
-                is revealed by one sweep of this mask, clockwise from twelve
-                o'clock, so the ring draws as a single stroke rather than
-                segment by segment. At rest the mask is a full circle. */}
-            <defs>
-              <mask id="mon-ring-reveal">
-                <circle
-                  className="mon-donut-reveal"
-                  cx="40"
-                  cy="40"
-                  r={radius}
-                  pathLength={100}
-                  transform="rotate(-90 40 40)"
-                />
-              </mask>
-            </defs>
-            <g mask="url(#mon-ring-reveal)">
-              <circle className="mon-donut-track" cx="40" cy="40" r={radius} />
+            {/* Under the segments, so the ring's place is marked while they
+                draw in. */}
+            <circle className="mon-donut-track" cx="40" cy="40" r={radius} />
+            <g>
               {arcs.map((arc) =>
                 arc.drawn > 0 ? (
                   <circle
