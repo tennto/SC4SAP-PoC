@@ -574,12 +574,19 @@ export function SkillForm({
     written.current = signature;
 
     try {
+      // The run's totals, read from the backend at the moment it settled —
+      // the same record the chat screen saves from. Without them every skill
+      // run was stored at $0 and zero turns, and the dashboard's spend left
+      // out the most expensive thing the app does. A backend that has already
+      // let the session go costs the totals, not the transcript.
+      const live = await api.getSession(sessionId).catch(() => null);
       await api.saveTurns(sessionId, {
         // Named for the skill *and* what it was pointed at. The prompt's first
         // line is a slash command, which makes a poor label in a rail — and so
         // does the skill's name on its own once there are six of them.
         title: runTitle(shownSkill.title, fields, values),
-        sdkSessionId: null,
+        sdkSessionId: live?.sdkSessionId ?? null,
+        ...(live ? { turns: live.turns, totalCostUsd: live.totalCostUsd } : {}),
         messages: saved.map((row, index) => ({
           seq: index,
           role: row.kind === "user" ? ("user" as const) : ("agent" as const),
