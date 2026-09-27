@@ -137,11 +137,14 @@ function OutcomeTile({
   // No gap between segments. The ring sits on a grey track, so a gap showed
   // the track rather than the card and read as a crack, and at a few
   // percent a segment is only a few pixels long to begin with.
+  // Clockwise from twelve o'clock: succeeded (the track), then refused, then
+  // failed, so the sweep that draws the ring in lays them down in that order
+  // and the two problem segments close the circle just left of twelve.
   const segments = [
-    { key: "failed", value: summary.failedWeek, className: "is-failed" },
     { key: "refused", value: summary.refusedWeek, className: "is-refused" },
+    { key: "failed", value: summary.failedWeek, className: "is-failed" },
   ];
-  let offset = 0;
+  let offset = total > 0 ? ((total - bad) / total) * circumference : 0;
   const arcs = segments.map((segment) => {
     const length = total > 0 ? (segment.value / total) * circumference : 0;
     const arc = { ...segment, drawn: length, offset };
