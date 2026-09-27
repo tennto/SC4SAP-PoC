@@ -222,16 +222,31 @@ export function withPluginRoot(
   if (typeof type !== "string" || !type.startsWith("sc4sap:")) return null;
   if (typeof prompt !== "string" || prompt.includes(PLUGIN_ROOT_MARK)) return null;
   const root = pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
-  const rules = type === REVIEWER_AGENT ? reviewerBrief(root, focus) : "";
+  const note =
+    `${PLUGIN_ROOT_MARK} ${root}\n` +
+    "Every relative path in your instructions and in the skill files " +
+    `(\`../common/…\`, \`common/…\`, \`skills/…\`, \`configs/…\`) is under this root: ` +
+    `read \`../common/clean-code.md\` as \`${root}/common/clean-code.md\` with Read. ` +
+    "Do not search the disk for them.";
+  if (type !== REVIEWER_AGENT) {
+    return { ...input, prompt: `${prompt}\n\n${note}` };
+  }
+  // What is the same on every run goes first and the object goes last. The
+  // prompt cache matches from the front, so with the task on top a review of
+  // a different program re-wrote all 38 KB of rules into the Opus cache —
+  // measured 2026-09-27, 24k tokens on a run that followed another by five
+  // minutes. In this order only the task itself is new.
+  const narrowed = focus && focus !== "All" ? RULES_BY_FOCUS[focus] : undefined;
+  const scope = narrowed
+    ? `\n\nReview focus: ${focus}. Evaluate and report only findings in this ` +
+      "area; skip the other dimensions."
+    : "";
   return {
     ...input,
     prompt:
-      `${prompt}\n\n${PLUGIN_ROOT_MARK} ${root}\n` +
-      "Every relative path in your instructions and in the skill files " +
-      `(\`../common/…\`, \`common/…\`, \`skills/…\`, \`configs/…\`) is under this root: ` +
-      `read \`../common/clean-code.md\` as \`${root}/common/clean-code.md\` with Read. ` +
-      "Do not search the disk for them." +
-      rules,
+      `${note}\n\n${REVIEWER_FORMAT}` +
+      reviewerRules(root, narrowed ?? REVIEWER_RULES) +
+      `\n\n---\n\nThe task:\n\n${prompt}${scope}`,
   };
 }
 
@@ -305,15 +320,6 @@ const REVIEWER_FORMAT =
   "(location · rule · what to change); a root cause and a code fix only for " +
   "CRITICAL and HIGH. No preamble and no restating of the source.";
 
-/** The reviewer's scope, output shape and rule files, appended to its dispatch. */
-function reviewerBrief(root: string, focus?: string): string {
-  const narrowed = focus && focus !== "All" ? RULES_BY_FOCUS[focus] : undefined;
-  const scope = narrowed
-    ? `\n\nReview focus: ${focus}. Evaluate and report only findings in this ` +
-      "area; skip the other dimensions."
-    : "";
-  return `${scope}\n\n${REVIEWER_FORMAT}${reviewerRules(root, narrowed ?? REVIEWER_RULES)}`;
-}
 
 /** The rule files' text for the reviewer's prompt, or "" if none could be read. */
 function reviewerRules(root: string, files: readonly string[]): string {
