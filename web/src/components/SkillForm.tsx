@@ -1140,26 +1140,33 @@ export function SkillForm({
               session is gone has "Continue in chat" for that. */}
           {followUp && settled && answer.trim() !== "" && !restored && (
             <div className="skill-reply">
-              <textarea
-                className="skill-reply-text"
-                rows={2}
-                value={reply}
-                placeholder={t.replyPlaceholder}
-                onChange={(event) => setReply(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendReply();
-                  }
-                }}
-              />
-              <button
-                className="primary skill-reply-send"
-                onClick={() => void sendReply()}
-                disabled={reply.trim() === ""}
-              >
-                <Icon name="paper-plane-tilt" /> {t.reply}
-              </button>
+              {/* The chat composer's shape: one bordered box, the send
+                  control a round arrow inside it at the bottom right, so a
+                  follow-up here looks like the same act as a message there. */}
+              <div className="skill-reply-box">
+                <textarea
+                  className="skill-reply-text"
+                  rows={2}
+                  value={reply}
+                  placeholder={t.replyPlaceholder}
+                  onChange={(event) => setReply(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void sendReply();
+                    }
+                  }}
+                />
+                <button
+                  className="composer-send skill-reply-send"
+                  onClick={() => void sendReply()}
+                  disabled={reply.trim() === ""}
+                  aria-label={t.reply}
+                  title={t.reply}
+                >
+                  <Icon name="arrow-up" />
+                </button>
+              </div>
             </div>
           )}
         </section>

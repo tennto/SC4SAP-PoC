@@ -6801,12 +6801,26 @@ a.ghost.auth-submit .google-mark {
 }
 
 .skill-reply {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid var(--line-soft);
+}
+
+/* The border belongs to the box, not the textarea, so the round send button
+   sits inside it at the bottom right — the chat composer's arrangement. */
+.skill-reply-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  transition: border-color var(--t-fast) var(--ease);
+}
+
+.skill-reply-box:focus-within {
+  border-color: var(--ink-55);
 }
 
 .skill-reply-text {
@@ -6816,16 +6830,14 @@ a.ghost.auth-submit .google-mark {
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
-  padding: 9px 12px;
+  padding: 4px 0;
   color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
 }
 
 .skill-reply-text:focus {
   outline: none;
-  border-color: var(--ink-38);
 }
 
 .skill-reply-send {
