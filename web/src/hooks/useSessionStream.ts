@@ -203,6 +203,25 @@ function closeOpenBubbles(state: State): State {
   };
 }
 
+/**
+ * Marks the turn's last answer as final, so the next turn's words are drawn
+ * after it rather than over it. Only the last assistant item: the earlier ones
+ * in the same turn are interim, and `toRows` still folds them away.
+ */
+function endTurn(state: State): State {
+  for (let index = state.items.length - 1; index >= 0; index -= 1) {
+    const item = state.items[index]!;
+    if (item.kind === "user") return state;
+    if (item.kind === "assistant") {
+      if (item.turnEnded) return state;
+      const items = state.items.slice();
+      items[index] = { ...item, turnEnded: true };
+      return { ...state, items };
+    }
+  }
+  return state;
+}
+
 function reduce(state: State, action: Action): State {
   if (action.kind === "reset") return EMPTY;
   if (action.kind === "connected") {
@@ -373,7 +392,7 @@ function reduce(state: State, action: Action): State {
         return { ...state, items };
       }
 
-      if (message.type === "result") return closeOpenBubbles(state);
+      if (message.type === "result") return endTurn(closeOpenBubbles(state));
 
       /*
        * The SDK says out loud when the API refused it and it is going to try

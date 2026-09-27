@@ -221,7 +221,18 @@ export type ToolCall = {
  */
 export type TranscriptItem =
   | { kind: "user"; id: string; text: string; attachments?: AttachmentMeta[] }
-  | { kind: "assistant"; id: string; text: string; streaming: boolean }
+  | {
+      kind: "assistant";
+      id: string;
+      text: string;
+      streaming: boolean;
+      /**
+       * The last words of a turn that has ended. What follows it came from a
+       * different turn, and `toRows` does not let it replace this one — see
+       * there.
+       */
+      turnEnded?: boolean;
+    }
   | { kind: "thinking"; id: string; text: string; streaming: boolean }
   /**
    * One chip per *run* of the same tool, not per call: a chunked read fires

@@ -343,6 +343,8 @@ export function Chat({
             id: `stored-${message.seq}`,
             text: message.text,
             streaming: false,
+            // A stored answer is a whole turn's, by construction.
+            turnEnded: true,
           },
     );
   }, [history, activeId, backendId, stream.items]);
