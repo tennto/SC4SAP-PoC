@@ -46,11 +46,21 @@
   /* Shadow channels, as bare numbers for `rgba()`. A grey shadow is invisible
      on a dark ground; black is the only colour that reads as depth there. */
   --shadow-rgb: 56, 56, 56;
+  /* The names are the dark theme's opacities; the light theme runs higher.
+     At 0.55 and 0.38 these measured 3.0:1 and 2.0:1 on #f7f7f7 — hints,
+     panel notes and the rail's group headings were barely there. 0.7 clears
+     4.5:1 on every light surface, which is body-text contrast; 0.55 clears
+     3:1, which is what a hint or a disabled label needs to be read at all.
+     The dark theme already sat at 5.4:1 and 3.2:1 and is left alone. */
   --ink-80: rgba(56, 56, 56, 0.8);
-  --ink-55: rgba(56, 56, 56, 0.55);
-  --ink-38: rgba(56, 56, 56, 0.38);
-  --line: rgba(56, 56, 56, 0.14);
-  --line-soft: rgba(56, 56, 56, 0.08);
+  --ink-55: rgba(56, 56, 56, 0.7);
+  --ink-38: rgba(56, 56, 56, 0.55);
+  --line: rgba(56, 56, 56, 0.2);
+  --line-soft: rgba(56, 56, 56, 0.1);
+  /* The edge of something you type into. A hairline was enough for a card,
+     whose inside is a different shade from the page; an input is white on a
+     white panel, and at `--line` its box all but disappeared. */
+  --line-strong: rgba(56, 56, 56, 0.34);
 
   /* ---- Status ----
      The one deliberate exception to the single-ink palette above. Connection
@@ -60,6 +70,11 @@
      text and not only as a dot. */
   --ok: #15803d;
   --warn: #b45309;
+  /* Refused, in a chart beside --bad. --warn is amber and read as a second
+     red next to it; this is a yellow a reader tells apart at a glance
+     (validated against --bad: ΔE 22.6, CVD 17.4). Marks only — it is 2.9:1
+     on white, so a chart using it carries labels. */
+  --chart-refused: #ca8a04;
   --bad: #b91c1c;
 
   /* ---- Type ----
@@ -184,9 +199,11 @@
     --ink-38: rgba(237, 237, 237, 0.38);
     --line: rgba(237, 237, 237, 0.16);
     --line-soft: rgba(237, 237, 237, 0.09);
+    --line-strong: rgba(237, 237, 237, 0.28);
 
     --ok: #4ade80;
     --warn: #fbbf24;
+    --chart-refused: #fbbf24;
     --bad: #f87171;
   }
 }
@@ -211,9 +228,11 @@
   --ink-38: rgba(237, 237, 237, 0.38);
   --line: rgba(237, 237, 237, 0.16);
   --line-soft: rgba(237, 237, 237, 0.09);
+  --line-strong: rgba(237, 237, 237, 0.28);
 
   --ok: #4ade80;
   --warn: #fbbf24;
+  --chart-refused: #fbbf24;
   --bad: #f87171;
 }
 
@@ -763,16 +782,18 @@ button.primary:hover:not(:disabled) {
      height mid-collapse. Clipped instead — it is transparent by then. */
   white-space: nowrap;
   overflow: hidden;
-  font-size: 9px;
+  /* 11px, up from 9: at 9px a Korean group name was a smudge, and the
+     heading is what splits a dozen identical rows into groups. */
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-38);
+  color: var(--ink-55);
 }
 
 .nav-heading-hint {
   margin-top: 2px;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
@@ -904,7 +925,7 @@ button.primary:hover:not(:disabled) {
   border: 1px solid var(--line);
   border-radius: 7px;
   background: var(--panel);
-  color: var(--ink-55);
+  color: var(--ink-80);
   font-size: 15px;
   transition:
     background-color var(--t-base) var(--ease),
@@ -2181,7 +2202,10 @@ button.primary:hover:not(:disabled) {
   text-align: left;
   padding: 5px 10px;
   border-bottom: 1px solid var(--line-soft);
-  border-right: 1px solid var(--line-soft);
+  /* `--line`, not `--line-soft`: the column rules are what a reader follows
+     down a 100-row result, and at the softer weight they vanished below the
+     first screen. Row rules stay soft — the striping already carries them. */
+  border-right: 1px solid var(--line);
   max-width: 44ch;
   white-space: normal;
   overflow-wrap: break-word;
@@ -2201,10 +2225,13 @@ button.primary:hover:not(:disabled) {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
+  /* A step darker than the bar above it and the stripes below it. At
+     `--panel-2` it was the same grey as both, and the header read as one
+     more row. */
+  background: var(--panel-3);
+  border-bottom: 1px solid var(--line-strong);
   font-weight: 600;
-  color: var(--ink-80);
+  color: var(--ink);
   white-space: nowrap;
 }
 
@@ -2215,8 +2242,10 @@ button.primary:hover:not(:disabled) {
   min-width: 14px;
   max-width: 14px;
   padding: 0;
-  background: var(--panel-2);
-  border-right: 1px solid var(--line);
+  /* The header's shade, so the two frame the data as one L, the way SE16
+     frames it. */
+  background: var(--panel-3);
+  border-right: 1px solid var(--line-strong);
 }
 
 .markdown-table tbody tr:nth-child(even) td:not(.markdown-table-gutter) {
@@ -3693,15 +3722,21 @@ button.primary:hover:not(:disabled) {
 }
 
 .skill .panel-head h2 {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .skill .fields {
   gap: 13px;
+  /* The one cap inside a skill panel, and on the fields rather than the panel,
+     which keeps the full-width rule above. At 1920px the auto-fit columns
+     stretched four short inputs to 380px each with the labels drifting apart
+     from one another; 1240px is `--measure`'s own ceiling, so nothing changes
+     until the window is wider than a laptop's. */
+  max-width: 1240px;
 }
 
 .skill .field-label {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.07em;
 }
 
@@ -3717,7 +3752,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .skill .field-hint {
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .skill .panel-actions {
@@ -3823,11 +3858,20 @@ button.primary:hover:not(:disabled) {
 }
 
 .skill-doc-kind {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  /* Icon then label, the way the table view's bar opens — the two bars sit
+     on the same screen and should read as one kind of header. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--ink-38);
+  color: var(--ink-55);
+}
+
+.skill-doc-kind .ph {
+  font-size: 13px;
 }
 
 .skill-doc-save {
@@ -4065,7 +4109,7 @@ button.primary:hover:not(:disabled) {
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--ink-55);
+  color: var(--ink-80);
 }
 
 .panel-note,
@@ -4101,7 +4145,7 @@ button.primary:hover:not(:disabled) {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-55);
+  color: var(--ink-80);
 }
 
 .field input[type="text"],
@@ -4113,7 +4157,7 @@ button.primary:hover:not(:disabled) {
   width: 100%;
   color: var(--ink);
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   padding: 9px 12px;
 }
@@ -5422,14 +5466,14 @@ a.ghost.auth-submit .google-mark {
   padding: 9px 11px 9px 12px;
   color: var(--ink);
   background: var(--panel);
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   font: inherit;
   text-align: left;
 }
 
 .select-button:hover:not(:disabled) {
-  border-color: var(--ink-38);
+  border-color: var(--ink-55);
 }
 
 /* The base button rule drops every control a pixel on press. A form field
@@ -6773,12 +6817,26 @@ a.ghost.auth-submit .google-mark {
 }
 
 .skill-reply {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
   margin-top: 14px;
   padding-top: 14px;
   border-top: 1px solid var(--line-soft);
+}
+
+/* The border belongs to the box, not the textarea, so the round send button
+   sits inside it at the bottom right — the chat composer's arrangement. */
+.skill-reply-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  transition: border-color var(--t-fast) var(--ease);
+}
+
+.skill-reply-box:focus-within {
+  border-color: var(--ink-55);
 }
 
 .skill-reply-text {
@@ -6788,16 +6846,14 @@ a.ghost.auth-submit .google-mark {
   font: inherit;
   font-size: 13px;
   line-height: 1.5;
-  padding: 9px 12px;
+  padding: 4px 0;
   color: var(--ink);
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
 }
 
 .skill-reply-text:focus {
   outline: none;
-  border-color: var(--ink-38);
 }
 
 .skill-reply-send {
@@ -7131,80 +7187,419 @@ button.mon-clear:hover:not(:disabled) {
 .mon-tiles {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
+@media (max-width: 1100px) {
+  .mon-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* White cards on the panel, label on top and the figure under it — the
+   order a glance takes. Every tile is the same height, so the two charts do
+   not make the two numbers look like leftovers. */
 .mon-tile {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 4px;
   min-width: 0;
-  padding: 10px 12px;
+  min-height: 150px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel-2);
-}
-
-.mon-tile-value {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-
-.mon-tile.is-bad .mon-tile-value {
-  color: var(--bad);
+  border-radius: 12px;
+  background: var(--panel);
 }
 
 .mon-tile-label {
-  font-size: 9.5px;
+  margin-bottom: 4px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-55);
 }
 
+/* Proportional figures: a lone display number set in tabular ones looks
+   loose. */
+.mon-tile-value {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
 .mon-tile-detail {
-  margin-top: 2px;
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.5;
-  color: var(--ink-38);
+  color: var(--ink-55);
 }
 
-.mon-tile-list .mon-tile-label {
-  margin-bottom: 4px;
+.mon-tile-value + .mon-tile-detail {
+  margin-top: auto;
 }
 
-.mon-top {
+/* ---- calls: figure and SAP split ---- */
+
+.mon-unit {
+  margin-left: 4px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-55);
+}
+
+/* The week split into calls that reached SAP and workspace reads. Pushed to
+   the bottom with the lines under it, so this tile's last line sits where
+   the other tiles' do. Each part is its own target for the tip. */
+.mon-split {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  margin: auto 0 6px;
+}
+
+.mon-split-part {
+  position: relative;
+  min-width: 4px;
+  height: 100%;
+  outline: none;
+  transition: opacity var(--t-fast) var(--ease);
+}
+
+.mon-split-part:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
+.mon-split-part:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+.mon-split-part:only-child {
+  border-radius: 999px;
+}
+
+.mon-split-part.is-sap {
+  background: var(--ink-55);
+}
+
+.mon-split-part.is-local {
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.mon-split:hover .mon-split-part,
+.mon-split:focus-within .mon-split-part {
+  opacity: 0.45;
+}
+
+/* Same weight as the rule above and later, so it wins without !important. */
+.mon-split .mon-split-part:hover,
+.mon-split .mon-split-part:focus-visible {
+  opacity: 1;
+}
+
+.mon-split-part .mon-bar-tip {
+  bottom: calc(100% + 6px);
+}
+
+.mon-split-part:hover .mon-bar-tip,
+.mon-split-part:focus-visible .mon-bar-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---- failed / refused ring ---- */
+
+/* Ring and legend as one group, centred in the tile. */
+.mon-outcome {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 56px;
+  flex: 1;
+}
+
+.mon-donut {
+  flex: none;
+  width: 108px;
+  height: 108px;
+}
+
+.mon-donut-track,
+.mon-donut-arc {
+  fill: none;
+  stroke-width: 9;
+}
+
+.mon-donut-track {
+  stroke: var(--line-soft);
+}
+
+.mon-donut-arc.is-ok {
+  stroke: var(--panel-3);
+}
+
+
+.mon-donut-arc {
+  stroke-linecap: butt;
+}
+
+.mon-donut-arc.is-failed,
+.mon-key.is-failed {
+  stroke: var(--bad);
+  background: var(--bad);
+}
+
+.mon-donut-arc.is-refused,
+.mon-key.is-refused {
+  stroke: var(--chart-refused);
+  background: var(--chart-refused);
+}
+
+.mon-key.is-ok {
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.mon-donut-figure {
+  font-family: var(--font-display);
+  /* viewBox units: the ring is 80 across, drawn at 108 px, so this sets at
+     about 16 px. */
+  font-size: 12px;
+  font-weight: 600;
+  fill: var(--ink);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.mon-legend {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--ink-80);
 }
 
-.mon-top li {
+.mon-legend li {
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
+  align-items: center;
+  gap: 7px;
 }
 
-.mon-top code {
+.mon-legend span {
+  margin-left: auto;
+  padding-left: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-55);
+}
+
+.mon-key {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* ---- most-called columns ---- */
+
+.mon-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  /* A fixed track, with room above it for the tallest column's count, so a
+     column's height is its share of the largest and nothing else. */
+  height: 72px;
+  margin: 16px 4px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mon-bar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  outline: none;
+  cursor: default;
+}
+
+.mon-bar-value {
+  position: absolute;
+  bottom: calc(var(--h) + 4px);
+  font-size: 10.5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-55);
+  transition: color var(--t-fast) var(--ease);
+}
+
+/* Rounded only at the data end, anchored to the baseline. The rest sit a
+   step back so the leader is the first thing read. */
+.mon-bar-fill {
+  width: min(28px, 100%);
+  height: max(3px, var(--h));
+  border-radius: 5px 5px 0 0;
+  background: var(--ink-38);
+  transition:
+    background-color var(--t-fast) var(--ease),
+    opacity var(--t-fast) var(--ease);
+}
+
+.mon-bar.is-top .mon-bar-fill {
+  background: var(--ink);
+}
+
+.mon-bar.is-top .mon-bar-value {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.mon-bar-rank {
+  position: absolute;
+  top: calc(100% + 5px);
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-38);
+}
+
+/* Pointing at one column quiets the others. */
+.mon-bars:hover .mon-bar-fill,
+.mon-bars:focus-within .mon-bar-fill {
+  opacity: 0.35;
+}
+
+.mon-bar:hover .mon-bar-fill,
+.mon-bar:focus-visible .mon-bar-fill {
+  opacity: 1;
+  background: var(--ink);
+}
+
+.mon-bar:hover .mon-bar-value,
+.mon-bar:focus-visible .mon-bar-value,
+.mon-bar:hover .mon-bar-rank,
+.mon-bar:focus-visible .mon-bar-rank {
+  color: var(--ink);
+}
+
+.mon-bar-tip {
+  position: absolute;
+  bottom: calc(var(--h) + 20px);
+  left: 50%;
+  z-index: 2;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 2px);
+  transition:
+    opacity var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.mon-bar:hover .mon-bar-tip,
+.mon-bar:focus-visible .mon-bar-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+/* ---- drawing in on load ----
+   Once, as the page arrives: the split fills left to right, the ring's
+   segments draw from twelve o'clock in turn, and the columns rise from the
+   baseline one after another with their counts landing last. Started after
+   the panel's own rise has mostly settled, so the tiles are in place before
+   anything inside them moves. Nothing here for a reader who asked for less
+   motion — the charts are simply there. */
+@media (prefers-reduced-motion: no-preference) {
+  .mon-split-part {
+    transform-origin: left center;
+    animation: mon-grow-x 700ms var(--ease) 450ms both;
+  }
+
+  .mon-split-part + .mon-split-part {
+    animation-delay: 650ms;
+  }
+
+  /* One segment at a time, clockwise: succeeded, then refused, then failed,
+     each starting as the one before it finishes. Ease in and out, not the
+     app's --ease: that curve is 90% done in its first twentieth, and an arc
+     drawn that way reads as simply appearing. */
+  .mon-donut-arc {
+    animation: mon-draw-arc 700ms cubic-bezier(0.65, 0, 0.35, 1) 450ms both;
+  }
+
+  .mon-donut-arc.is-refused {
+    animation-duration: 400ms;
+    animation-delay: 1250ms;
+  }
+
+  .mon-donut-arc.is-failed {
+    animation-duration: 400ms;
+    animation-delay: 1750ms;
+  }
+
+  .mon-bar-fill {
+    transform-origin: center bottom;
+    animation: mon-grow-y 700ms var(--ease) both;
+    animation-delay: calc(450ms + var(--i, 0) * 80ms);
+  }
+
+  .mon-bar-value {
+    animation: mon-fade 300ms var(--ease) both;
+    animation-delay: calc(950ms + var(--i, 0) * 80ms);
+  }
+}
+
+@keyframes mon-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes mon-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+/* To the arc's own dash pattern, which it carries as an attribute. */
+@keyframes mon-draw-arc {
+  from {
+    stroke-dasharray: 0 1000;
+  }
+}
+
+@keyframes mon-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.mon-bars-lead {
+  margin-top: auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
 }
 
-.mon-top span {
-  color: var(--ink-55);
+.mon-bars-lead code {
+  font-size: 11px;
 }
 
 .mon-feed {
@@ -7477,6 +7872,11 @@ button.mon-switch.is-on {
   border-color: var(--bad);
 }
 
+.mon-row.is-refused .mon-dot {
+  background: var(--chart-refused);
+  border-color: var(--chart-refused);
+}
+
 .mon-row.is-running .mon-dot {
   border-color: var(--ink);
   animation: conn-breathe 1.2s ease-in-out infinite;
@@ -7538,6 +7938,11 @@ button.mon-switch.is-on {
 
 .mon-row.is-bad .mon-decision {
   color: var(--bad);
+}
+
+/* Text, so the amber that holds 4.5:1 rather than the chart's yellow. */
+.mon-row.is-refused .mon-decision {
+  color: var(--warn);
 }
 
 .mon-running {

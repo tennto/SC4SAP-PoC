@@ -20,7 +20,9 @@ import { jsonError, signedIn } from "../../shared";
  * The result is still written to this account's row. It is the dashboard's own
  * memory of the last check — the row is server-rendered and reads the stored
  * result rather than this response — and what was checked is now a property of
- * the server rather than of the account.
+ * the server rather than of the account. So it is filed with the alias the
+ * backend says it checked: after a switch, the dashboard compares that against
+ * the live alias and treats an old result as no result.
  *
  * 502 on a system that did not answer: this endpoint worked, the thing behind
  * it did not.
@@ -51,16 +53,17 @@ export async function POST(): Promise<Response> {
   }
 
   const body = (await response.json().catch(() => null)) as
-    | { ok?: boolean; detail?: string; error?: string }
+    | { ok?: boolean; detail?: string; error?: string; alias?: string | null }
     | null;
+  const alias = body?.alias ?? null;
 
   if (!response.ok) {
     const detail = body?.error ?? `The system answered ${response.status}.`;
-    await recordCheck(userId, { ok: false, detail });
+    await recordCheck(userId, { ok: false, detail, alias });
     return jsonError(502, detail);
   }
 
   const detail = body?.detail ?? "The system answered.";
-  await recordCheck(userId, { ok: true, detail });
+  await recordCheck(userId, { ok: true, detail, alias });
   return Response.json({ ok: true, detail });
 }

@@ -74,7 +74,13 @@ export type ConnectionSummary = {
   allowTables: string[];
   connectedAt: string;
   /** ISO timestamps. `null` when the connection has never been probed. */
-  lastCheck: { ok: boolean; detail: string; at: string } | null;
+  lastCheck: {
+    ok: boolean;
+    detail: string;
+    at: string;
+    /** The profile it was run against; `null` when it was not a profile. */
+    alias: string | null;
+  } | null;
 };
 
 export async function readConnection(
@@ -106,6 +112,7 @@ export async function readConnection(
           ok: connection.lastCheck.ok,
           detail: connection.lastCheck.detail,
           at: connection.lastCheck.at.toISOString(),
+          alias: connection.lastCheck.alias ?? null,
         }
       : null,
   };
@@ -148,7 +155,7 @@ export async function saveScope(
  */
 export async function recordCheck(
   userId: string,
-  result: { ok: boolean; detail: string },
+  result: { ok: boolean; detail: string; alias: string | null },
 ): Promise<void> {
   if (!ObjectId.isValid(userId)) return;
   await (await users()).updateOne(

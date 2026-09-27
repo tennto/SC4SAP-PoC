@@ -19,8 +19,10 @@
  * sdkSessionId is what makes them recoverable.
  */
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   query,
+  type EffortLevel,
   type PermissionResult,
   type Query,
   type SDKMessage,
@@ -117,6 +119,14 @@ const WARM_IDLE_MS = Number(process.env.SC4SAP_WARM_IDLE_MS ?? 10 * 60_000);
 const WARM_REFILL_DELAY_MS = 3_000;
 
 /**
+ * How long a finished background task waits for the SDK to resume the parent
+ * by itself before the backend prompts it to. The SDK's own resume shows up
+ * within a second of the notification; five leaves room for a slow machine
+ * and costs a reader nothing on the path where the nudge is needed.
+ */
+const COLLECT_NUDGE_GRACE_MS = 5_000;
+
+/**
  * Appended to the model's system prompt for every session.
  *
  * Two things. First, who the host is: the plugin's skills (analyze-symptom
@@ -184,6 +194,165 @@ export type SessionStatus = "starting" | "idle" | "busy" | "closed" | "error";
 
 /** The sub-agent dispatch. Its input carries the model the skill asked for. */
 const AGENT_TOOL = "Agent";
+
+/**
+ * A plugin sub-agent's prompt, with where the plugin lives appended.
+ *
+ * The plugin's agents name their rule files relative to their own file —
+ * `../common/clean-code.md` — and a sub-agent runs with the session's cwd,
+ * which is the workspace, where none of those paths resolve. Measured on
+ * 2026-09-27: `sap-code-reviewer` globbed for them, found nothing, then ran
+ * `find` across the home directory for 22 seconds and read twelve of them
+ * with `Bash cat` from an installed copy of the plugin rather than the one
+ * this server loads. Stated to the model as a request this would be ignored
+ * the way the dump-tool bans were; appended to the dispatch here, every
+ * plugin sub-agent starts out knowing the answer.
+ *
+ * Only `sc4sap:` agents — the root means nothing to a general-purpose one —
+ * and only once, so a re-dispatch with the note already in it is left alone.
+ */
+export function withPluginRoot(
+  input: Record<string, unknown>,
+  pluginPath: string,
+  /** The run's `Review focus:` line, where the prompt had one. */
+  focus?: string,
+): Record<string, unknown> | null {
+  const type = input.subagent_type;
+  const prompt = input.prompt;
+  if (typeof type !== "string" || !type.startsWith("sc4sap:")) return null;
+  if (typeof prompt !== "string" || prompt.includes(PLUGIN_ROOT_MARK)) return null;
+  const root = pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  const note =
+    `${PLUGIN_ROOT_MARK} ${root}\n` +
+    "Every relative path in your instructions and in the skill files " +
+    `(\`../common/…\`, \`common/…\`, \`skills/…\`, \`configs/…\`) is under this root: ` +
+    `read \`../common/clean-code.md\` as \`${root}/common/clean-code.md\` with Read. ` +
+    "Do not search the disk for them.";
+  if (type !== REVIEWER_AGENT) {
+    return { ...input, prompt: `${prompt}\n\n${note}` };
+  }
+  // What is the same on every run goes first and the object goes last. The
+  // prompt cache matches from the front, so with the task on top a review of
+  // a different program re-wrote all 38 KB of rules into the Opus cache —
+  // measured 2026-09-27, 24k tokens on a run that followed another by five
+  // minutes. In this order only the task itself is new.
+  const narrowed = focus && focus !== "All" ? RULES_BY_FOCUS[focus] : undefined;
+  const scope = narrowed
+    ? `\n\nReview focus: ${focus}. Evaluate and report only findings in this ` +
+      "area; skip the other dimensions."
+    : "";
+  return {
+    ...input,
+    prompt:
+      `${note}\n\n${REVIEWER_FORMAT}` +
+      reviewerRules(root, narrowed ?? REVIEWER_RULES) +
+      `\n\n---\n\nThe task:\n\n${prompt}${scope}`,
+  };
+}
+
+/** The plugin's code reviewer, whose rule files this host hands over itself. */
+const REVIEWER_AGENT = "sc4sap:sap-code-reviewer";
+
+/**
+ * The rule files a code review applies, relative to the plugin root.
+ *
+ * The analyze-code skill's own list, less the two in `REVIEWER_SKIPS`, plus
+ * the module-aware naming extension it names and the OK-code pattern the ALV
+ * and screen checks lean on. About 38 KB.
+ *
+ * Handed over in the dispatch rather than left for the reviewer to read.
+ * Measured on 2026-09-27: at `effort: medium` the reviewer read none of them
+ * — half the cost of a `high` run, but it missed every finding that comes
+ * from these conventions (OK-code binding, constants for screen numbers and
+ * function codes) and flagged the include layout they prescribe as a
+ * violation. In the prompt, they apply whatever the effort.
+ */
+const REVIEWER_RULES: readonly string[] = [
+  "skills/analyze-code/analysis-dimensions.md",
+  "common/naming-conventions.md",
+  "configs/common/naming-conventions.md",
+  "common/constant-rule.md",
+  "common/oop-pattern.md",
+  "common/procedural-form-naming.md",
+  "common/include-structure.md",
+  "common/text-element-rule.md",
+  "common/alv-rules.md",
+  "common/ok-code-pattern.md",
+];
+
+/**
+ * Which rule files each review focus needs. "All", and any focus not listed,
+ * gets every one. Performance and security findings come from the source and
+ * the reviewer's own checklist, not from these naming and layout
+ * conventions, so those two carry only the dimension list.
+ */
+const RULES_BY_FOCUS: Readonly<Record<string, readonly string[]>> = {
+  "Clean ABAP": [
+    "skills/analyze-code/analysis-dimensions.md",
+    "common/naming-conventions.md",
+    "configs/common/naming-conventions.md",
+    "common/constant-rule.md",
+    "common/oop-pattern.md",
+    "common/procedural-form-naming.md",
+    "common/include-structure.md",
+    "common/text-element-rule.md",
+  ],
+  "SAP standard compliance": [
+    "skills/analyze-code/analysis-dimensions.md",
+    "common/naming-conventions.md",
+    "configs/common/naming-conventions.md",
+    "common/include-structure.md",
+    "common/text-element-rule.md",
+    "common/alv-rules.md",
+    "common/ok-code-pattern.md",
+  ],
+  Performance: ["skills/analyze-code/analysis-dimensions.md"],
+  Security: ["skills/analyze-code/analysis-dimensions.md"],
+};
+
+/**
+ * How the findings should come back. The orchestrator rewrites them into the
+ * report anyway, so prose and a code sample for every LOW finding are Opus
+ * output tokens written once and read once.
+ */
+const REVIEWER_FORMAT =
+  "Return the findings compactly: one line per MEDIUM or LOW finding " +
+  "(location · rule · what to change); a root cause and a code fix only for " +
+  "CRITICAL and HIGH. No preamble and no restating of the source.";
+
+
+/** The rule files' text for the reviewer's prompt, or "" if none could be read. */
+function reviewerRules(root: string, files: readonly string[]): string {
+  const parts: string[] = [];
+  for (const file of files) {
+    try {
+      parts.push(`### ${file}\n\n${readFileSync(`${root}/${file}`, "utf8").trim()}`);
+    } catch {
+      // A plugin update that moved a file costs that one rule, not the run;
+      // the reviewer can still Read whatever it finds missing.
+    }
+  }
+  if (parts.length === 0) return "";
+  return (
+    "\n\nThe review's rule files are below, already loaded. Apply them; do not " +
+    "Read them again.\n\n" +
+    parts.join("\n\n")
+  );
+}
+
+const PLUGIN_ROOT_MARK = "sc4sap plugin root:";
+
+/**
+ * Rule files `sap-code-reviewer` loads at start that a static review never
+ * applies: the table-extraction policy governs pulling rows, and the SPRO
+ * lookup is for configuration questions. About 11 KB between them, written
+ * into the Opus reviewer's cache on every run. Refused for that agent only —
+ * other skills that read table rows need the first one.
+ */
+const REVIEWER_SKIPS: readonly string[] = [
+  "data-extraction-policy.md",
+  "spro-lookup.md",
+];
 
 /** The raw Anthropic stream event, reached through SDKMessage so no transitive import is needed. */
 type StreamEvent = Extract<SDKMessage, { type: "stream_event" }>["event"];
@@ -487,6 +656,17 @@ type LiveSession = {
    */
   backgroundTasks: Set<string>;
   /**
+   * The "go and collect it" prompt for a finished background task, waiting
+   * to see whether the SDK resumes the parent on its own first. See the
+   * `task_notification` handler.
+   */
+  collectNudge?: ReturnType<typeof setTimeout>;
+  /**
+   * The `Review focus:` of an analyze-code run, read from its first prompt.
+   * Narrows the rule files handed to the reviewer — see `reviewerBrief`.
+   */
+  reviewFocus?: string;
+  /**
    * Set while this session sits in the warm pool: the key it was opened
    * under and the countdown to shutting it down unclaimed. Cleared the
    * moment `create()` hands it out. See `warm()`.
@@ -517,6 +697,12 @@ type SessionShape = {
    * the prompt, and out of reach.
    */
   profile?: ToolProfile;
+  /**
+   * How hard the model thinks, where a skill says. Absent leaves the SDK's
+   * default. Passed as the session's `effort`; whether the plugin's
+   * sub-agents follow it is what the analyze-code measurement is for.
+   */
+  effort?: EffortLevel;
 };
 
 type PendingEntry = {
@@ -751,6 +937,7 @@ export class SessionManager {
       // tools are missing from a process that has already started. Different
       // profiles, different pools.
       options.profile ?? "ask",
+      options.effort ?? "",
     ].join(" ");
   }
 
@@ -815,6 +1002,14 @@ export class SessionManager {
         // the L1 blocklist guards are declared. Dropping this silently
         // ungates row extraction — see provision-workspace.ts.
         settingSources: ["project"],
+        // No auto-memory. Left on, the session resolved it to the memory
+        // directory of whoever develops this repo in Claude Code — a report
+        // once quoted the developer's own notes back to the reader — and
+        // every edit to those notes changed the first message of every
+        // session, so 26k tokens of it were written to the prompt cache again
+        // on each run instead of read (measured 2026-09-27, about $0.16 a run
+        // at the 1h write rate). A SAP session has nothing to remember there.
+        settings: { autoMemoryEnabled: false },
         includeHookEvents: true,
         // Plan 2-3 — token-level relay. Produces `stream_event` messages that
         // #relayStreamEvent translates into text_delta / tool_start / tool_end.
@@ -827,6 +1022,7 @@ export class SessionManager {
         allowedTools,
         // A ceiling the SDK enforces. Undefined means none, as before.
         maxBudgetUsd: options.maxBudgetUsd,
+        ...(options.effort ? { effort: options.effort } : {}),
         // Plan 2-4 — every tool call parks here until a human answers over
         // the SSE channel. Plan 2-5 adds allowedTools on top; note this
         // callback is NOT a complete chokepoint (ToolSearch was observed
@@ -868,19 +1064,48 @@ export class SessionManager {
                   // one place the SDK does stop for every tool.
                   const economyLive = this.#sessions.get(id);
                   if (input.tool_name === AGENT_TOOL && economyLive?.record.economy) {
-                    const toolInput = (input.tool_input ?? {}) as Record<string, unknown>;
+                    const original = (input.tool_input ?? {}) as Record<string, unknown>;
+                    const toolInput =
+                      withPluginRoot(
+                        original,
+                        this.#config.pluginPath,
+                        economyLive.reviewFocus,
+                      ) ?? original;
                     const requested = toolInput.model;
                     this.toolLog.decide(toolUseID ?? input.tool_use_id, "auto");
+                    const updated =
+                      typeof requested === "string" && /opus/i.test(requested)
+                        ? { ...toolInput, model: "sonnet" }
+                        : toolInput;
                     return {
                       hookSpecificOutput: {
                         hookEventName: "PreToolUse" as const,
                         permissionDecision: "allow" as const,
                         permissionDecisionReason: "Economy: sub-agents run on Sonnet.",
-                        ...(typeof requested === "string" && /opus/i.test(requested)
-                          ? { updatedInput: { ...toolInput, model: "sonnet" } }
-                          : {}),
+                        ...(updated !== original ? { updatedInput: updated } : {}),
                       },
                     };
+                  }
+
+                  // Not economy: the same root note, and the dispatch goes
+                  // through as `Agent` always has — it is on the auto-allow
+                  // list, so allowing it here decides nothing new.
+                  if (input.tool_name === AGENT_TOOL) {
+                    const rooted = withPluginRoot(
+                      (input.tool_input ?? {}) as Record<string, unknown>,
+                      this.#config.pluginPath,
+                      this.#sessions.get(id)?.reviewFocus,
+                    );
+                    if (rooted) {
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "allow" as const,
+                          permissionDecisionReason: "Plugin root added to the dispatch.",
+                          updatedInput: rooted,
+                        },
+                      };
+                    }
                   }
 
                   // The permission bootstrap, on a host that governs
@@ -908,6 +1133,45 @@ export class SessionManager {
                             "This host governs tool permissions itself, so the " +
                             "session-trust bootstrap does nothing here. Skip it " +
                             "and continue with the task.",
+                        },
+                      };
+                    }
+                  }
+
+                  // Rule files the code reviewer's baseline loads that no
+                  // static review here uses. See `REVIEWER_SKIPS`.
+                  if (
+                    input.tool_name === "Read" &&
+                    (input as { agent_type?: string }).agent_type === REVIEWER_AGENT
+                  ) {
+                    const path = String(
+                      ((input.tool_input ?? {}) as Record<string, unknown>).file_path ?? "",
+                    ).replace(/\\/g, "/");
+                    // Already in its prompt — see `REVIEWER_RULES`. A second
+                    // copy is 38 KB more of Opus cache for nothing.
+                    if (REVIEWER_RULES.some((file) => path.endsWith(`/${file}`))) {
+                      this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "deny" as const,
+                          permissionDecisionReason:
+                            "This rule file is either already in your prompt, " +
+                            "under its own heading, or outside this review's " +
+                            "focus. Use what the prompt gives you.",
+                        },
+                      };
+                    }
+                    if (REVIEWER_SKIPS.some((name) => path.endsWith(`/common/${name}`))) {
+                      this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "deny" as const,
+                          permissionDecisionReason:
+                            "Not needed for a static code review on this host: " +
+                            "no table rows are extracted and no SPRO lookup is " +
+                            "made. Continue without it.",
                         },
                       };
                     }
@@ -1044,6 +1308,10 @@ export class SessionManager {
       live.record.title = titleFrom(
         text.trim() !== "" ? text : (attachments[0]?.name ?? ""),
       );
+    }
+    if (live.reviewFocus === undefined && /^\/sc4sap:analyze-code\b/.test(text)) {
+      const focus = /^Review focus: (.+)$/m.exec(text)?.[1]?.trim();
+      if (focus) live.reviewFocus = focus;
     }
     const meta: AttachmentMeta[] = attachments.map(toMeta);
     // A new question is a new decision. Whatever was agreed about a table
@@ -1388,6 +1656,9 @@ export class SessionManager {
     // put the session back to busy; an empty set here is what it should
     // find when it does.
     live.backgroundTasks.clear();
+    // A stopped run is not to be restarted by a nudge that was waiting.
+    if (live.collectNudge) clearTimeout(live.collectNudge);
+    live.collectNudge = undefined;
     this.#setStatus(live, "idle");
     return "stopped";
   }
@@ -1406,6 +1677,7 @@ export class SessionManager {
     this.#cancelOrphanTimer(live);
     live.pump.close();
     this.toolLog.abandon(id);
+    if (live.collectNudge) clearTimeout(live.collectNudge);
     // Tell subscribers before dropping the entry — after this the id 404s.
     this.#setStatus(live, "closed");
     live.subscribers.clear();
@@ -1436,6 +1708,25 @@ export class SessionManager {
     void (async () => {
       try {
         for await (const message of live.session) {
+          // The SDK went back to the model by itself — see `collectNudge`.
+          // Any sign of it counts, not only the answer: the findings arrive as
+          // the dispatch's own tool result, then the model can think for well
+          // over the grace period before it writes a word, and waiting for
+          // the `assistant` message let the nudge fire into a turn that was
+          // already doing the work.
+          if (
+            live.collectNudge &&
+            !("parent_tool_use_id" in message && message.parent_tool_use_id) &&
+            (message.type === "user" ||
+              message.type === "assistant" ||
+              (message.type === "system" &&
+                (message.subtype === "init" ||
+                  message.subtype === "status" ||
+                  message.subtype === "thinking_tokens")))
+          ) {
+            clearTimeout(live.collectNudge);
+            live.collectNudge = undefined;
+          }
           if (message.type === "system" && message.subtype === "init") {
             live.record.sdkSessionId = message.session_id;
             // Only out of `starting`. The SDK emits `init` at the top of every
@@ -1530,17 +1821,28 @@ export class SessionManager {
 
             if (note.status === "completed") {
               this.#setStatus(live, "busy");
-              live.pump.push(
-                [
-                  `The background agent you dispatched (task ${note.task_id}) has finished.`,
-                  note.summary ? `Its summary: ${note.summary}` : "",
-                  "Collect its findings and continue the skill from where you",
-                  "left off — produce the report you said you would. Do not",
-                  "mention task or agent ids.",
-                ]
-                  .filter(Boolean)
-                  .join(" "),
-              );
+              // Not at once. The SDK now resumes the parent on a finished
+              // task by itself, and a nudge pushed on top of that became a
+              // second turn: measured on 2026-09-27, the report was written,
+              // then "I already delivered the report above" was written after
+              // it for another $0.09 — and the screen, which shows the latest
+              // agent message of a run, showed only that line. The nudge is
+              // kept for when the SDK does not resume, and cancelled above
+              // the moment it does.
+              if (live.collectNudge) clearTimeout(live.collectNudge);
+              const nudge = [
+                `The background agent you dispatched (task ${note.task_id}) has finished.`,
+                note.summary ? `Its summary: ${note.summary}` : "",
+                "Collect its findings and continue the skill from where you",
+                "left off — produce the report you said you would. Do not",
+                "mention task or agent ids.",
+              ]
+                .filter(Boolean)
+                .join(" ");
+              live.collectNudge = setTimeout(() => {
+                live.collectNudge = undefined;
+                live.pump.push(nudge);
+              }, COLLECT_NUDGE_GRACE_MS);
             } else {
               this.#emit(live, {
                 type: "error",

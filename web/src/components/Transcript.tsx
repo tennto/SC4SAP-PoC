@@ -41,7 +41,7 @@ type Props = {
 export type Row =
   | { kind: "user"; id: string; text: string; attachments?: AttachmentMeta[] }
   | { kind: "notice"; id: string; text: string }
-  | { kind: "agent"; id: string; text: string; streaming: boolean };
+  | { kind: "agent"; id: string; text: string; streaming: boolean; turnEnded?: boolean };
 
 /**
  * Folds the stream's items into rows: tool and thinking items are dropped, and
@@ -122,7 +122,13 @@ export function toRows(
 
     const text = cleanText(item.text);
     const last = rows[rows.length - 1];
-    if (last && last.kind === "agent") {
+    // Folded into the row before only while that row's turn is still going.
+    // A turn that has ended is an answer, and what comes after it without a
+    // prompt in between — a turn the SDK started by itself when a background
+    // reviewer settled — is another one. Replacing across that line is how a
+    // skill run's report was once overwritten on screen, and in storage, by
+    // "I already delivered the report above".
+    if (last && last.kind === "agent" && !last.turnEnded) {
       if (everything) {
         // A blank line, so two blocks of markdown do not run into one paragraph.
         last.text = last.text ? `${last.text}\n\n${text}` : text;
@@ -134,6 +140,7 @@ export function toRows(
         last.id = item.id;
       }
       last.streaming = item.streaming;
+      if (item.turnEnded) last.turnEnded = true;
       continue;
     }
 
@@ -142,6 +149,7 @@ export function toRows(
       id: item.id,
       text,
       streaming: item.streaming,
+      ...(item.turnEnded ? { turnEnded: true } : {}),
     });
   }
 

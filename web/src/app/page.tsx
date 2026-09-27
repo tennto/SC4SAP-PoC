@@ -8,7 +8,7 @@
  *
  * The three connection rows, the account panel and the activity panel are
  * live: the backend and key rows from the real `/health` call below, the SAP
- * row from this account's stored connection and the last probe of it, the
+ * row from the backend's active profile and the last probe of it, the
  * account from the signed-in user's row, the activity aggregated from this
  * account's stored conversations. The SAP system *card* lower down is still a
  * fixture from `lib/account.ts` — it wants a SID, a tier and a module list
@@ -185,7 +185,19 @@ export default async function HomePage() {
   // reconnect control is what runs a new one. `null` means never probed,
   // which is drawn as unknown rather than as down: an unasked question is not
   // a failed answer.
-  const sap = connection?.lastCheck ?? null;
+  //
+  // A probe of some other system counts as never probed. The row used to name
+  // this account's setup connection and show whatever the last probe found,
+  // so after a switch it described a system nothing ran on, beside a card
+  // describing the one that did. A check with no alias came from setup or a
+  // settings save, which probe the account's own copy and not a profile.
+  const lastCheck = connection?.lastCheck ?? null;
+  const sap =
+    lastCheck !== null &&
+    lastCheck.alias !== null &&
+    lastCheck.alias === profiles?.active
+      ? lastCheck
+      : null;
   // Every row with a real source behind it — what the reconnect control
   // compares its own check against to tell "still fine" apart from "it came
   // back".
@@ -254,15 +266,17 @@ export default async function HomePage() {
                   : t.status.refused
             }
             detail={
-              connection ? (
+              system ? (
                 <>
-                  {t.sapClient(connection.client)} · {connection.sapUser} ·{" "}
-                  <code>{connection.adtUrl}</code>
+                  {t.sapClient(system.client)} · {system.username} ·{" "}
+                  <code>{system.host}</code>
                   {" · "}
                   {sapTail(sap, t, tag)}
                 </>
-              ) : (
+              ) : online ? (
                 t.sapNoConnection
+              ) : (
+                t.unreachable
               )
             }
           />

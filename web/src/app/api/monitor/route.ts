@@ -41,11 +41,14 @@ export async function GET(request: Request): Promise<Response> {
   }
   const statusRaw = url.searchParams.get("status");
   const status =
-    statusRaw === "ok" || statusRaw === "failed" || statusRaw === "running"
+    statusRaw === "ok" ||
+    statusRaw === "failed" ||
+    statusRaw === "refused" ||
+    statusRaw === "running"
       ? statusRaw
       : undefined;
   if (statusRaw && !status) {
-    return apiError(400, "status must be ok, failed or running.");
+    return apiError(400, "status must be ok, failed, refused or running.");
   }
 
   try {

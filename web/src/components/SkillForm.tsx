@@ -50,6 +50,7 @@ import { EditModal } from "@/components/settings/EditModal";
 import type { PermissionResponse } from "@/lib/types";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
+import type { Locale } from "@/lib/i18n/locale";
 import { skillDisplay } from "@/lib/i18n/skills";
 import type { Messages } from "@/lib/i18n/messages";
 import { FileChip } from "@/components/FileChip";
@@ -118,6 +119,12 @@ function initial(fields: readonly SkillField[]): Record<string, Value> {
  * package left alone should look like it was not given, not like it was given
  * as nothing — and a toggle only appears when it is on, for the same reason.
  */
+/** The locale's language as the model should be told it. */
+const REPORT_LANGUAGE: Record<Exclude<Locale, "en">, string> = {
+  ko: "Korean",
+  ja: "Japanese",
+};
+
 function composePrompt(
   command: string,
   fields: readonly SkillField[],
@@ -129,6 +136,12 @@ function composePrompt(
    * it.
    */
   context: string | null = null,
+  /**
+   * The screen's language, which the report should be written in. Without it
+   * a skill answers in English whatever the form was filled in — measured on
+   * a Korean screen, the code review came back in English.
+   */
+  locale: Locale = "en",
 ): string {
   const lines: string[] = [];
   for (const field of fields) {
@@ -144,6 +157,7 @@ function composePrompt(
   const parts = [command];
   if (lines.length > 0) parts.push(lines.join("\n"));
   if (context) parts.push(context);
+  if (locale !== "en") parts.push(`Write the report in ${REPORT_LANGUAGE[locale]}.`);
   return parts.join("\n\n");
 }
 
@@ -560,12 +574,19 @@ export function SkillForm({
     written.current = signature;
 
     try {
+      // The run's totals, read from the backend at the moment it settled —
+      // the same record the chat screen saves from. Without them every skill
+      // run was stored at $0 and zero turns, and the dashboard's spend left
+      // out the most expensive thing the app does. A backend that has already
+      // let the session go costs the totals, not the transcript.
+      const live = await api.getSession(sessionId).catch(() => null);
       await api.saveTurns(sessionId, {
         // Named for the skill *and* what it was pointed at. The prompt's first
         // line is a slash command, which makes a poor label in a rail — and so
         // does the skill's name on its own once there are six of them.
         title: runTitle(shownSkill.title, fields, values),
-        sdkSessionId: null,
+        sdkSessionId: live?.sdkSessionId ?? null,
+        ...(live ? { turns: live.turns, totalCostUsd: live.totalCostUsd } : {}),
         messages: saved.map((row, index) => ({
           seq: index,
           role: row.kind === "user" ? ("user" as const) : ("agent" as const),
@@ -675,14 +696,16 @@ export function SkillForm({
       // investigation like `analyze-symptom` actually runs on — its own
       // prompt forbids filesystem search, and a logged run spent four minutes
       // doing it anyway because `Bash` was in reach. See `Skill.tools`.
+      const effort = findSkill(slug)?.effort;
       const session = await api.createSession(undefined, undefined, {
         ...(how ?? {}),
         profile: tools,
+        ...(effort ? { effort } : {}),
       });
       setSessionId(session.id);
       await api.sendMessage(
         session.id,
-        composePrompt(command, fields, values, context),
+        composePrompt(command, fields, values, context, locale),
         null,
         images.map(toAttachment),
       );
@@ -1059,7 +1082,9 @@ export function SkillForm({
                   belongs on its own edge, not on the panel that happens to
                   contain it. */}
               <div className="skill-doc-bar">
-                <span className="skill-doc-kind">Markdown</span>
+                <span className="skill-doc-kind">
+                  <Icon name="markdown-logo" /> Markdown
+                </span>
                 <button
                   type="button"
                   className={`ghost skill-doc-everything${everything ? " is-on" : ""}`}
@@ -1117,26 +1142,33 @@ export function SkillForm({
               session is gone has "Continue in chat" for that. */}
           {followUp && settled && answer.trim() !== "" && !restored && (
             <div className="skill-reply">
-              <textarea
-                className="skill-reply-text"
-                rows={2}
-                value={reply}
-                placeholder={t.replyPlaceholder}
-                onChange={(event) => setReply(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    void sendReply();
-                  }
-                }}
-              />
-              <button
-                className="primary skill-reply-send"
-                onClick={() => void sendReply()}
-                disabled={reply.trim() === ""}
-              >
-                <Icon name="paper-plane-tilt" /> {t.reply}
-              </button>
+              {/* The chat composer's shape: one bordered box, the send
+                  control a round arrow inside it at the bottom right, so a
+                  follow-up here looks like the same act as a message there. */}
+              <div className="skill-reply-box">
+                <textarea
+                  className="skill-reply-text"
+                  rows={2}
+                  value={reply}
+                  placeholder={t.replyPlaceholder}
+                  onChange={(event) => setReply(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void sendReply();
+                    }
+                  }}
+                />
+                <button
+                  className="composer-send skill-reply-send"
+                  onClick={() => void sendReply()}
+                  disabled={reply.trim() === ""}
+                  aria-label={t.reply}
+                  title={t.reply}
+                >
+                  <Icon name="arrow-up" />
+                </button>
+              </div>
             </div>
           )}
         </section>

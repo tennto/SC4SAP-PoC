@@ -25,6 +25,10 @@
  * event name stays `message`.
  */
 import Fastify, { type FastifyInstance } from "fastify";
+import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
+
+/** The effort levels a session may be opened with. */
+const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
 import {
   SessionManager,
   type PermissionResponse,
@@ -158,8 +162,12 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       manager.config.pluginPath,
       manager.config.workspace,
     );
-    if (!result.ok) return reply.code(502).send({ error: result.error });
-    return { ok: true, detail: result.detail };
+    // `alias` on both answers, so the caller can file the result under the
+    // system it describes and not under whichever one is live when it reads.
+    if (!result.ok) {
+      return reply.code(502).send({ error: result.error, alias: result.alias });
+    }
+    return { ok: true, detail: result.detail, alias: result.alias };
   });
 
   app.post<{ Body: Record<string, unknown> | undefined }>(
@@ -281,6 +289,8 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           profile?: string;
           /** One of the models this backend offers — see `/health`. */
           model?: string;
+          /** Reasoning effort for the run, where a skill sets one. */
+          effort?: string;
         }
       | undefined;
   }>("/sessions", async (request, reply) => {
@@ -313,6 +323,12 @@ export function buildApp(manager: SessionManager): FastifyInstance {
         .code(400)
         .send({ error: `body.profile must be one of: ${TOOL_PROFILES.join(", ")}` });
     }
+    const effort = request.body?.effort;
+    if (effort !== undefined && !EFFORT_LEVELS.includes(effort as EffortLevel)) {
+      return reply
+        .code(400)
+        .send({ error: `body.effort must be one of: ${EFFORT_LEVELS.join(", ")}` });
+    }
     const model = request.body?.model;
     if (model !== undefined && !MODELS.some((entry) => entry.id === model)) {
       return reply.code(400).send({ error: "body.model is not one this backend offers" });
@@ -325,6 +341,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       maxBudgetUsd: maxBudgetUsd ? maxBudgetUsd : undefined,
       economy,
       profile: profile as ToolProfile | undefined,
+      effort: effort as EffortLevel | undefined,
       model,
       userId: userOf(request.headers),
       approval: approvalOf(request.headers),

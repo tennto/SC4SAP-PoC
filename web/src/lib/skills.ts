@@ -69,6 +69,11 @@ export type Skill = {
    * one has to answer.
    */
   tools: SkillTools;
+  /**
+   * How hard the run thinks. Absent leaves the model's default, which is
+   * `high`. Set where a measurement showed thinking was most of the bill.
+   */
+  effort?: "low" | "medium" | "high";
   status: SkillStatus;
   /** Why it cannot run yet. Required when `status` is `blocked`. */
   blockedReason?: string;
@@ -160,11 +165,24 @@ export const SKILLS: Skill[] = [
       { label: "Module", kind: "select", options: MODULES, hint: "Auto-route picks the agent from your question's keywords." },
       { label: "Question", kind: "textarea", placeholder: "e.g. Why does the PO release strategy skip the second approver?" },
     ],
+    // A consultant's answer invites the next question, and asking it here
+    // keeps the module routing and the context the first one built.
+    followUp: true,
   },
   {
     slug: "analyze-code",
     command: "/sc4sap:analyze-code",
-    tools: "build",
+    // `analyse`, not `build`: a review changes nothing. Measured on
+    // 2026-09-27 against ZMMR00020 under `build`, the reviewer could not
+    // resolve its rule files, ran `find` across the home directory for 22
+    // seconds, then read twelve of them with `Bash cat` from a different copy
+    // of the plugin than the one this app ships — `Read` had been refused
+    // outside the workspace, and the shell simply went around it.
+    tools: "analyse",
+    // Measured on 2026-09-27: of the reviewer's 14.5k output tokens about
+    // 11k were thinking, and that thinking was most of both the $0.90 it
+    // cost and the three minutes it took.
+    effort: "medium",
     title: "Analyze Code",
     icon: "code",
     summary:
@@ -180,6 +198,19 @@ export const SKILLS: Skill[] = [
       { label: "Object name", kind: "text", placeholder: "ZMM_PO_REPORT" },
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
     ],
+    cost: {
+      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the orchestrator only formats them. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus. Note that this choice moves the orchestrator, not the reviewer: the plugin's agents pin their own model today, so the heavy half of a run ignores it until that changes.",
+      defaultBudgetUsd: 3,
+      // Sonnet rather than Haiku for the half this choice does move: the
+      // orchestrator's job here is to turn a findings list into the report,
+      // and that part has not been measured on Haiku the way the symptom
+      // triage was.
+      defaultModel: "claude-sonnet-5",
+    },
+    // The report ends on a menu — explain finding #N, show the callers — and
+    // the reply goes to the same session, where the reviewer's findings are
+    // already in context. Starting over in chat would pay for them again.
+    followUp: true,
   },
   {
     slug: "analyze-symptom",
@@ -268,7 +299,6 @@ export const SKILLS: Skill[] = [
     fields: [
       { label: "Package", kind: "text", placeholder: "ZMM_CBO" },
       { label: "Module", kind: "select", options: MODULES.slice(1) },
-      { label: "Save the inventory to .sc4sap/cbo/", kind: "toggle", hint: "Makes the result reusable by create-program and program-to-spec." },
     ],
   },
   {

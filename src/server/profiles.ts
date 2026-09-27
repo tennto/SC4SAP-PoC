@@ -357,7 +357,10 @@ export async function createProfile(
 export async function checkActiveProfile(
   pluginPath: string,
   workspace: string,
-): Promise<{ ok: true; detail: string } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; detail: string; alias: string | null }
+  | { ok: false; error: string; alias: string | null }
+> {
   let env: Record<string, string | undefined>;
   let alias: string | undefined;
   try {
@@ -386,6 +389,7 @@ export async function checkActiveProfile(
     return {
       ok: false,
       error: `could not read the active profile: ${(err as Error).message}`,
+      alias: null,
     };
   }
 
@@ -394,7 +398,7 @@ export async function checkActiveProfile(
   const user = env.SAP_USERNAME ?? "";
   const password = env.SAP_PASSWORD ?? "";
   if (!url || !user || !password) {
-    return { ok: false, error: "the active profile has no URL or logon" };
+    return { ok: false, error: "the active profile has no URL or logon", alias: alias ?? null };
   }
 
   const target = `${url.replace(/\/+$/, "")}/sap/bc/adt/discovery${
@@ -416,19 +420,25 @@ export async function checkActiveProfile(
       return {
         ok: false,
         error: `${user} was refused by ${url} (${response.status}). The password may have changed, or the user may be locked.`,
+        alias: alias ?? null,
       };
     }
     if (!response.ok) {
-      return { ok: false, error: `${url} answered ${response.status}.` };
+      return { ok: false, error: `${url} answered ${response.status}.`, alias: alias ?? null };
     }
     return {
       ok: true,
       detail: `ADT answered at ${url}${client ? ` · client ${client}` : ""}${
         alias ? ` · ${alias}` : ""
       }`,
+      alias: alias ?? null,
     };
   } catch (err) {
-    return { ok: false, error: `${url} did not answer: ${(err as Error).message}` };
+    return {
+      ok: false,
+      error: `${url} did not answer: ${(err as Error).message}`,
+      alias: alias ?? null,
+    };
   }
 }
 

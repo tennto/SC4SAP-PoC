@@ -110,6 +110,8 @@ export const api = {
        * sub-agents nor the file, shell and web tools.
        */
       profile?: "analyse" | "build";
+      /** Reasoning effort, where the skill sets one. See `Skill.effort`. */
+      effort?: "low" | "medium" | "high";
     },
   ): Promise<Session> =>
     (
@@ -123,6 +125,7 @@ export const api = {
           ...(spend?.maxBudgetUsd ? { maxBudgetUsd: spend.maxBudgetUsd } : {}),
           ...(spend?.economy !== undefined ? { economy: spend.economy } : {}),
           ...(spend?.profile ? { profile: spend.profile } : {}),
+          ...(spend?.effort ? { effort: spend.effort } : {}),
           ...(spend?.model ? { model: spend.model } : {}),
         }),
       })
