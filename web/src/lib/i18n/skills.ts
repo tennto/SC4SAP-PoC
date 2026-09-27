@@ -162,10 +162,6 @@ const ko: CatalogText = {
       fields: {
         Package: { label: "패키지" },
         Module: { label: "모듈", options: MODULES_KO },
-        "Save the inventory to .sc4sap/cbo/": {
-          label: "인벤토리를 .sc4sap/cbo/에 저장",
-          hint: "결과를 create-program과 program-to-spec에서 재사용할 수 있게 합니다.",
-        },
       },
     },
     "compare-programs": {
@@ -417,10 +413,6 @@ const ja: CatalogText = {
       fields: {
         Package: { label: "パッケージ" },
         Module: { label: "モジュール", options: MODULES_JA },
-        "Save the inventory to .sc4sap/cbo/": {
-          label: "棚卸し結果を .sc4sap/cbo/ に保存",
-          hint: "結果を create-program と program-to-spec で再利用できるようにします。",
-        },
       },
     },
     "compare-programs": {

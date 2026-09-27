@@ -299,7 +299,6 @@ export const SKILLS: Skill[] = [
     fields: [
       { label: "Package", kind: "text", placeholder: "ZMM_CBO" },
       { label: "Module", kind: "select", options: MODULES.slice(1) },
-      { label: "Save the inventory to .sc4sap/cbo/", kind: "toggle", hint: "Makes the result reusable by create-program and program-to-spec." },
     ],
   },
   {
