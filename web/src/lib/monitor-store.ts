@@ -105,10 +105,23 @@ export type ToolCallSummary = {
   /** Calls in the last 24 hours and the last 7 days. */
   today: number;
   week: number;
-  /** Of the week's calls, how many came back as errors or were refused. */
+  /** Of the week's calls, how many came back as errors — refused ones aside. */
   failedWeek: number;
-  /** Median duration over the week's finished calls, in ms. `null` if none. */
+  /** Of the week's calls, how many were refused or timed out waiting for a person. */
+  refusedWeek: number;
+  /** The week's calls that reached the SAP system (MCP), out of `week`. */
+  mcpWeek: number;
+  /**
+   * Median and 95th-percentile duration of the week's finished MCP calls, in
+   * ms. `null` if none.
+   *
+   * MCP only. Over every call the median was 18 ms, because two in three
+   * calls are the agent reading its own workspace in single-digit ms — a
+   * number that said nothing about the SAP system, which is what a reader of
+   * this tile is asking about (measured 2026-09-27: 693 ms, p95 3.0 s).
+   */
   medianMs: number | null;
+  p95Ms: number | null;
   /** The week's most-called MCP tools, most first. */
   topTools: { tool: string; calls: number }[];
 };
@@ -124,6 +137,8 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
       week: number;
       today: number;
       failedWeek: number;
+      refusedWeek: number;
+      mcpWeek: number;
       durations: number[];
       tools: { tool: string; calls: number }[];
     }>([
@@ -136,13 +151,18 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
                 _id: null,
                 week: { $sum: 1 },
                 today: { $sum: { $cond: [{ $gte: ["$startedAt", dayAgo] }, 1, 0] } },
+                // Refused first, so a refused call is not also counted as a
+                // failure: the SDK reports a denied call as `ok: false` too.
+                refusedWeek: {
+                  $sum: { $cond: [{ $in: ["$decision", ["denied", "expired"]] }, 1, 0] },
+                },
                 failedWeek: {
                   $sum: {
                     $cond: [
                       {
-                        $or: [
+                        $and: [
                           { $eq: ["$ok", false] },
-                          { $in: ["$decision", ["denied", "expired"]] },
+                          { $not: [{ $in: ["$decision", ["denied", "expired"]] }] },
                         ],
                       },
                       1,
@@ -150,6 +170,7 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
                     ],
                   },
                 },
+                mcpWeek: { $sum: { $cond: [{ $eq: ["$kind", "mcp"] }, 1, 0] } },
               },
             },
           ],
@@ -157,7 +178,7 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
           // `$median` needs a Mongo 7 server, and this app should not fail
           // its monitor page on a 6.
           durations: [
-            { $match: { durationMs: { $ne: null } } },
+            { $match: { kind: "mcp", durationMs: { $ne: null } } },
             { $group: { _id: null, values: { $push: "$durationMs" } } },
           ],
           tools: [
@@ -174,6 +195,8 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
           week: { $ifNull: [{ $first: "$counts.week" }, 0] },
           today: { $ifNull: [{ $first: "$counts.today" }, 0] },
           failedWeek: { $ifNull: [{ $first: "$counts.failedWeek" }, 0] },
+          refusedWeek: { $ifNull: [{ $first: "$counts.refusedWeek" }, 0] },
+          mcpWeek: { $ifNull: [{ $first: "$counts.mcpWeek" }, 0] },
           durations: { $ifNull: [{ $first: "$durations.values" }, []] },
           tools: 1,
         },
@@ -191,11 +214,19 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
             (durations[durations.length / 2 - 1] + durations[durations.length / 2]) / 2,
           );
 
+  const p95Ms =
+    durations.length === 0
+      ? null
+      : durations[Math.min(durations.length - 1, Math.ceil(durations.length * 0.95) - 1)];
+
   return {
     today: row?.today ?? 0,
     week: row?.week ?? 0,
     failedWeek: row?.failedWeek ?? 0,
+    refusedWeek: row?.refusedWeek ?? 0,
+    mcpWeek: row?.mcpWeek ?? 0,
     medianMs,
+    p95Ms,
     topTools: row?.tools ?? [],
   };
 }

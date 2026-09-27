@@ -7180,80 +7180,231 @@ button.mon-clear:hover:not(:disabled) {
 .mon-tiles {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
+@media (max-width: 1100px) {
+  .mon-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* White cards on the panel, label on top and the figure under it — the
+   order a glance takes. Every tile is the same height, so the two charts do
+   not make the two numbers look like leftovers. */
 .mon-tile {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 4px;
   min-width: 0;
-  padding: 10px 12px;
+  min-height: 150px;
+  padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel-2);
-}
-
-.mon-tile-value {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-
-.mon-tile.is-bad .mon-tile-value {
-  color: var(--bad);
+  border-radius: 12px;
+  background: var(--panel);
 }
 
 .mon-tile-label {
-  font-size: 9.5px;
+  margin-bottom: 4px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-55);
 }
 
+/* Proportional figures: a lone display number set in tabular ones looks
+   loose. */
+.mon-tile-value {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
 .mon-tile-detail {
-  margin-top: 2px;
-  font-size: 11px;
+  font-size: 11.5px;
   line-height: 1.5;
-  color: var(--ink-38);
+  color: var(--ink-55);
 }
 
-.mon-tile-list .mon-tile-label {
-  margin-bottom: 4px;
+.mon-tile-value + .mon-tile-detail {
+  margin-top: auto;
 }
 
-.mon-top {
+/* ---- failed / refused ring ---- */
+
+.mon-outcome {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+}
+
+.mon-donut {
+  flex: none;
+  width: 84px;
+  height: 84px;
+}
+
+.mon-donut-track,
+.mon-donut-arc {
+  fill: none;
+  stroke-width: 9;
+}
+
+.mon-donut-track {
+  stroke: var(--panel-3);
+}
+
+.mon-donut-arc {
+  stroke-linecap: butt;
+}
+
+.mon-donut-arc.is-failed,
+.mon-key.is-failed {
+  stroke: var(--bad);
+  background: var(--bad);
+}
+
+.mon-donut-arc.is-refused,
+.mon-key.is-refused {
+  stroke: var(--warn);
+  background: var(--warn);
+}
+
+.mon-key.is-ok {
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.mon-donut-figure {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  fill: var(--ink);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.mon-legend {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  font-size: 11.5px;
+  color: var(--ink-80);
 }
 
-.mon-top li {
+.mon-legend li {
   display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
+  align-items: center;
+  gap: 7px;
 }
 
-.mon-top code {
+.mon-legend span {
+  margin-left: auto;
+  padding-left: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-55);
+}
+
+.mon-key {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* ---- most-called columns ---- */
+
+.mon-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  /* A fixed track, with room above it for the tallest column's count, so a
+     column's height is its share of the largest and nothing else. */
+  height: 76px;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mon-bar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  outline: none;
+  cursor: default;
+}
+
+.mon-bar-value {
+  position: absolute;
+  bottom: calc(var(--h) + 3px);
+  font-size: 10.5px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-55);
+}
+
+/* Thin and rounded only at the data end, anchored to the baseline. */
+.mon-bar-fill {
+  width: min(22px, 100%);
+  height: max(2px, var(--h));
+  border-radius: 4px 4px 0 0;
+  background: var(--ink-55);
+  transition: background-color var(--t-fast) var(--ease);
+}
+
+.mon-bar:hover .mon-bar-fill,
+.mon-bar:focus-visible .mon-bar-fill {
+  background: var(--ink);
+}
+
+.mon-bar-tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  z-index: 2;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 2px);
+  transition:
+    opacity var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.mon-bar:hover .mon-bar-tip,
+.mon-bar:focus-visible .mon-bar-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.mon-bars-lead {
+  margin-top: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
 }
 
-.mon-top span {
-  color: var(--ink-55);
+.mon-bars-lead code {
+  font-size: 11px;
 }
 
 .mon-feed {

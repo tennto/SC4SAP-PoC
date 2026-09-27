@@ -24,6 +24,7 @@ import { Icon } from "@/components/Icon";
 import { MonitorFeed } from "@/components/MonitorFeed";
 import { readMessages } from "@/lib/i18n/server";
 import { localeTag } from "@/lib/i18n/locale";
+import type { Messages } from "@/lib/i18n/messages";
 
 export const dynamic = "force-dynamic";
 
@@ -88,46 +89,184 @@ export default async function MonitorPage() {
         {summary ? (
           <div className="mon-tiles">
             <div className="mon-tile">
-              <span className="mon-tile-value">{summary.week.toLocaleString(tag)}</span>
               <span className="mon-tile-label">{t.callsThisWeek}</span>
+              <span className="mon-tile-value">{summary.week.toLocaleString(tag)}</span>
               <span className="mon-tile-detail">
                 {t.inLast24h(summary.today.toLocaleString(tag))}
               </span>
-            </div>
-            <div className={`mon-tile${summary.failedWeek > 0 ? " is-bad" : ""}`}>
-              <span className="mon-tile-value">{summary.failedWeek.toLocaleString(tag)}</span>
-              <span className="mon-tile-label">{t.failedOrRefused}</span>
               <span className="mon-tile-detail">
-                {summary.week > 0
-                  ? t.percentOfWeek(Math.round((summary.failedWeek / summary.week) * 100))
-                  : t.nothingThisWeek}
+                {t.sapLocalSplit(
+                  summary.mcpWeek.toLocaleString(tag),
+                  (summary.week - summary.mcpWeek).toLocaleString(tag),
+                )}
               </span>
             </div>
+
+            <OutcomeTile summary={summary} t={t} tag={tag} />
+
             <div className="mon-tile">
-              <span className="mon-tile-value">{duration(summary.medianMs)}</span>
               <span className="mon-tile-label">{t.medianDuration}</span>
-              <span className="mon-tile-detail">{t.callToResult}</span>
+              <span className="mon-tile-value">{duration(summary.medianMs)}</span>
+              <span className="mon-tile-detail">
+                {t.callToResult(duration(summary.p95Ms), summary.mcpWeek.toLocaleString(tag))}
+              </span>
             </div>
-            <div className="mon-tile mon-tile-list">
-              <span className="mon-tile-label">{t.mostCalled}</span>
-              {summary.topTools.length === 0 ? (
-                <span className="mon-tile-detail">{t.noMcpYet}</span>
-              ) : (
-                <ol className="mon-top">
-                  {summary.topTools.map((entry) => (
-                    <li key={entry.tool}>
-                      <code>{entry.tool}</code>
-                      <span>{entry.calls.toLocaleString(tag)}</span>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
+
+            <TopToolsTile summary={summary} t={t} tag={tag} />
           </div>
         ) : null}
       </section>
 
       <MonitorFeed initial={history} pageSize={PAGE} historyAvailable={summary !== null} />
+    </div>
+  );
+}
+
+type MonitorText = Messages["monitor"];
+
+/**
+ * Failed and refused against everything else, as a ring.
+ *
+ * Three segments and a centre figure: the ring answers "how much of the week
+ * went wrong" at a glance, the figure says exactly how much, and the legend
+ * carries the counts so identity never rests on colour alone. Success is the
+ * neutral track — the state worth seeing is the one that is not success.
+ */
+function OutcomeTile({
+  summary,
+  t,
+  tag,
+}: {
+  summary: ToolCallSummary;
+  t: MonitorText;
+  tag: string;
+}) {
+  const total = summary.week;
+  const bad = summary.failedWeek + summary.refusedWeek;
+  const share = total > 0 ? (bad / total) * 100 : 0;
+  const radius = 30;
+  const circumference = 2 * Math.PI * radius;
+  // A 2px surface gap between segments, taken off the end of each one — but
+  // never more than a segment has, so a sliver still draws.
+  const gap = 2;
+  const segments = [
+    { key: "failed", value: summary.failedWeek, className: "is-failed" },
+    { key: "refused", value: summary.refusedWeek, className: "is-refused" },
+  ];
+  let offset = 0;
+  const arcs = segments.map((segment) => {
+    const length = total > 0 ? (segment.value / total) * circumference : 0;
+    const drawn = Math.max(0, length - (length > gap * 2 ? gap : 0));
+    const arc = { ...segment, drawn, offset };
+    offset += length;
+    return arc;
+  });
+
+  return (
+    <div className="mon-tile mon-tile-chart">
+      <span className="mon-tile-label">{t.failedOrRefused}</span>
+      {total === 0 ? (
+        <span className="mon-tile-detail">{t.nothingThisWeek}</span>
+      ) : (
+        <div className="mon-outcome">
+          <svg
+            className="mon-donut"
+            viewBox="0 0 80 80"
+            role="img"
+            aria-label={`${t.failedOrRefused}: ${t.percentOfWeek(Math.round(share))}`}
+          >
+            <circle className="mon-donut-track" cx="40" cy="40" r={radius} />
+            {arcs.map((arc) =>
+              arc.drawn > 0 ? (
+                <circle
+                  key={arc.key}
+                  className={`mon-donut-arc ${arc.className}`}
+                  cx="40"
+                  cy="40"
+                  r={radius}
+                  strokeDasharray={`${arc.drawn} ${circumference - arc.drawn}`}
+                  // Clockwise from twelve o'clock.
+                  strokeDashoffset={circumference / 4 - arc.offset}
+                />
+              ) : null,
+            )}
+            <text className="mon-donut-figure" x="40" y="40">
+              {share < 10 && share > 0 ? share.toFixed(1) : Math.round(share)}%
+            </text>
+          </svg>
+          <ul className="mon-legend">
+            <li>
+              <i className="mon-key is-failed" aria-hidden="true" />
+              {t.outcomeFailed}
+              <span>{summary.failedWeek.toLocaleString(tag)}</span>
+            </li>
+            <li>
+              <i className="mon-key is-refused" aria-hidden="true" />
+              {t.outcomeRefused}
+              <span>{summary.refusedWeek.toLocaleString(tag)}</span>
+            </li>
+            <li>
+              <i className="mon-key is-ok" aria-hidden="true" />
+              {t.outcomeSucceeded}
+              <span>{(total - bad).toLocaleString(tag)}</span>
+            </li>
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The five most-called MCP tools as columns.
+ *
+ * One series, so one ink and no legend; the heights compare, the count sits on
+ * each column, and the name — too long to set under a column this narrow —
+ * comes up on hover or focus, and is each column's accessible name.
+ */
+function TopToolsTile({
+  summary,
+  t,
+  tag,
+}: {
+  summary: ToolCallSummary;
+  t: MonitorText;
+  tag: string;
+}) {
+  const top = summary.topTools;
+  const max = Math.max(1, ...top.map((entry) => entry.calls));
+  return (
+    <div className="mon-tile mon-tile-chart">
+      <span className="mon-tile-label">{t.mostCalled}</span>
+      {top.length === 0 ? (
+        <span className="mon-tile-detail">{t.noMcpYet}</span>
+      ) : (
+        <>
+          <div className="mon-bars" role="list">
+            {top.map((entry) => (
+              <div
+                key={entry.tool}
+                className="mon-bar"
+                role="listitem"
+                tabIndex={0}
+                aria-label={t.toolCalls(entry.tool, entry.calls.toLocaleString(tag))}
+                style={{ "--h": `${(entry.calls / max) * 100}%` } as React.CSSProperties}
+              >
+                <span className="mon-bar-value" aria-hidden="true">
+                  {entry.calls.toLocaleString(tag)}
+                </span>
+                <span className="mon-bar-fill" aria-hidden="true" />
+                <span className="mon-bar-tip" aria-hidden="true">
+                  {t.toolCalls(entry.tool, entry.calls.toLocaleString(tag))}
+                </span>
+              </div>
+            ))}
+          </div>
+          <span className="mon-tile-detail mon-bars-lead">
+            {t.topTool} <code>{top[0].tool}</code>
+          </span>
+        </>
+      )}
     </div>
   );
 }
