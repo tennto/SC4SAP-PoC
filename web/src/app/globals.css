@@ -7241,14 +7241,7 @@ button.mon-clear:hover:not(:disabled) {
   margin-top: auto;
 }
 
-/* ---- calls: figure, week sparkline, SAP split ---- */
-
-.mon-count {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-}
+/* ---- calls: figure and SAP split ---- */
 
 .mon-unit {
   margin-left: 4px;
@@ -7259,81 +7252,64 @@ button.mon-clear:hover:not(:disabled) {
   color: var(--ink-55);
 }
 
-/* Seven days, oldest to today. Small enough to sit beside the figure as its
-   footnote rather than a second chart. */
-.mon-spark {
+/* The week split into calls that reached SAP and workspace reads. Pushed to
+   the bottom with the lines under it, so this tile's last line sits where
+   the other tiles' do. Each part is its own target for the tip. */
+.mon-split {
   display: flex;
-  align-items: flex-end;
-  gap: 4px;
-  height: 34px;
-  flex: none;
+  gap: 2px;
+  height: 10px;
+  margin: auto 0 6px;
 }
 
-.mon-spark-day {
+.mon-split-part {
   position: relative;
-  display: flex;
-  align-items: flex-end;
-  width: 12px;
+  min-width: 4px;
   height: 100%;
   outline: none;
+  transition: opacity var(--t-fast) var(--ease);
 }
 
-.mon-spark-fill {
-  width: 100%;
-  height: max(2px, var(--h));
-  border-radius: 3px 3px 0 0;
-  background: var(--ink-38);
-  transition:
-    background-color var(--t-fast) var(--ease),
-    opacity var(--t-fast) var(--ease);
+.mon-split-part:first-child {
+  border-radius: 999px 0 0 999px;
 }
 
-.mon-spark-day.is-today .mon-spark-fill {
-  background: var(--ink);
+.mon-split-part:last-child {
+  border-radius: 0 999px 999px 0;
 }
 
-.mon-spark:hover .mon-spark-fill,
-.mon-spark:focus-within .mon-spark-fill {
-  opacity: 0.35;
-}
-
-.mon-spark-day:hover .mon-spark-fill,
-.mon-spark-day:focus-visible .mon-spark-fill {
-  opacity: 1;
-  background: var(--ink);
-}
-
-/* The sparkline sits against the tile's right edge, so its tips open to the
-   left of their column instead of centring on it and running off the card. */
-.mon-spark-day .mon-bar-tip {
-  bottom: calc(var(--h) + 6px);
-  left: auto;
-  right: 0;
-  transform: translateY(2px);
-}
-
-.mon-spark-day:hover .mon-bar-tip,
-.mon-spark-day:focus-visible .mon-bar-tip {
-  opacity: 1;
-  transform: none;
-}
-
-/* The week split into calls that reached SAP and workspace reads. */
-.mon-split {
-  height: 5px;
-  /* Pushed to the bottom with the lines under it, so this tile's last line
-     sits where the other tiles' do. */
-  margin: auto 0 4px;
+.mon-split-part:only-child {
   border-radius: 999px;
-  background: var(--panel-3);
-  overflow: hidden;
 }
 
-.mon-split-sap {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
+.mon-split-part.is-sap {
   background: var(--ink-55);
+}
+
+.mon-split-part.is-local {
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1px var(--line-soft);
+}
+
+.mon-split:hover .mon-split-part,
+.mon-split:focus-within .mon-split-part {
+  opacity: 0.45;
+}
+
+/* Same weight as the rule above and later, so it wins without !important. */
+.mon-split .mon-split-part:hover,
+.mon-split .mon-split-part:focus-visible {
+  opacity: 1;
+}
+
+.mon-split-part .mon-bar-tip {
+  bottom: calc(100% + 6px);
+}
+
+.mon-split-part:hover .mon-bar-tip,
+.mon-split-part:focus-visible .mon-bar-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 /* ---- failed / refused ring ---- */

@@ -269,13 +269,12 @@ function TopToolsTile({
 }
 
 /**
- * The week's count, the shape of the week, and what the calls were.
+ * The week's count, and what the calls were.
  *
- * A stat tile with a sparkline: the figure is the answer, the seven columns
- * say whether it came evenly or in one burst, and today's column is the one
- * in full ink. Under them, one thin bar splits the week into calls that
- * reached SAP and the agent reading its own workspace — the split that
- * decides whether a busy week was a busy week for the SAP system.
+ * Under the figure, one bar splits the week into calls that reached SAP and
+ * the agent reading its own workspace — the split that decides whether a busy
+ * week was a busy week for the SAP system. Each part names itself on hover or
+ * focus.
  */
 function CallsTile({
   summary,
@@ -286,47 +285,39 @@ function CallsTile({
   t: MonitorText;
   tag: string;
 }) {
-  const max = Math.max(1, ...summary.daily.map((day) => day.calls));
+  const local = summary.week - summary.mcpWeek;
   const sapShare = summary.week > 0 ? (summary.mcpWeek / summary.week) * 100 : 0;
-  // `9/27`: short enough for a tooltip, and read the same in every locale here.
-  const dayLabel = (date: string) => {
-    const [, month, day] = date.split("-");
-    return `${Number(month)}/${Number(day)}`;
-  };
+  const parts = [
+    { key: "sap", share: sapShare, label: t.splitSap(summary.mcpWeek.toLocaleString(tag)) },
+    { key: "local", share: 100 - sapShare, label: t.splitLocal(local.toLocaleString(tag)) },
+  ].filter((part) => part.share > 0);
   return (
     <div className="mon-tile">
       <span className="mon-tile-label">{t.callsThisWeek}</span>
-      <div className="mon-count">
-        <span className="mon-tile-value">
-          {summary.week.toLocaleString(tag)}
-          <span className="mon-unit">{t.callsUnit}</span>
-        </span>
-        <div className="mon-spark" role="list">
-          {summary.daily.map((day, index) => (
+      <span className="mon-tile-value">
+        {summary.week.toLocaleString(tag)}
+        <span className="mon-unit">{t.callsUnit}</span>
+      </span>
+      {summary.week > 0 ? (
+        <div className="mon-split" role="list">
+          {parts.map((part) => (
             <div
-              key={day.date}
-              className={`mon-spark-day${index === summary.daily.length - 1 ? " is-today" : ""}`}
+              key={part.key}
+              className={`mon-split-part is-${part.key}`}
               role="listitem"
               tabIndex={0}
-              aria-label={t.dayCalls(dayLabel(day.date), day.calls.toLocaleString(tag))}
-              style={{ "--h": `${(day.calls / max) * 100}%` } as React.CSSProperties}
+              aria-label={part.label}
+              style={{ width: `${part.share}%` }}
             >
-              <span className="mon-spark-fill" aria-hidden="true" />
               <span className="mon-bar-tip" aria-hidden="true">
-                {t.dayCalls(dayLabel(day.date), day.calls.toLocaleString(tag))}
+                {part.label}
               </span>
             </div>
           ))}
         </div>
-      </div>
-      <div className="mon-split" aria-hidden="true">
-        <span className="mon-split-sap" style={{ width: `${sapShare}%` }} />
-      </div>
+      ) : null}
       <span className="mon-tile-detail">
-        {t.sapLocalSplit(
-          summary.mcpWeek.toLocaleString(tag),
-          (summary.week - summary.mcpWeek).toLocaleString(tag),
-        )}
+        {t.sapLocalSplit(summary.mcpWeek.toLocaleString(tag), local.toLocaleString(tag))}
       </span>
       <span className="mon-tile-detail">{t.inLast24h(summary.today.toLocaleString(tag))}</span>
     </div>
