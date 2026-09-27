@@ -3720,6 +3720,12 @@ button.primary:hover:not(:disabled) {
 
 .skill .fields {
   gap: 13px;
+  /* The one cap inside a skill panel, and on the fields rather than the panel,
+     which keeps the full-width rule above. At 1920px the auto-fit columns
+     stretched four short inputs to 380px each with the labels drifting apart
+     from one another; 1240px is `--measure`'s own ceiling, so nothing changes
+     until the window is wider than a laptop's. */
+  max-width: 1240px;
 }
 
 .skill .field-label {
