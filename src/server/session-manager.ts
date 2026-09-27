@@ -996,6 +996,14 @@ export class SessionManager {
         // the L1 blocklist guards are declared. Dropping this silently
         // ungates row extraction — see provision-workspace.ts.
         settingSources: ["project"],
+        // No auto-memory. Left on, the session resolved it to the memory
+        // directory of whoever develops this repo in Claude Code — a report
+        // once quoted the developer's own notes back to the reader — and
+        // every edit to those notes changed the first message of every
+        // session, so 26k tokens of it were written to the prompt cache again
+        // on each run instead of read (measured 2026-09-27, about $0.16 a run
+        // at the 1h write rate). A SAP session has nothing to remember there.
+        settings: { autoMemoryEnabled: false },
         includeHookEvents: true,
         // Plan 2-3 — token-level relay. Produces `stream_event` messages that
         // #relayStreamEvent translates into text_delta / tool_start / tool_end.
