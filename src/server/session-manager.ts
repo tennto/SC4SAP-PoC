@@ -117,6 +117,14 @@ const WARM_IDLE_MS = Number(process.env.SC4SAP_WARM_IDLE_MS ?? 10 * 60_000);
 const WARM_REFILL_DELAY_MS = 3_000;
 
 /**
+ * How long a finished background task waits for the SDK to resume the parent
+ * by itself before the backend prompts it to. The SDK's own resume shows up
+ * within a second of the notification; five leaves room for a slow machine
+ * and costs a reader nothing on the path where the nudge is needed.
+ */
+const COLLECT_NUDGE_GRACE_MS = 5_000;
+
+/**
  * Appended to the model's system prompt for every session.
  *
  * Two things. First, who the host is: the plugin's skills (analyze-symptom
@@ -524,6 +532,12 @@ type LiveSession = {
    * see `background_tasks_changed`.
    */
   backgroundTasks: Set<string>;
+  /**
+   * The "go and collect it" prompt for a finished background task, waiting
+   * to see whether the SDK resumes the parent on its own first. See the
+   * `task_notification` handler.
+   */
+  collectNudge?: ReturnType<typeof setTimeout>;
   /**
    * Set while this session sits in the warm pool: the key it was opened
    * under and the countdown to shutting it down unclaimed. Cleared the
@@ -1450,6 +1464,9 @@ export class SessionManager {
     // put the session back to busy; an empty set here is what it should
     // find when it does.
     live.backgroundTasks.clear();
+    // A stopped run is not to be restarted by a nudge that was waiting.
+    if (live.collectNudge) clearTimeout(live.collectNudge);
+    live.collectNudge = undefined;
     this.#setStatus(live, "idle");
     return "stopped";
   }
@@ -1468,6 +1485,7 @@ export class SessionManager {
     this.#cancelOrphanTimer(live);
     live.pump.close();
     this.toolLog.abandon(id);
+    if (live.collectNudge) clearTimeout(live.collectNudge);
     // Tell subscribers before dropping the entry — after this the id 404s.
     this.#setStatus(live, "closed");
     live.subscribers.clear();
@@ -1498,6 +1516,25 @@ export class SessionManager {
     void (async () => {
       try {
         for await (const message of live.session) {
+          // The SDK went back to the model by itself — see `collectNudge`.
+          // Any sign of it counts, not only the answer: the findings arrive as
+          // the dispatch's own tool result, then the model can think for well
+          // over the grace period before it writes a word, and waiting for
+          // the `assistant` message let the nudge fire into a turn that was
+          // already doing the work.
+          if (
+            live.collectNudge &&
+            !("parent_tool_use_id" in message && message.parent_tool_use_id) &&
+            (message.type === "user" ||
+              message.type === "assistant" ||
+              (message.type === "system" &&
+                (message.subtype === "init" ||
+                  message.subtype === "status" ||
+                  message.subtype === "thinking_tokens")))
+          ) {
+            clearTimeout(live.collectNudge);
+            live.collectNudge = undefined;
+          }
           if (message.type === "system" && message.subtype === "init") {
             live.record.sdkSessionId = message.session_id;
             // Only out of `starting`. The SDK emits `init` at the top of every
@@ -1592,17 +1629,28 @@ export class SessionManager {
 
             if (note.status === "completed") {
               this.#setStatus(live, "busy");
-              live.pump.push(
-                [
-                  `The background agent you dispatched (task ${note.task_id}) has finished.`,
-                  note.summary ? `Its summary: ${note.summary}` : "",
-                  "Collect its findings and continue the skill from where you",
-                  "left off — produce the report you said you would. Do not",
-                  "mention task or agent ids.",
-                ]
-                  .filter(Boolean)
-                  .join(" "),
-              );
+              // Not at once. The SDK now resumes the parent on a finished
+              // task by itself, and a nudge pushed on top of that became a
+              // second turn: measured on 2026-09-27, the report was written,
+              // then "I already delivered the report above" was written after
+              // it for another $0.09 — and the screen, which shows the latest
+              // agent message of a run, showed only that line. The nudge is
+              // kept for when the SDK does not resume, and cancelled above
+              // the moment it does.
+              if (live.collectNudge) clearTimeout(live.collectNudge);
+              const nudge = [
+                `The background agent you dispatched (task ${note.task_id}) has finished.`,
+                note.summary ? `Its summary: ${note.summary}` : "",
+                "Collect its findings and continue the skill from where you",
+                "left off — produce the report you said you would. Do not",
+                "mention task or agent ids.",
+              ]
+                .filter(Boolean)
+                .join(" ");
+              live.collectNudge = setTimeout(() => {
+                live.collectNudge = undefined;
+                live.pump.push(nudge);
+              }, COLLECT_NUDGE_GRACE_MS);
             } else {
               this.#emit(live, {
                 type: "error",
