@@ -7335,11 +7335,11 @@ button.mon-clear:hover:not(:disabled) {
 .mon-bars {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: 10px;
   /* A fixed track, with room above it for the tallest column's count, so a
      column's height is its share of the largest and nothing else. */
-  height: 76px;
-  margin-top: 14px;
+  height: 72px;
+  margin: 16px 4px 18px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -7358,30 +7358,66 @@ button.mon-clear:hover:not(:disabled) {
 
 .mon-bar-value {
   position: absolute;
-  bottom: calc(var(--h) + 3px);
+  bottom: calc(var(--h) + 4px);
   font-size: 10.5px;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--ink-55);
+  transition: color var(--t-fast) var(--ease);
 }
 
-/* Thin and rounded only at the data end, anchored to the baseline. */
+/* Rounded only at the data end, anchored to the baseline. The rest sit a
+   step back so the leader is the first thing read. */
 .mon-bar-fill {
-  width: min(22px, 100%);
-  height: max(2px, var(--h));
-  border-radius: 4px 4px 0 0;
-  background: var(--ink-55);
-  transition: background-color var(--t-fast) var(--ease);
+  width: min(28px, 100%);
+  height: max(3px, var(--h));
+  border-radius: 5px 5px 0 0;
+  background: var(--ink-38);
+  transition:
+    background-color var(--t-fast) var(--ease),
+    opacity var(--t-fast) var(--ease);
+}
+
+.mon-bar.is-top .mon-bar-fill {
+  background: var(--ink);
+}
+
+.mon-bar.is-top .mon-bar-value {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.mon-bar-rank {
+  position: absolute;
+  top: calc(100% + 5px);
+  font-size: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-38);
+}
+
+/* Pointing at one column quiets the others. */
+.mon-bars:hover .mon-bar-fill,
+.mon-bars:focus-within .mon-bar-fill {
+  opacity: 0.35;
 }
 
 .mon-bar:hover .mon-bar-fill,
 .mon-bar:focus-visible .mon-bar-fill {
+  opacity: 1;
   background: var(--ink);
+}
+
+.mon-bar:hover .mon-bar-value,
+.mon-bar:focus-visible .mon-bar-value,
+.mon-bar:hover .mon-bar-rank,
+.mon-bar:focus-visible .mon-bar-rank {
+  color: var(--ink);
 }
 
 .mon-bar-tip {
   position: absolute;
-  bottom: calc(100% + 4px);
+  bottom: calc(var(--h) + 20px);
   left: 50%;
   z-index: 2;
   padding: 5px 8px;
@@ -7406,7 +7442,7 @@ button.mon-clear:hover:not(:disabled) {
 }
 
 .mon-bars-lead {
-  margin-top: 6px;
+  margin-top: auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

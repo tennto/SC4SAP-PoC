@@ -219,9 +219,11 @@ function OutcomeTile({
 /**
  * The five most-called MCP tools as columns.
  *
- * One series, so one ink and no legend; the heights compare, the count sits on
- * each column, and the name — too long to set under a column this narrow —
- * comes up on hover or focus, and is each column's accessible name.
+ * One series, so no legend. The leader is set in full ink and the rest a step
+ * back — the tile's question is "what does the agent reach for most", and
+ * that is one column, not five. The count sits on each column and a rank
+ * under it; the name, too long for a column this narrow, comes up on hover
+ * or focus and is each column's accessible name.
  */
 function TopToolsTile({
   summary,
@@ -242,10 +244,10 @@ function TopToolsTile({
       ) : (
         <>
           <div className="mon-bars" role="list">
-            {top.map((entry) => (
+            {top.map((entry, index) => (
               <div
                 key={entry.tool}
-                className="mon-bar"
+                className={`mon-bar${index === 0 ? " is-top" : ""}`}
                 role="listitem"
                 tabIndex={0}
                 aria-label={t.toolCalls(entry.tool, entry.calls.toLocaleString(tag))}
@@ -255,6 +257,9 @@ function TopToolsTile({
                   {entry.calls.toLocaleString(tag)}
                 </span>
                 <span className="mon-bar-fill" aria-hidden="true" />
+                <span className="mon-bar-rank" aria-hidden="true">
+                  {index + 1}
+                </span>
                 <span className="mon-bar-tip" aria-hidden="true">
                   {t.toolCalls(entry.tool, entry.calls.toLocaleString(tag))}
                 </span>
@@ -263,6 +268,11 @@ function TopToolsTile({
           </div>
           <span className="mon-tile-detail mon-bars-lead">
             {t.topTool} <code>{top[0].tool}</code>
+            {" · "}
+            {t.topToolShare(
+              top[0].calls.toLocaleString(tag),
+              summary.mcpWeek > 0 ? Math.round((top[0].calls / summary.mcpWeek) * 100) : 0,
+            )}
           </span>
         </>
       )}

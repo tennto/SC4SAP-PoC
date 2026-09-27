@@ -767,6 +767,7 @@ const en = {
     ofAllCalls: "of all calls",
     toolCalls: (tool: string, calls: string) => `${tool} · ${calls} calls`,
     topTool: "Top",
+    topToolShare: (calls: string, percent: number) => `${calls} calls · ${percent}% of SAP calls`,
     mostCalled: "most called",
     noMcpYet: "no MCP calls yet",
 
@@ -1610,6 +1611,7 @@ const ko: Messages = {
     ofAllCalls: "전체 호출 중",
     toolCalls: (tool, calls) => `${tool} · ${calls}건`,
     topTool: "1위",
+    topToolShare: (calls, percent) => `${calls}건 · SAP 호출의 ${percent}%`,
     mostCalled: "최다 호출",
     noMcpYet: "아직 MCP 호출 없음",
 
@@ -2431,6 +2433,7 @@ const ja: Messages = {
     ofAllCalls: "全呼び出しのうち",
     toolCalls: (tool, calls) => `${tool} · ${calls} 件`,
     topTool: "1位",
+    topToolShare: (calls, percent) => `${calls} 件 · SAP 呼び出しの ${percent}%`,
     mostCalled: "最多呼び出し",
     noMcpYet: "MCP 呼び出しはまだありません",
 
