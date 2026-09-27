@@ -12,7 +12,6 @@ import type { ToolCall } from "@/lib/types";
  * page will not see it.
  */
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The wire shape: dates as ISO strings, `_id` back to `id`. */
@@ -127,13 +126,29 @@ export type ToolCallSummary = {
   p95Ms: number | null;
   /** The week's most-called MCP tools, most first. */
   topTools: { tool: string; calls: number }[];
+  /**
+   * Calls per day, oldest first: seven local calendar days ending today.
+   * `week` is their sum — the week is counted in whole days, so the columns
+   * and the figure above them always agree.
+   */
+  daily: { date: string; calls: number }[];
 };
+
+/** `YYYY-MM-DD` for a date in the server's local time. */
+function localDate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
 
 /** The tiles across the top of the monitor. One aggregate pass. */
 export async function summarizeToolCalls(userId: string): Promise<ToolCallSummary> {
   const now = Date.now();
-  const weekAgo = new Date(now - WEEK_MS);
+  // Local midnight six days back: today and the six whole days before it.
+  const weekAgo = new Date(now);
+  weekAgo.setHours(0, 0, 0, 0);
+  weekAgo.setDate(weekAgo.getDate() - 6);
   const dayAgo = new Date(now - DAY_MS);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const [row] = await (await toolCalls())
     .aggregate<{
@@ -144,6 +159,7 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
       mcpWeek: number;
       durations: number[];
       tools: { tool: string; calls: number }[];
+      days: { _id: string; calls: number }[];
     }>([
       { $match: { userId, startedAt: { $gte: weekAgo } } },
       {
@@ -184,6 +200,16 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
             { $match: { kind: "mcp", durationMs: { $ne: null } } },
             { $group: { _id: null, values: { $push: "$durationMs" } } },
           ],
+          days: [
+            {
+              $group: {
+                _id: {
+                  $dateToString: { format: "%Y-%m-%d", date: "$startedAt", timezone },
+                },
+                calls: { $sum: 1 },
+              },
+            },
+          ],
           tools: [
             { $match: { kind: "mcp" } },
             { $group: { _id: "$tool", calls: { $sum: 1 } } },
@@ -202,6 +228,7 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
           mcpWeek: { $ifNull: [{ $first: "$counts.mcpWeek" }, 0] },
           durations: { $ifNull: [{ $first: "$durations.values" }, []] },
           tools: 1,
+          days: 1,
         },
       },
     ])
@@ -231,5 +258,11 @@ export async function summarizeToolCalls(userId: string): Promise<ToolCallSummar
     medianMs,
     p95Ms,
     topTools: row?.tools ?? [],
+    daily: Array.from({ length: 7 }, (_, index) => {
+      const day = new Date(weekAgo);
+      day.setDate(weekAgo.getDate() + index);
+      const date = localDate(day);
+      return { date, calls: row?.days.find((entry) => entry._id === date)?.calls ?? 0 };
+    }),
   };
 }
