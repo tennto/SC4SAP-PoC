@@ -70,6 +70,11 @@
      text and not only as a dot. */
   --ok: #15803d;
   --warn: #b45309;
+  /* Refused, in a chart beside --bad. --warn is amber and read as a second
+     red next to it; this is a yellow a reader tells apart at a glance
+     (validated against --bad: ΔE 22.6, CVD 17.4). Marks only — it is 2.9:1
+     on white, so a chart using it carries labels. */
+  --chart-refused: #ca8a04;
   --bad: #b91c1c;
 
   /* ---- Type ----
@@ -198,6 +203,7 @@
 
     --ok: #4ade80;
     --warn: #fbbf24;
+    --chart-refused: #fbbf24;
     --bad: #f87171;
   }
 }
@@ -226,6 +232,7 @@
 
   --ok: #4ade80;
   --warn: #fbbf24;
+  --chart-refused: #fbbf24;
   --bad: #f87171;
 }
 
@@ -7239,14 +7246,15 @@ button.mon-clear:hover:not(:disabled) {
 .mon-outcome {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 28px;
   flex: 1;
+  padding-left: 4px;
 }
 
 .mon-donut {
   flex: none;
-  width: 84px;
-  height: 84px;
+  width: 96px;
+  height: 96px;
 }
 
 .mon-donut-track,
@@ -7271,8 +7279,8 @@ button.mon-clear:hover:not(:disabled) {
 
 .mon-donut-arc.is-refused,
 .mon-key.is-refused {
-  stroke: var(--warn);
-  background: var(--warn);
+  stroke: var(--chart-refused);
+  background: var(--chart-refused);
 }
 
 .mon-key.is-ok {
