@@ -7254,8 +7254,8 @@ button.mon-clear:hover:not(:disabled) {
 
 .mon-donut {
   flex: none;
-  width: 96px;
-  height: 96px;
+  width: 108px;
+  height: 108px;
 }
 
 .mon-donut-track,
@@ -7291,7 +7291,9 @@ button.mon-clear:hover:not(:disabled) {
 
 .mon-donut-figure {
   font-family: var(--font-display);
-  font-size: 15px;
+  /* viewBox units: the ring is 80 across, drawn at 108 px, so this sets at
+     about 16 px. */
+  font-size: 12px;
   font-weight: 600;
   fill: var(--ink);
   text-anchor: middle;
