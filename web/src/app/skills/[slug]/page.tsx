@@ -117,7 +117,9 @@ export default async function SkillPage({
       >
         <div className="panel-head">
           <h2>{t.inputs}</h2>
-          <p className="panel-note">{t.inputsNote}</p>
+          <p className="panel-note">
+            {skill.documents ? t.inputsNoteDocuments : t.inputsNote}
+          </p>
         </div>
 
         <SkillForm

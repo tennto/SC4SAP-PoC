@@ -69,6 +69,9 @@
      All three clear 5:1 on white, because they are used as 11px uppercase
      text and not only as a dot. */
   --ok: #15803d;
+  /* A spreadsheet file's mark: the green people know a workbook by. */
+  --excel: #1d6f42;
+  --excel-wash: rgba(29, 111, 66, 0.09);
   --warn: #b45309;
   /* Refused, in a chart beside --bad. --warn is amber and read as a second
      red next to it; this is a yellow a reader tells apart at a glance
@@ -202,6 +205,8 @@
     --line-strong: rgba(237, 237, 237, 0.28);
 
     --ok: #4ade80;
+    --excel: #5cc98a;
+    --excel-wash: rgba(92, 201, 138, 0.12);
     --warn: #fbbf24;
     --chart-refused: #fbbf24;
     --bad: #f87171;
@@ -231,6 +236,8 @@
   --line-strong: rgba(237, 237, 237, 0.28);
 
   --ok: #4ade80;
+  --excel: #5cc98a;
+  --excel-wash: rgba(92, 201, 138, 0.12);
   --warn: #fbbf24;
   --chart-refused: #fbbf24;
   --bad: #f87171;
@@ -3184,6 +3191,167 @@ button.primary:hover:not(:disabled) {
   border-color: var(--ink);
 }
 
+/* ---------- Program → Spec's survey ---------- */
+
+/* A short form in a dialog: three questions, each answered by a row of
+   compact radio tiles. Quieter than the model's own question dialog — these
+   are settings chosen before a run, not a question put mid-run. */
+.modal.spec-survey {
+  width: min(580px, 100%);
+  padding: 42px 38px 38px;
+  gap: 20px;
+}
+
+.spec-survey .modal-head strong {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.survey-description {
+  margin: -2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-55);
+}
+
+.survey-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.survey-question {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.survey-legend {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  margin-bottom: 10px;
+}
+
+.survey-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-38);
+}
+
+.survey-ask {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-80);
+}
+
+.survey-options {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* The tile. Its border and wash change colour, never width, so choosing one
+   moves nothing. The resting border is the app's hairline; hover darkens it
+   a step; chosen takes the ink outline and a faint ink wash — inside the
+   border, nothing outside it. */
+.survey-option {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  background-clip: padding-box;
+  color: var(--ink-80);
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: pointer;
+  transition:
+    border-color 200ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 200ms cubic-bezier(0.2, 0, 0, 1),
+    color 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.survey-option:hover:not(.is-on) {
+  border-color: var(--line-strong);
+  background: var(--line-soft);
+}
+
+.survey-option.is-on {
+  border-color: var(--ink-80);
+  background-color: color-mix(in srgb, var(--ink) 5%, transparent);
+  color: var(--ink);
+}
+
+/* The global press nudge is for actions; a choice stays put. */
+.survey-option:active:not(:disabled) {
+  transform: none;
+}
+
+.survey-option:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.survey-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* A one-word answer (audience, language) sits in the middle of its tile. */
+.survey-option:not(.has-note) {
+  justify-content: center;
+  text-align: center;
+}
+
+/* An answer with a line under it gets more room above and below. */
+.survey-option.has-note {
+  padding-block: 13px;
+}
+
+.survey-option-label {
+  font-weight: 600;
+}
+
+.survey-option-note {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ink-55);
+}
+
+.survey-actions {
+  margin-top: 4px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.survey-actions button {
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+@media (max-width: 560px) {
+  .survey-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survey-option {
+    transition: none;
+  }
+}
+
 .question-hint {
   margin: 8px 0 0;
   font-size: 11px;
@@ -3294,6 +3462,131 @@ button.primary:hover:not(:disabled) {
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 14px;
+}
+
+/* The activity panel's month: ‹ 26/09 ›, top right of the box, sitting on
+   the same line as the panel's heading. No boxes: the carets are glyphs that
+   darken and lean the way they go, so the control reads as part of the
+   heading rather than a toolbar bolted onto it. */
+.month-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: -4px;
+}
+
+.month-label {
+  min-width: 38px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.month-year {
+  font-weight: 500;
+  color: var(--ink-38);
+}
+
+.month-sep {
+  margin: 0 2px;
+  font-weight: 400;
+  color: var(--ink-38);
+}
+
+.month-step {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 13px;
+  color: var(--ink-55);
+  cursor: pointer;
+  transition:
+    color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease),
+    opacity var(--t-fast) var(--ease);
+}
+
+.month-step:not(:disabled):hover {
+  color: var(--ink);
+  background: var(--line-soft);
+}
+
+.month-step:first-child:not(:disabled):hover {
+  transform: translateX(-1px);
+}
+
+.month-step:last-child:not(:disabled):hover {
+  transform: translateX(1px);
+}
+
+.month-step:not(:disabled):active {
+  background: var(--line);
+}
+
+.month-step:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.month-step:disabled {
+  color: var(--ink-38);
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* One height for the figure with its note and for an empty month, so the
+   rows below never move when the month changes. */
+.month-slot {
+  min-height: 96px;
+  margin: 4px 0 6px;
+}
+
+.month-slot .figure {
+  margin-top: 0;
+}
+
+.month-slot-body {
+  animation: month-in var(--t-base) var(--ease) both;
+}
+
+@keyframes month-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+/* Waiting on a month not fetched yet: the figure's shape, quiet, so the
+   slot holds its size and the arrival reads as the number filling in. */
+.figure.is-waiting {
+  color: var(--ink-38);
+  opacity: 0.35;
+}
+
+.month-empty {
+  display: flex;
+  align-items: center;
+  /* The whole slot, so the sentence sits in the middle of it. */
+  min-height: 96px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .month-slot-body {
+    animation: none;
+  }
 }
 
 .conn-actions {
@@ -3926,16 +4219,270 @@ button.primary:hover:not(:disabled) {
   color: var(--ink-55);
 }
 
+/* ---------- a run's files (Program → Spec) ---------- */
+
+/* Under the document: the HTML the run wrote, and the workbook. */
+.run-files {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.run-files-wait,
+.run-files-none {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-55);
+}
+
+.run-files-wait .spin {
+  animation: spin 0.9s linear infinite;
+}
+
+/* The HTML the reader will send on, drawn as it will be seen. A fixed
+   height with its own scroll: a spec runs to many screens, and letting the
+   frame grow to all of them would push the workbook out of sight. */
+/* The box the document is seen through. Its size never changes; the frame
+   inside is laid out at 1/zoom of it and scaled back up (`HtmlPreview`). */
+.html-preview-viewport {
+  position: relative;
+  height: min(72vh, 760px);
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.html-preview-frame {
+  position: absolute;
+  inset: 0 auto auto 0;
+  display: block;
+  border: 0;
+  background: #ffffff;
+  transform-origin: 0 0;
+}
+
+.html-preview-tools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* − ——●—— + 100% : quiet until touched, the way the bar's other control is. */
+.zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.zoom-step,
+.zoom-value {
+  display: inline-grid;
+  place-items: center;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-55);
+  transition:
+    color 160ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.zoom-step {
+  width: 24px;
+  font-size: 12px;
+}
+
+.zoom-step .ph {
+  font-size: 12px;
+}
+
+.zoom-value {
+  min-width: 42px;
+  padding: 0 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-step:not(:disabled):hover,
+.zoom-value:hover {
+  color: var(--ink);
+  background: var(--line-soft);
+}
+
+.zoom-step:active:not(:disabled),
+.zoom-value:active {
+  transform: none;
+}
+
+.zoom-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 104px;
+  height: 16px;
+  margin: 0 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.zoom-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--ink-55) 0 var(--fill),
+    var(--line) var(--fill) 100%
+  );
+}
+
+.zoom-range::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.zoom-range::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--ink-55);
+}
+
+.zoom-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1.5px solid var(--ink-80);
+  transition: transform 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.zoom-range::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 1.5px solid var(--ink-80);
+}
+
+.zoom-range:hover::-webkit-slider-thumb,
+.zoom-range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+.zoom-range:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* A file to take away, drawn the way a chat draws an attachment: the kind's
+   mark on the left, what it is under its name, and the whole card is the
+   button. */
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(100%, 460px);
+  padding: 12px 14px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
+}
+
+.file-card:hover {
+  border-color: var(--line-strong);
+  background: var(--panel-2);
+  box-shadow: 0 2px 10px rgba(var(--shadow-rgb), 0.06);
+}
+
+.file-card:active {
+  transform: translateY(1px);
+}
+
+.file-card:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.file-card-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 9px;
+  background: var(--excel-wash);
+  color: var(--excel);
+  font-size: 24px;
+}
+
+.file-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.file-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.file-card-meta {
+  font-size: 12px;
+  color: var(--ink-55);
+  font-variant-numeric: tabular-nums;
+}
+
+.file-card-action {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: var(--ink-55);
+  font-size: 16px;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.file-card:hover .file-card-action {
+  color: var(--ink);
+  background: var(--line-soft);
+}
+
 .skill-continue {
   flex: none;
   padding: 5px 12px;
   font-size: 12px;
 }
 
-/* On the left of the button row, where a form's own message goes — see
-   `.field-actions`. */
+/* After the buttons, not before them: a message that appears must not move
+   the Run button the reader just pressed. */
 .skill-error {
-  margin: 0 auto 0 0;
+  order: 1;
+  margin: 0;
 }
 
 .notice-block {
@@ -4128,6 +4675,29 @@ button.primary:hover:not(:disabled) {
   gap: 16px;
 }
 
+/* A form laid out in rows of its own (`SkillField.span`): the first row's
+   fields, then a fresh row for the rest. Three tracks at the width fields
+   have everywhere else, so no box is wider than it would be on any other
+   form and both rows start on the same left edges. One column when there is
+   no room for three. */
+.fields.fields-rows {
+  grid-template-columns: repeat(3, minmax(0, 300px));
+}
+
+.fields.fields-rows .span-half + .span-third {
+  grid-column-start: 1;
+}
+
+@media (max-width: 1040px) {
+  .fields.fields-rows {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fields.fields-rows .span-half + .span-third {
+    grid-column-start: auto;
+  }
+}
+
 /* Free text wants the full width even when the grid could fit two columns. */
 .field-textarea {
   grid-column: 1 / -1;
@@ -4212,6 +4782,45 @@ button.primary:hover:not(:disabled) {
   font-size: 11px;
   line-height: 1.5;
   color: var(--ink-38);
+}
+
+/* Under a text box or a select, nudged in off the box's edge so it lines
+   up with the value rather than hanging out to the left of it. */
+.fields .field:not(.field-switch) > .field-hint {
+  padding-left: 2px;
+}
+
+/* A hint per option: every option's hint is laid in the same cell and only
+   the chosen one is visible, so the cell is always as tall as the longest —
+   changing the answer changes the words, never the height of the form. */
+.hint-stack {
+  display: grid;
+}
+
+/* One after the other, not both at once: two lines of small grey text
+   fading through each other read as a smudge. The old words leave quickly;
+   the new ones wait for them, then ease up into place. Each state carries
+   the transition for arriving at it. */
+.hint-stack > span {
+  grid-area: 1 / 1;
+  transition:
+    opacity 240ms cubic-bezier(0.2, 0, 0, 1) 110ms,
+    transform 320ms cubic-bezier(0.2, 0, 0, 1) 110ms;
+}
+
+.hint-stack > span.is-hidden {
+  opacity: 0;
+  transform: translateY(2px);
+  pointer-events: none;
+  transition:
+    opacity 110ms cubic-bezier(0.4, 0, 1, 1),
+    transform 110ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint-stack > span {
+    transition: none;
+  }
 }
 
 /* ---------- settings ---------- */

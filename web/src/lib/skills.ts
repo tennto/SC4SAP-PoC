@@ -30,6 +30,18 @@ export type SkillField = {
   options?: string[];
   hint?: string;
   /**
+   * A select's hint per option, shown instead of `hint` for the option that
+   * is chosen — so the line under the field explains the answer on screen
+   * rather than every answer at once.
+   */
+  optionHints?: Record<string, string>;
+  /**
+   * Lays the form out in rows of its own: `half` fields share the first row,
+   * and the first `third` field after them starts a new row that the rest
+   * follow. Without it the form is the usual auto-fitted grid.
+   */
+  span?: "half" | "third";
+  /**
    * The field also takes screenshots — dropped, pasted or picked — which go
    * to the model as images alongside the text. A dump or a job log is a
    * screen far more often than it is a string someone can retype.
@@ -98,6 +110,15 @@ export type Skill = {
      * reorders an array is not a default, it is an accident.
      */
     defaultModel: string;
+    /**
+     * The main thread's model, where the skill's own `SKILL.md` pins one.
+     *
+     * The session opens on it whatever the dialog says, and the dialog's
+     * choice decides only the sub-agents. Opening anywhere else paid for a
+     * cache write and then switched to the pin: on 2026-09-27 a Haiku choice
+     * made Analyze Code cost more, not less.
+     */
+    pinnedModel?: string;
   };
   /**
    * The skill answers in rounds and asks back.
@@ -107,6 +128,16 @@ export type Skill = {
    * run is open, instead of sending the reader to chat to answer.
    */
   followUp?: boolean;
+  /**
+   * The run writes documents for the reader to take away, and keeps nothing.
+   *
+   * The page collects the files when the run settles (the backend hands them
+   * over once and deletes them), shows them, and offers them for download.
+   * Nothing of the run is remembered: not in this tab's storage, not as a
+   * conversation — only its cost is recorded. Done, a reload or closing the
+   * tab ends it, and the backend session with it.
+   */
+  documents?: boolean;
 };
 
 export type SkillGroup = {
@@ -165,6 +196,15 @@ export const SKILLS: Skill[] = [
       { label: "Module", kind: "select", options: MODULES, hint: "Auto-route picks the agent from your question's keywords." },
       { label: "Question", kind: "textarea", placeholder: "e.g. Why does the PO release strategy skip the second approver?" },
     ],
+    cost: {
+      note: "The question is answered by the plugin's module consultant; the orchestrator routes it and checks the answer. The choice here is the orchestrator's model, and since plugin 0.6.24 this skill follows it. The consultant runs on Opus when Opus is chosen and on Sonnet otherwise. Measured on 2026-09-27, a one-sentence answer cost $0.43, of which $0.28 was the session opening on Sonnet and then switching away to the skill's pinned Haiku.",
+      defaultBudgetUsd: 1,
+      // Haiku because the orchestrator here routes and relays: the reasoning
+      // is the consultant's. The skill used to pin Haiku itself, so a session
+      // opened on anything else paid a cache write for nothing; with the pin
+      // now `inherit`, opening on Haiku keeps the whole main thread on it.
+      defaultModel: "claude-haiku-4-5",
+    },
     // A consultant's answer invites the next question, and asking it here
     // keeps the module routing and the context the first one built.
     followUp: true,
@@ -199,13 +239,12 @@ export const SKILLS: Skill[] = [
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
     ],
     cost: {
-      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the orchestrator only formats them. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus. Note that this choice moves the orchestrator, not the reviewer: the plugin's agents pin their own model today, so the heavy half of a run ignores it until that changes.",
+      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the main run, which the skill keeps on Sonnet, only formats them. The choice here is the reviewer's model: Sonnet by default, or Opus for the reviewer the plugin asks for. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus.",
       defaultBudgetUsd: 3,
-      // Sonnet rather than Haiku for the half this choice does move: the
-      // orchestrator's job here is to turn a findings list into the report,
-      // and that part has not been measured on Haiku the way the symptom
-      // triage was.
+      // The reviewer on Sonnet: $0.50 of a $0.69 run was the reviewer on Opus
+      // (2026-09-27), and Opus stays one choice away.
       defaultModel: "claude-sonnet-5",
+      pinnedModel: "claude-sonnet-5",
     },
     // The report ends on a menu — explain finding #N, show the callers — and
     // the reply goes to the same session, where the reviewer's findings are
@@ -273,20 +312,20 @@ export const SKILLS: Skill[] = [
       },
     ],
     cost: {
-      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code. A short dump is triaged on the cheap path; the skill escalates to Opus by itself, and only when the dump alone cannot explain the failure. Note that this choice moves the orchestrator, not the debugger: the plugin's agents pin their own model today, so the heavy half of a run ignores it until that changes.",
+      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code; the main run stays on Sonnet, which the skill pins. A short dump is triaged on Sonnet, and when the dump alone cannot explain the failure the skill escalates to Opus by itself. The choice here decides whether it may: on Sonnet the escalation also runs on Sonnet, on Opus it goes to Opus.",
       defaultBudgetUsd: 3,
-      // Haiku, on the evidence rather than to be cheap: asked to analyse an
-      // ST22 screenshot it produced a report at least as good as Sonnet's —
-      // it caught the "(Source code changed)" flag, compared both function
-      // module interfaces field by field and found the one-digit name typo.
-      // The work is retrieval and comparison, which is the shape it is good
-      // at, and the skill's own `BLOCKED — needs full` escalation is the
-      // safety net that makes starting cheap safe.
-      defaultModel: "claude-haiku-4-5",
+      // Was Haiku, on a report judged as good as Sonnet's. That run was very
+      // likely Sonnet all along: the skill pins `model: sonnet`, and no
+      // `modelUsage` was kept to say otherwise. Sonnet now, stated plainly.
+      defaultModel: "claude-sonnet-5",
+      pinnedModel: "claude-sonnet-5",
     },
     followUp: true,
   },
   {
+    // Not yet worked on for model choice: no cost dialog, so no budget and no
+    // economy, and its Opus agents run unchecked. Add both when this skill is
+    // next developed — see docs/model-selection-improvements.md, item 4.
     slug: "analyze-cbo-obj",
     command: "/sc4sap:analyze-cbo-obj",
     tools: "build",
@@ -302,6 +341,9 @@ export const SKILLS: Skill[] = [
     ],
   },
   {
+    // Not yet worked on for model choice: no cost dialog, so no budget and no
+    // economy, and its Opus agents run unchecked. Add both when this skill is
+    // next developed — see docs/model-selection-improvements.md, item 4.
     slug: "compare-programs",
     command: "/sc4sap:compare-programs",
     tools: "build",
@@ -332,16 +374,51 @@ export const SKILLS: Skill[] = [
       "Reverse-engineers a program into a functional or technical specification, with selection-screen and ALV mockups",
     group: "analyze",
     status: "ready",
+    // What to document, what to get back, and how. Economy starts at once
+    // with fixed answers; Standard is the plugin's own skill and asks the rest
+    // of its interview (detail, audience, language) in a dialog when Run is
+    // pressed (`SpecSurveyModal`), so nothing is asked mid-run. See
+    // `lib/spec-prompt.ts`.
     fields: [
-      { label: "Program name", kind: "text", placeholder: "ZPP0050" },
-      // Any combination since plugin 0.6.20; the common ones are listed rather
-      // than every subset, and the skill takes the words as they are.
-      { label: "Output format", kind: "select", options: ["Markdown", "HTML", "Excel (xlsx)", "Markdown + HTML", "Markdown + HTML + Excel (xlsx)"], hint: "HTML is one self-contained file with the mockups inlined." },
-      { label: "Scope", kind: "select", options: ["Everything", "Selection screen only", "Business logic only", "Interfaces only"] },
-      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese", "German"] },
+      // Two rows: what to document, then how — mode, files, language.
+      { label: "Package", kind: "text", placeholder: "ZMMPAEK", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
+      { label: "Program name", kind: "text", placeholder: "ZMMR00020", span: "half" },
+      // Excel on its own: the workbook carries the whole spec.
+      {
+        label: "Mode",
+        kind: "select",
+        span: "third",
+        // Economy first and default: the target is a run under ₩500, and the
+        // plugin's full skill measured ~₩1,600 on ZMMR00020 (2026-09-28).
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy: "One agent. About ₩200–400 and 1–3 min. Starts right away.",
+          Standard:
+            "The plugin's full skill, with an analyst agent. About ₩1,000–1,600 and 5–10 min. Asks about detail and audience first.",
+        },
+      },
+      {
+        label: "Output format",
+        kind: "select",
+        span: "third",
+        options: ["Markdown", "HTML", "Markdown + HTML", "Excel (xlsx)"],
+        optionHints: {
+          Markdown: "Shown here as the document, saved as .md.",
+          HTML: "Previewed here as it will look, saved as .html.",
+          "Markdown + HTML": "The document here and an HTML preview under it, saved as either.",
+          "Excel (xlsx)": "A workbook, offered as a file to download.",
+        },
+      },
+      // On the form rather than in the dialog, so Economy — which asks
+      // nothing — writes in the language chosen, not the screen's.
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
     ],
+    documents: true,
   },
   {
+    // Not yet worked on for model choice: no cost dialog, so no budget and no
+    // economy, and its Opus agents run unchecked. Add both when this skill is
+    // next developed — see docs/model-selection-improvements.md, item 4.
     slug: "package-to-process",
     command: "/sc4sap:package-to-process",
     tools: "build",

@@ -23,7 +23,7 @@
  */
 import { Children, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactElement, ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { HighlighterCore } from "shiki/core";
 import type { Element } from "hast";
@@ -356,6 +356,11 @@ export function Markdown({
     <div className="markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        // A picture carried inside the document itself — a spec's rendered
+        // screens — is let through; every other URL gets the default checks.
+        urlTransform={(url) =>
+          url.startsWith("data:image/") ? url : defaultUrlTransform(url)
+        }
         components={{
           table: ({ node, children: cells }) => (
             <DataTable node={node}>{cells}</DataTable>

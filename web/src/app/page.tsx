@@ -35,6 +35,7 @@ import { localeTag } from "@/lib/i18n/locale";
 import type { Messages } from "@/lib/i18n/messages";
 import { Icon } from "@/components/Icon";
 import { FavoriteSkills } from "@/components/FavoriteSkills";
+import { ActivityPanel } from "@/components/ActivityPanel";
 import { ReconnectButton } from "@/components/ReconnectButton";
 
 export const dynamic = "force-dynamic";
@@ -152,18 +153,26 @@ async function loadProfiles(): Promise<ProfileList | null> {
   }
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Before anything is fetched or rendered. `proxy.ts` has already turned away
   // requests with no cookie at all; this is the check that the cookie still
   // names a session, and it redirects rather than rendering an empty shell.
   const account = await requireAccount();
+  // `?month=YYYY-MM` from the activity panel's arrows. Anything else, or a
+  // month still to come, falls back to this month inside `readActivity`.
+  const query = await searchParams;
+  const requestedMonth = typeof query.month === "string" ? query.month : undefined;
   // Independent of each other: one is an HTTP call to the backend, the other a
   // Mongo aggregate, and waiting for them in turn would add the slower to the
   // faster for nothing.
   const [{ health, error }, activity, connection, profiles, { locale, t: messages }] =
     await Promise.all([
       loadHealth(),
-      readActivity(account.id),
+      readActivity(account.id, requestedMonth),
       readConnection(account.id),
       loadProfiles(),
       readMessages(),
@@ -393,67 +402,24 @@ export default async function HomePage() {
           )}
         </section>
 
-        <section
-          className="panel panel-activity rise"
-          style={{ "--delay": "440ms" } as React.CSSProperties}
-        >
-          <div className="panel-head panel-head-row">
-            <h2>
-              <Icon name="pulse" /> {t.activity}
-            </h2>
-            <span className="panel-note">{t.last7Days}</span>
-          </div>
-
-          {/* Turns rather than conversations: it is the number that moves
-              during a working session, and the one the spend below tracks. */}
-          <p className="figure">
-            {activity.week.turns.toLocaleString(tag)}
-            <span className="figure-unit">{t.turns(activity.week.turns)}</span>
-          </p>
-
-          <dl className="facts">
-            <div>
-              <dt>{t.conversations}</dt>
-              {/* Both numbers, because one of them alone is unreadable: a
-                  week's count means nothing without the total behind it. */}
-              <dd>
-                {t.weekAndAllTime(
-                  activity.week.chats.toLocaleString(tag),
-                  activity.all.chats.toLocaleString(tag),
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.spend}</dt>
-              <dd>
-                {t.weekAndAllTime(
-                  money(activity.week.costUsd),
-                  money(activity.all.costUsd),
-                )}
-              </dd>
-            </div>
-            {/* The backend's count, which is every session it is holding open
-                and not only this account's. One backend to one operator for
-                now; when that stops being true this row needs its own
-                per-account source rather than a different label. */}
-            <div>
-              <dt>{t.liveSessions}</dt>
-              <dd>
-                {health
-                  ? t.openOnBackend(health.sessions)
-                  : t.backendNotAnswering}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.lastActivity}</dt>
-              <dd>
-                {activity.lastActiveAt
-                  ? ago(activity.lastActiveAt, tag, t.justNow)
-                  : t.nothingRunYet}
-              </dd>
-            </div>
-          </dl>
-        </section>
+        <ActivityPanel
+          initial={{ month: activity.month, totals: activity.monthTotals }}
+          firstMonth={activity.firstMonth}
+          currentMonth={activity.currentMonth}
+          all={activity.all}
+          // The backend's count, which is every session it is holding open
+          // and not only this account's. One backend to one operator for now;
+          // when that stops being true this row needs its own per-account
+          // source rather than a different label.
+          liveSessions={
+            health ? t.openOnBackend(health.sessions) : t.backendNotAnswering
+          }
+          lastActivity={
+            activity.lastActiveAt
+              ? ago(activity.lastActiveAt, tag, t.justNow)
+              : t.nothingRunYet
+          }
+        />
       </div>
 
       <p

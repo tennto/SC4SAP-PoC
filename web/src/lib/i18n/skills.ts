@@ -20,6 +20,8 @@ type FieldText = {
   hint?: string;
   /** English option → what the reader sees for it. */
   options?: Record<string, string>;
+  /** English option → its hint. See `SkillField.optionHints`. */
+  optionHints?: Record<string, string>;
 };
 
 type SkillText = {
@@ -72,6 +74,8 @@ const ko: CatalogText = {
           placeholder: "예: PO 릴리스 전략이 왜 두 번째 승인자를 건너뛰나요?",
         },
       },
+      costNote:
+        "질문은 플러그인의 모듈 컨설턴트가 답하고, 오케스트레이터는 라우팅과 답변 확인을 맡습니다. 여기서 고른 모델은 오케스트레이터에 적용되며, 플러그인 0.6.24부터 이 스킬은 그 선택을 따릅니다. 컨설턴트는 Opus를 고르면 Opus로, 그 외에는 Sonnet으로 실행됩니다. 2026-09-27 측정에서 한 문장짜리 답이 $0.43였고, 그중 $0.28은 세션이 Sonnet으로 열렸다가 스킬이 고정한 Haiku로 바뀌면서 든 비용이었습니다.",
     },
     "analyze-code": {
       title: "코드 분석",
@@ -105,14 +109,14 @@ const ko: CatalogText = {
         },
       },
       costNote:
-        "리뷰는 플러그인의 코드 리뷰어 에이전트가 맡습니다. 소스와 규칙 파일을 읽고 지적 사항을 쓰며, 오케스트레이터는 그걸 보고서로 정리만 합니다. 처음 측정한 실행은 약 $2, 6분이 걸렸고 대부분이 Opus 리뷰어 구간이었습니다. 다만 여기서 고른 모델은 오케스트레이터에만 적용됩니다 — 플러그인 에이전트가 자기 모델을 고정하고 있어서, 실제로 리뷰하는 쪽은 이 선택을 아직 따르지 않습니다.",
+        "리뷰는 플러그인의 코드 리뷰어 에이전트가 맡습니다. 소스와 규칙 파일을 읽고 지적 사항을 쓰며, 스킬이 Sonnet에 고정한 메인 실행은 그걸 보고서로 정리만 합니다. 여기서 고르는 모델은 리뷰어의 모델입니다. 기본은 Sonnet이고, Opus를 고르면 플러그인이 원래 쓰는 Opus 리뷰어로 돕니다. 처음 측정한 실행은 약 $2, 6분이 걸렸고 대부분이 Opus 리뷰어 구간이었습니다.",
     },
     "analyze-symptom": {
       title: "증상 분석",
       summary:
         "덤프, 오류, 성능 저하의 근본 원인 분석 — 덤프, 전송, where-used를 살펴 가설을 좁힙니다",
       costNote:
-        "매 라운드마다 디버거 에이전트가 SAP 시스템의 덤프, 전송, 코드를 조사합니다. 숏 덤프는 싼 경로에서 먼저 분류되고, 덤프만으로 원인이 안 잡힐 때만 스킬이 알아서 Opus로 올립니다. 다만 여기서 고른 모델은 오케스트레이터에만 적용됩니다 — 플러그인 에이전트가 자기 모델을 고정하고 있어서, 실제로 조사하는 쪽은 이 선택을 아직 따르지 않습니다.",
+        "매 라운드마다 디버거 에이전트가 SAP 시스템의 덤프, 전송, 코드를 조사하고, 메인 실행은 스킬이 고정한 Sonnet으로 돕니다. 숏 덤프는 Sonnet으로 먼저 분류되고, 덤프만으로 원인이 안 잡히면 스킬이 알아서 Opus로 올립니다. 여기서 고르는 모델이 그 승격을 허용할지 정합니다. Sonnet이면 승격도 Sonnet으로, Opus면 Opus로 실행됩니다.",
       fields: {
         "Symptom type": {
           label: "증상 유형",
@@ -203,28 +207,27 @@ const ko: CatalogText = {
       summary:
         "프로그램을 역공학해 기능 또는 기술 명세서로 만들고, 선택 화면과 ALV 목업을 붙입니다",
       fields: {
+        Package: { label: "패키지", hint: "선택 사항. 프로그램과 커스텀 오브젝트를 찾는 데 씁니다." },
         "Program name": { label: "프로그램 이름" },
         "Output format": {
           label: "출력 형식",
-          options: {
-            Markdown: "Markdown",
-            HTML: "HTML",
-            "Excel (xlsx)": "Excel (xlsx)",
-            "Markdown + HTML": "Markdown + HTML",
-            "Markdown + HTML + Excel (xlsx)": "Markdown + HTML + Excel (xlsx)",
-          },
-          hint: "HTML은 목업 이미지가 포함된 단일 파일입니다.",
-        },
-        Scope: {
-          label: "범위",
-          options: {
-            Everything: "전체",
-            "Selection screen only": "선택 화면만",
-            "Business logic only": "업무 로직만",
-            "Interfaces only": "인터페이스만",
+          optionHints: {
+            Markdown: "이 화면에 문서로 표시하고, .md로 저장합니다.",
+            HTML: "실제 모양 그대로 미리보기하고, .html로 저장합니다.",
+            "Markdown + HTML": "문서와 그 아래 HTML 미리보기를 함께 보여주고, 둘 다 저장할 수 있습니다.",
+            "Excel (xlsx)": "통합 문서를 파일로 받습니다.",
           },
         },
-        Language: { label: "언어", options: LANGUAGES_KO },
+        Mode: {
+          label: "모드",
+          options: { Economy: "절약", Standard: "기본" },
+          optionHints: {
+            Economy: "에이전트 1개로 실행합니다. 약 200~400원, 1~3분. 바로 시작합니다.",
+            Standard:
+              "분석 에이전트를 쓰는 플러그인 전체 스킬입니다. 약 1,000~1,600원, 5~10분. 시작 전에 상세 수준과 독자를 묻습니다.",
+          },
+        },
+        Language: { label: "작성 언어", options: LANGUAGES_KO },
       },
     },
     "package-to-process": {
@@ -323,6 +326,8 @@ const ja: CatalogText = {
           placeholder: "例: PO のリリース戦略が 2 番目の承認者を飛ばすのはなぜ?",
         },
       },
+      costNote:
+        "質問にはプラグインのモジュールコンサルタントが答え、オーケストレーターはルーティングと回答の確認を担います。ここで選ぶモデルはオーケストレーターに適用され、プラグイン 0.6.24 以降このスキルはその選択に従います。コンサルタントは Opus を選ぶと Opus で、それ以外は Sonnet で動きます。2026-09-27 の計測では一文の回答が $0.43 で、そのうち $0.28 はセッションが Sonnet で開き、スキルが固定していた Haiku に切り替わったことによる費用でした。",
     },
     "analyze-code": {
       title: "コード分析",
@@ -356,14 +361,14 @@ const ja: CatalogText = {
         },
       },
       costNote:
-        "レビューはプラグインのコードレビュアーエージェントが担当します。ソースとルールファイルを読んで指摘を書き、オーケストレーターはそれをレポートにまとめるだけです。最初に計測した実行は約 $2、6 分で、その大半が Opus のレビュアーでした。ただしここで選んだモデルはオーケストレーターにのみ効きます — プラグインのエージェントが自分のモデルを固定しているため、実際にレビューする側はまだこの選択に従いません。",
+        "レビューはプラグインのコードレビュアーエージェントが担当します。ソースとルールファイルを読んで指摘を書き、スキルが Sonnet に固定したメインの実行はそれをレポートにまとめるだけです。ここで選ぶのはレビュアーのモデルです。既定は Sonnet で、Opus を選ぶとプラグイン本来の Opus レビュアーで動きます。最初に計測した実行は約 $2、6 分で、その大半が Opus のレビュアーでした。",
     },
     "analyze-symptom": {
       title: "症状の分析",
       summary:
         "ダンプ、エラー、性能低下の根本原因分析 — ダンプ、移送、where-used を調べて仮説を絞り込みます",
       costNote:
-        "各ラウンドでデバッガーエージェントが SAP システムのダンプ、移送、コードを調査します。ショートダンプはまず安い経路で切り分けられ、ダンプだけでは原因が分からないときにスキルが自分で Opus へ上げます。ただしここで選んだモデルはオーケストレーターにのみ効きます — プラグインのエージェントが自分のモデルを固定しているため、実際に調査する側はまだこの選択に従いません。",
+        "各ラウンドでデバッガーエージェントが SAP システムのダンプ、移送、コードを調査し、メインの実行はスキルが固定した Sonnet で動きます。ショートダンプはまず Sonnet で切り分けられ、ダンプだけでは原因が分からないときはスキルが自分で Opus へ上げます。ここで選ぶモデルがその昇格を許すかを決めます。Sonnet なら昇格も Sonnet で、Opus なら Opus で動きます。",
       fields: {
         "Symptom type": {
           label: "症状の種類",
@@ -454,28 +459,27 @@ const ja: CatalogText = {
       summary:
         "プログラムをリバースエンジニアリングして機能仕様書または技術仕様書にし、選択画面と ALV のモックアップを添えます",
       fields: {
+        Package: { label: "パッケージ", hint: "任意。プログラムとカスタムオブジェクトを探すのに使います。" },
         "Program name": { label: "プログラム名" },
         "Output format": {
           label: "出力形式",
-          options: {
-            Markdown: "Markdown",
-            HTML: "HTML",
-            "Excel (xlsx)": "Excel (xlsx)",
-            "Markdown + HTML": "Markdown + HTML",
-            "Markdown + HTML + Excel (xlsx)": "Markdown + HTML + Excel (xlsx)",
-          },
-          hint: "HTML はモックアップ画像を埋め込んだ単一ファイルです。",
-        },
-        Scope: {
-          label: "範囲",
-          options: {
-            Everything: "すべて",
-            "Selection screen only": "選択画面のみ",
-            "Business logic only": "業務ロジックのみ",
-            "Interfaces only": "インターフェースのみ",
+          optionHints: {
+            Markdown: "この画面に文書として表示し、.md で保存します。",
+            HTML: "実際の見た目でプレビューし、.html で保存します。",
+            "Markdown + HTML": "文書とその下の HTML プレビューを並べ、どちらも保存できます。",
+            "Excel (xlsx)": "ブックをファイルで受け取ります。",
           },
         },
-        Language: { label: "言語", options: LANGUAGES_JA },
+        Mode: {
+          label: "モード",
+          options: { Economy: "節約", Standard: "標準" },
+          optionHints: {
+            Economy: "エージェント 1 つで実行します。約 200〜400 ウォン、1〜3 分。すぐ開始します。",
+            Standard:
+              "分析エージェントを使うプラグインのフルスキルです。約 1,000〜1,600 ウォン、5〜10 分。開始前に詳細度と読者を尋ねます。",
+          },
+        },
+        Language: { label: "記述言語", options: LANGUAGES_JA },
       },
     },
     "package-to-process": {
@@ -561,6 +565,10 @@ export type FieldDisplay = {
   hint?: string;
   /** For a select: each English option beside what the reader sees for it. */
   options: { value: string; label: string }[];
+  /** The line under the field for this value: the option's own, else `hint`. */
+  hintFor: (value: unknown) => string | undefined;
+  /** Every option's own hint, where the field has them. */
+  optionHints: { value: string; hint: string }[];
 };
 
 /** A skill as the reader sees it in `locale`. */
@@ -585,6 +593,16 @@ export function skillDisplay(locale: Locale, skill: Skill): SkillDisplay {
         label: own?.label ?? field.label,
         placeholder: own?.placeholder ?? field.placeholder,
         hint: own?.hint ?? field.hint,
+        optionHints: (field.options ?? []).flatMap((option) => {
+          const hint = own?.optionHints?.[option] ?? field.optionHints?.[option];
+          return hint ? [{ value: option, hint }] : [];
+        }),
+        hintFor: (value) =>
+          (typeof value === "string"
+            ? own?.optionHints?.[value] ?? field.optionHints?.[value]
+            : undefined) ??
+          own?.hint ??
+          field.hint,
         options: (field.options ?? []).map((option) => ({
           value: option,
           label: own?.options?.[option] ?? option,

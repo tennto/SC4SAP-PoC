@@ -31,6 +31,14 @@ import {
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
 import { ToolLog } from "./tool-log.ts";
+import { listPriceCost } from "./pricing.ts";
+import {
+  isOwnRunStep,
+  removeRunFiles,
+  sweepRunFiles,
+  takeRunFiles,
+  type RunFile,
+} from "./run-files.ts";
 import {
   buildToolPolicy,
   isSapReadTool,
@@ -142,9 +150,28 @@ const COLLECT_NUDGE_GRACE_MS = 5_000;
  * a different shape at one row versus two. This pins the orientation: fields
  * are columns and records are rows, at any count.
  */
-const OUTPUT_FORMAT_APPEND =
+/**
+ * Where the plugin lives, said once to the main thread.
+ *
+ * Sub-agents are told by `withPluginRoot`; the main thread was not, and a
+ * measured Program → Spec run (2026-09-28) spent its first minute running
+ * `find` across the repository for the plugin's spec scripts and `where` for
+ * a browser. The scripts find the browser themselves.
+ */
+function pluginRootLine(pluginPath: string): string {
+  const root = pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  return (
+    `The sc4sap plugin is at ${root}: its scripts are under ${root}/scripts ` +
+    `(run them as \`node ${root}/scripts/...\`) and its skill files under ` +
+    `${root}/skills. Do not search the disk for the plugin, its scripts or a ` +
+    "browser — the scripts locate the browser themselves.\n\n"
+  );
+}
+
+const hostAppend = (pluginPath: string): string =>
   "Host: sc4sap-web — a headless web host that governs tool permissions itself; " +
   "skip any session-trust or permission bootstrap step a skill would otherwise run.\n\n" +
+  pluginRootLine(pluginPath) +
   "When you present data read from a SAP table — whether one record or many — " +
   "always render it as a Markdown table with one column per field and one row " +
   "per record. Keep this same header-and-rows orientation for a single record: " +
@@ -248,6 +275,48 @@ export function withPluginRoot(
       reviewerRules(root, narrowed ?? REVIEWER_RULES) +
       `\n\n---\n\nThe task:\n\n${prompt}${scope}`,
   };
+}
+
+/** Frontmatter `model:` per plugin agent file, read once per process. */
+const agentModels = new Map<string, string | null>();
+
+/** The model a plugin agent's own frontmatter names, or null. */
+function agentFrontmatterModel(pluginPath: string, agent: string): string | null {
+  const cached = agentModels.get(agent);
+  if (cached !== undefined) return cached;
+  let model: string | null = null;
+  try {
+    const text = readFileSync(`${pluginPath}/agents/${agent}.md`, "utf8");
+    const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? "";
+    model = /^model:\s*["']?([^"'\s]+)/m.exec(head)?.[1] ?? null;
+  } catch {
+    // An agent this host cannot read keeps whatever the dispatch says.
+  }
+  agentModels.set(agent, model);
+  return model;
+}
+
+/**
+ * An economy session's dispatch, with Opus brought down to Sonnet.
+ *
+ * Looks at the dispatch's own `model` first and, when it has none, at the
+ * agent's frontmatter. Since plugin 0.6.24 the consultants and the reviewer
+ * name `opus` there rather than in the dispatch, so a check of the dispatch
+ * alone let every one of them through on Opus.
+ */
+export function economyDispatch(
+  input: Record<string, unknown>,
+  pluginPath: string,
+): Record<string, unknown> {
+  const requested = input.model;
+  const type = input.subagent_type;
+  const effective =
+    typeof requested === "string"
+      ? requested
+      : typeof type === "string" && type.startsWith("sc4sap:")
+        ? agentFrontmatterModel(pluginPath, type.slice("sc4sap:".length))
+        : null;
+  return effective && /opus/i.test(effective) ? { ...input, model: "sonnet" } : input;
 }
 
 /** The plugin's code reviewer, whose rule files this host hands over itself. */
@@ -453,10 +522,11 @@ export type SessionRecord = {
   /**
    * Sub-agents run on Sonnet whatever the skill asked for.
    *
-   * The plugin's heavier skills dispatch a reviewer with `model: "opus"`,
-   * which is the right call for a production incident and five times the
-   * price of Sonnet for a PoC. With this on, the dispatch is let through
-   * with that one field rewritten — see `#requestApproval`.
+   * The plugin's heavier skills dispatch a reviewer on Opus, by a `model`
+   * field or by the agent's own frontmatter — the right call for a
+   * production incident and two and a half times the price of Sonnet for a
+   * PoC. With this on, the dispatch is let through with its model brought
+   * down — see `economyDispatch`.
    */
   economy: boolean;
 };
@@ -731,6 +801,17 @@ export class SessionManager {
     this.#config = config ?? loadConfig();
     requireApiKey();
     this.toolLog = options.toolLog ?? new ToolLog();
+    // No session is live yet, so nothing in the output folder is anyone's.
+    sweepRunFiles(this.#config.workspace);
+  }
+
+  /**
+   * The documents a run wrote, handed over once and deleted — see
+   * `run-files.ts`. Null for a session this server does not hold.
+   */
+  takeRunFiles(id: string): RunFile[] | null {
+    if (!this.#sessions.has(id)) return null;
+    return takeRunFiles(this.#config.workspace, id);
   }
 
   get config(): PocConfig {
@@ -996,7 +1077,7 @@ export class SessionManager {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: OUTPUT_FORMAT_APPEND,
+          append: hostAppend(this.#config.pluginPath),
         },
         // Loads the workspace .claude/settings.json, which is the ONLY place
         // the L1 blocklist guards are declared. Dropping this silently
@@ -1022,7 +1103,11 @@ export class SessionManager {
         allowedTools,
         // A ceiling the SDK enforces. Undefined means none, as before.
         maxBudgetUsd: options.maxBudgetUsd,
-        ...(options.effort ? { effort: options.effort } : {}),
+        // Not on Haiku: Haiku 4.5 rejects `effort`, so a skill that sets it
+        // (analyze-code) would fail outright when the dialog picked Haiku.
+        ...(options.effort && !/haiku/i.test(options.model ?? this.#config.model)
+          ? { effort: options.effort }
+          : {}),
         // Plan 2-4 — every tool call parks here until a human answers over
         // the SSE channel. Plan 2-5 adds allowedTools on top; note this
         // callback is NOT a complete chokepoint (ToolSearch was observed
@@ -1071,12 +1156,8 @@ export class SessionManager {
                         this.#config.pluginPath,
                         economyLive.reviewFocus,
                       ) ?? original;
-                    const requested = toolInput.model;
                     this.toolLog.decide(toolUseID ?? input.tool_use_id, "auto");
-                    const updated =
-                      typeof requested === "string" && /opus/i.test(requested)
-                        ? { ...toolInput, model: "sonnet" }
-                        : toolInput;
+                    const updated = economyDispatch(toolInput, this.#config.pluginPath);
                     return {
                       hookSpecificOutput: {
                         hookEventName: "PreToolUse" as const,
@@ -1502,12 +1583,23 @@ export class SessionManager {
     // is the SDK's own door for this; nothing else about the call changes.
     if (toolName === AGENT_TOOL && live.record.economy) {
       this.toolLog.decide(context.toolUseID, "auto");
-      const requested = input.model;
-      const updatedInput =
-        typeof requested === "string" && /opus/i.test(requested)
-          ? { ...input, model: "sonnet" }
-          : input;
+      const updatedInput = economyDispatch(input, this.#config.pluginPath);
       return Promise.resolve({ behavior: "allow", updatedInput });
+    }
+
+    // A documents run writing into its own output folder, or running the
+    // plugin's spec scripts on what is there. See `isOwnRunStep`.
+    if (
+      isOwnRunStep(
+        this.#config.workspace,
+        this.#config.pluginPath,
+        sessionId,
+        toolName,
+        input,
+      )
+    ) {
+      this.toolLog.decide(context.toolUseID, "auto");
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
     }
 
     // The account's approval level, applied before a request is raised. A
@@ -1675,6 +1767,8 @@ export class SessionManager {
       );
     }
     this.#cancelOrphanTimer(live);
+    // Whatever the run wrote and nobody collected goes with it.
+    removeRunFiles(this.#config.workspace, id);
     live.pump.close();
     this.toolLog.abandon(id);
     if (live.collectNudge) clearTimeout(live.collectNudge);
@@ -1762,7 +1856,8 @@ export class SessionManager {
               // adds — and what it does not know about is whatever the
               // conversation spent before this session picked it up.
               live.record.totalCostUsd =
-                live.priorCostUsd + message.total_cost_usd;
+                live.priorCostUsd +
+                listPriceCost(message.modelUsage, message.total_cost_usd);
             }
             // Only if nothing is still running underneath. A skill that
             // dispatches a background reviewer ends its own turn seconds after

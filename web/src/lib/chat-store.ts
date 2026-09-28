@@ -1,6 +1,6 @@
 import "server-only";
 import { ObjectId } from "mongodb";
-import { chatMessages, chats, users, type ChatDoc } from "@/lib/mongo";
+import { chatMessages, chats, runSpend, spendMonths, users, type ChatDoc } from "@/lib/mongo";
 
 /**
  * Persisting the conversation the reader can see.
@@ -123,7 +123,11 @@ export async function appendTurns(
 ): Promise<void> {
   const now = new Date();
 
-  await (await chats()).updateOne(
+  // Before the write, so the seed reads the chat rows as they were and this
+  // save's own cost is added once, below, rather than also by the seed.
+  await ensureSpendSeeded(userId);
+
+  const before = await (await chats()).findOneAndUpdate(
     { _id: chatId, userId },
     {
       $set: {
@@ -150,8 +154,30 @@ export async function appendTurns(
         ...(input.totalCostUsd === undefined ? { totalCostUsd: 0 } : {}),
       },
     },
-    { upsert: true },
+    {
+      upsert: true,
+      returnDocument: "before",
+      projection: { turns: 1, totalCostUsd: 1 },
+    },
   );
+
+  // What this save newly cost goes to this month. Only ever upward: a total
+  // that comes back lower is a session that lost its prior figure, not money
+  // returned.
+  const costDelta =
+    input.totalCostUsd !== undefined
+      ? input.totalCostUsd - (before?.totalCostUsd ?? 0)
+      : 0;
+  const turnDelta =
+    input.turns !== undefined ? input.turns - (before?.turns ?? 0) : 0;
+  const started = before === null;
+  if (costDelta > 0 || turnDelta > 0 || started) {
+    await addSpend(userId, monthKey(now), {
+      costUsd: Math.max(0, costDelta),
+      turns: Math.max(0, turnDelta),
+      chats: started ? 1 : 0,
+    });
+  }
 
   if (input.messages.length === 0) return;
 
@@ -283,60 +309,242 @@ export type UsageTotals = {
  * What the dashboard reports instead of a balance.
  *
  * A credit balance needs a number only Anthropic holds; what was *spent* is
- * already on every chat row, so this is the half of the same question that can
+ * recorded on every save, so this is the half of the same question that can
  * be answered honestly.
  */
 export type Activity = {
-  /** The last seven days. */
-  week: UsageTotals;
+  /** The month shown, `YYYY-MM`. */
+  month: string;
+  /** What that month spent, or null when nothing was recorded in it. */
+  monthTotals: UsageTotals | null;
+  /**
+   * How far back the left arrow goes: the month the account was made, or
+   * the first month with spend on record if that is earlier.
+   */
+  firstMonth: string;
+  /** The current month — the right arrow stops there. */
+  currentMonth: string;
   /** Everything this account has ever run. */
   all: UsageTotals;
   /** When the most recent conversation was last touched. */
   lastActiveAt: string | null;
 };
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+/** `YYYY-MM` for a moment, in the web server's time zone. */
+export function monthKey(at: Date): string {
+  return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Whether a string is a `YYYY-MM` month this app could have recorded. */
+export function isMonthKey(value: string): boolean {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+/** The month before or after a `YYYY-MM`. */
+export function shiftMonth(month: string, by: number): string {
+  const [year, index] = month.split("-").map(Number) as [number, number];
+  return monthKey(new Date(year, index - 1 + by, 1));
+}
+
+async function addSpend(
+  userId: string,
+  month: string,
+  add: UsageTotals,
+): Promise<void> {
+  await (await spendMonths()).updateOne(
+    { _id: `${userId}:${month}` },
+    {
+      $inc: { costUsd: add.costUsd, turns: add.turns, chats: add.chats },
+      $set: { updatedAt: new Date() },
+      $setOnInsert: { userId, month },
+    },
+    { upsert: true },
+  );
+}
 
 /**
- * One account's totals, in one round trip.
+ * Folds the chat rows written before the ledger existed into it, once.
  *
- * Aggregated in Mongo rather than by reading the rows back and summing here:
- * the rail already caps its own read at 200 chats, and a total that quietly
- * stopped counting past some limit would be worse than no total at all.
+ * Cost and turns go to the month each conversation was last touched, and
+ * the conversation itself to the month it started — the old rows carry one
+ * total and those two dates, and nothing finer. Deleted conversations are
+ * not included: their counters were kept, their dates were not.
  *
- * The week figures are per *chat*, not per turn — a conversation touched
- * inside the window contributes all of its turns and all of its cost, even the
- * ones from before it. Turn-level dating would mean summing `chat_messages`,
- * which does not carry a cost, so the honest fix is a wider label: this is
- * "conversations active in the last seven days", and that is what the panel
- * says.
- *
- * The all-time figures add the account's retired counters — what deleted
- * conversations ran before they were deleted. Without them a lifetime total
- * falls every time the rail is tidied, which makes it a count of what is
- * currently kept rather than of what has been done. The week figures do not
- * add them, and cannot: a retired chat took its dates with it.
+ * One caller wins the claim on the account row; everyone else goes on
+ * without waiting, and at worst reads a month a moment before its history
+ * lands in it.
  */
-export async function readActivity(userId: string): Promise<Activity> {
-  const since = new Date(Date.now() - WEEK_MS);
+async function ensureSpendSeeded(userId: string): Promise<void> {
+  if (!ObjectId.isValid(userId)) return;
+  const claimed = await (await users()).updateOne(
+    { _id: new ObjectId(userId), spendSeededAt: { $exists: false } },
+    { $set: { spendSeededAt: new Date() } },
+  );
+  if (claimed.modifiedCount === 0) return;
+
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const byMonth = (date: unknown) => ({
+    $dateToString: { format: "%Y-%m", date, timezone },
+  });
+  const collection = await chats();
+  const [spent, started] = await Promise.all([
+    collection
+      .aggregate<{ _id: string; costUsd: number; turns: number }>([
+        { $match: { userId } },
+        {
+          $group: {
+            _id: byMonth("$updatedAt"),
+            costUsd: { $sum: "$totalCostUsd" },
+            turns: { $sum: "$turns" },
+          },
+        },
+      ])
+      .toArray(),
+    collection
+      .aggregate<{ _id: string; chats: number }>([
+        { $match: { userId } },
+        {
+          $group: {
+            _id: byMonth({ $ifNull: ["$createdAt", "$updatedAt"] }),
+            chats: { $sum: 1 },
+          },
+        },
+      ])
+      .toArray(),
+  ]);
+
+  const months = new Map<string, UsageTotals>();
+  const at = (month: string) => {
+    let totals = months.get(month);
+    if (!totals) months.set(month, (totals = { chats: 0, turns: 0, costUsd: 0 }));
+    return totals;
+  };
+  for (const row of spent) {
+    at(row._id).costUsd += row.costUsd;
+    at(row._id).turns += row.turns;
+  }
+  for (const row of started) at(row._id).chats += row.chats;
+  for (const [month, totals] of months) await addSpend(userId, month, totals);
+}
+
+/**
+ * Counts a run that keeps no transcript — its cost and turns, nothing else.
+ *
+ * Reported as a running total, possibly more than once; only the growth since
+ * the last report is added, to this month and to the account's retired
+ * counters, where every run whose transcript is gone is already counted.
+ */
+export async function recordRun(
+  userId: string,
+  runId: string,
+  totals: { turns: number; totalCostUsd: number },
+): Promise<void> {
+  await ensureSpendSeeded(userId);
+  const before = await (await runSpend()).findOneAndUpdate(
+    { _id: runId, userId },
+    {
+      $set: { turns: totals.turns, costUsd: totals.totalCostUsd, updatedAt: new Date() },
+      $setOnInsert: { userId },
+    },
+    { upsert: true, returnDocument: "before" },
+  );
+  const add = {
+    chats: before ? 0 : 1,
+    turns: Math.max(0, totals.turns - (before?.turns ?? 0)),
+    costUsd: Math.max(0, totals.totalCostUsd - (before?.costUsd ?? 0)),
+  };
+  if (add.chats === 0 && add.turns === 0 && add.costUsd === 0) return;
+  await addSpend(userId, monthKey(new Date()), add);
+  if (ObjectId.isValid(userId)) {
+    await (await users()).updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $inc: {
+          "retired.chats": add.chats,
+          "retired.turns": add.turns,
+          "retired.costUsd": add.costUsd,
+        },
+      },
+    );
+  }
+}
+
+/** One month of the ledger, as the activity panel steps through it. */
+export type MonthSpend = {
+  month: string;
+  /** Null when nothing was recorded in the month. */
+  totals: UsageTotals | null;
+};
+
+/**
+ * One account's month from the ledger.
+ *
+ * A month with a row but nothing in it — a conversation opened and never
+ * answered — reads as empty too: there is no spend to show.
+ */
+export async function readMonthSpend(
+  userId: string,
+  month: string,
+): Promise<MonthSpend> {
+  await ensureSpendSeeded(userId);
+  const shown = await (await spendMonths()).findOne({ _id: `${userId}:${month}` });
+  return {
+    month,
+    totals:
+      shown && (shown.costUsd > 0 || shown.turns > 0 || shown.chats > 0)
+        ? { chats: shown.chats, turns: shown.turns, costUsd: shown.costUsd }
+        : null,
+  };
+}
+
+/**
+ * One account's month, and its lifetime totals, for the dashboard.
+ *
+ * The month comes from the ledger (`spend_months`); the lifetime totals
+ * still come from the chat rows plus the retired counters, which is what
+ * they always were.
+ */
+export async function readActivity(
+  userId: string,
+  requestedMonth?: string,
+): Promise<Activity> {
+  await ensureSpendSeeded(userId);
+
+  const currentMonth = monthKey(new Date());
+  const month =
+    requestedMonth && isMonthKey(requestedMonth) && requestedMonth <= currentMonth
+      ? requestedMonth
+      : currentMonth;
+
+  const [shown, first] = await Promise.all([
+    readMonthSpend(userId, month),
+    (await spendMonths())
+      .find({ userId }, { projection: { month: 1 } })
+      .sort({ month: 1 })
+      .limit(1)
+      .next(),
+  ]);
 
   const user = ObjectId.isValid(userId)
     ? await (await users()).findOne(
         { _id: new ObjectId(userId) },
-        { projection: { retired: 1 } },
+        { projection: { retired: 1, createdAt: 1 } },
       )
     : null;
   // Absent on every row written before retiring existed.
   const retired = user?.retired ?? { chats: 0, turns: 0, costUsd: 0 };
+
+  // Every month since the account existed can be stepped to — an empty one
+  // says so in the box rather than being out of reach.
+  const joined = user?.createdAt ? monthKey(user.createdAt) : currentMonth;
+  const firstMonth =
+    first?.month && first.month < joined ? first.month : joined;
 
   const [row] = await (await chats())
     .aggregate<{
       allChats: number;
       allTurns: number;
       allCost: number;
-      weekChats: number;
-      weekTurns: number;
-      weekCost: number;
       lastActiveAt: Date | null;
     }>([
       { $match: { userId } },
@@ -346,44 +554,26 @@ export async function readActivity(userId: string): Promise<Activity> {
           allChats: { $sum: 1 },
           allTurns: { $sum: "$turns" },
           allCost: { $sum: "$totalCostUsd" },
-          // `$cond` rather than a second pipeline: one pass over the same
-          // index the rail already sorts on.
-          weekChats: {
-            $sum: { $cond: [{ $gte: ["$updatedAt", since] }, 1, 0] },
-          },
-          weekTurns: {
-            $sum: { $cond: [{ $gte: ["$updatedAt", since] }, "$turns", 0] },
-          },
-          weekCost: {
-            $sum: {
-              $cond: [{ $gte: ["$updatedAt", since] }, "$totalCostUsd", 0],
-            },
-          },
           lastActiveAt: { $max: "$updatedAt" },
         },
       },
     ])
     .toArray();
 
-  // No chats yet is no group, not a group of zeroes — an account that has
-  // never run anything still has a panel to fill.
-  if (!row) {
-    return {
-      week: { chats: 0, turns: 0, costUsd: 0 },
-      // Still the retired ones: an account that has deleted everything it ever
-      // ran has no chat rows left and has certainly run something.
-      all: retired,
-      lastActiveAt: null,
-    };
-  }
-
   return {
-    week: { chats: row.weekChats, turns: row.weekTurns, costUsd: row.weekCost },
-    all: {
-      chats: row.allChats + retired.chats,
-      turns: row.allTurns + retired.turns,
-      costUsd: row.allCost + retired.costUsd,
-    },
-    lastActiveAt: row.lastActiveAt?.toISOString() ?? null,
+    month,
+    monthTotals: shown.totals,
+    firstMonth,
+    currentMonth,
+    // No chats yet is no group; the retired counters still count, since an
+    // account that deleted everything it ran has certainly run something.
+    all: row
+      ? {
+          chats: row.allChats + retired.chats,
+          turns: row.allTurns + retired.turns,
+          costUsd: row.allCost + retired.costUsd,
+        }
+      : retired,
+    lastActiveAt: row?.lastActiveAt?.toISOString() ?? null,
   };
 }

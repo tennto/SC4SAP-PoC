@@ -8,6 +8,7 @@
  *   POST   /sessions/:id/messages queue a user turn (202; output arrives on the stream)
  *   GET    /sessions/:id/stream   SSE of everything the SDK emits
  *   POST   /sessions/:id/auto-approve  wave SAP reads through for this session
+ *   POST   /sessions/:id/files    take the documents the run wrote (then deleted)
  *   GET    /monitor/stream        SSE of every tool call the caller's account runs
  *   GET    /profiles              the SAP systems configured, and which is live
  *   POST   /profiles              add a SAP system and move onto it
@@ -62,7 +63,7 @@ type IdParams = { id: string };
 export const MODELS = [
   { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "Half the price of Sonnet. Enough to read a table or a program." },
   { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
-  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about five times the price." },
+  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about two and a half times the price of Sonnet." },
 ] as const;
 
 /**
@@ -476,6 +477,22 @@ export function buildApp(manager: SessionManager): FastifyInstance {
         return reply.code(409).send({ error: "session is not running a turn" });
       }
       return { ok: true };
+    },
+  );
+
+  /**
+   * The documents the run wrote, handed over once — see `run-files.ts`.
+   *
+   * A POST, not a GET: reading them deletes them from the server, and a
+   * request that changes something should not be one a prefetch or a retry
+   * can send by accident.
+   */
+  app.post<{ Params: IdParams }>(
+    "/sessions/:id/files",
+    async (request, reply) => {
+      const files = manager.takeRunFiles(request.params.id);
+      if (!files) return reply.code(404).send({ error: "unknown session" });
+      return { files };
     },
   );
 

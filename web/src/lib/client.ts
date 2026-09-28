@@ -11,6 +11,7 @@ import type {
   Health,
   PendingApproval,
   PermissionResponse,
+  RunFile,
   Session,
 } from "./types";
 import type { Attachment } from "./attachments";
@@ -205,6 +206,24 @@ export const api = {
     request<{ ok: boolean; enabled: boolean }>(`/sessions/${id}/auto-approve`, {
       method: "POST",
       body: JSON.stringify({ enabled }),
+    }),
+
+  /**
+   * The documents the run wrote. Handed over once: the backend deletes them
+   * as it answers, so the page must keep what this returns.
+   */
+  takeFiles: async (id: string): Promise<RunFile[]> =>
+    (await request<{ files: RunFile[] }>(`/sessions/${id}/files`, { method: "POST" }))
+      .files,
+
+  /** A transcript-less run's running totals — see `recordRun`. */
+  recordRun: (
+    id: string,
+    totals: { turns: number; totalCostUsd: number },
+  ): Promise<{ ok: boolean }> =>
+    request<{ ok: boolean }>(`/activity/runs/${id}`, {
+      method: "POST",
+      body: JSON.stringify(totals),
     }),
 
   /** Where 3-2 opens the stream. Same-origin, so `EventSource` works as-is. */

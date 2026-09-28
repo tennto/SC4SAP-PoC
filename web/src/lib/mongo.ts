@@ -132,7 +132,40 @@ export type UserDoc = {
     turns: number;
     costUsd: number;
   };
+  /**
+   * When this account's monthly ledger was seeded from its chat rows.
+   *
+   * Absent until the first write or read after the ledger existed; see
+   * `ensureSpendSeeded` in `chat-store.ts`. Claimed by one writer only, so
+   * the history is folded in once and never twice.
+   */
+  spendSeededAt?: Date;
   createdAt: Date;
+};
+
+/**
+ * One account's spend in one calendar month.
+ *
+ * A ledger rather than a sum over chat rows: a chat row holds one running
+ * total with one date, so a conversation that runs across a month end would
+ * land entirely in whichever month it was last touched. Each save adds what
+ * that save newly cost to the month it happened in, so a month's figure is
+ * what was spent in it. It also outlives deleting the chat.
+ *
+ * Months before the ledger existed are seeded from the chat rows by their
+ * last activity — the best the old rows can say.
+ */
+export type SpendMonthDoc = {
+  /** `${userId}:${month}` — one row per account and month. */
+  _id: string;
+  userId: string;
+  /** `YYYY-MM` in the web server's time zone. */
+  month: string;
+  costUsd: number;
+  turns: number;
+  /** Conversations started in the month. */
+  chats: number;
+  updatedAt: Date;
 };
 
 /**
@@ -358,6 +391,11 @@ function ensureIndexes(db: Db): Promise<void> {
         { userId: 1, updatedAt: -1 },
         { name: "chat_by_user" },
       );
+      // The dashboard's month arrows: this account's months, in order.
+      await db.collection<SpendMonthDoc>("spend_months").createIndex(
+        { userId: 1, month: 1 },
+        { name: "spend_by_user_month" },
+      );
       // Unique, so a retried write cannot put the same turn in twice — the
       // client appends by sequence number and a retry reuses it.
       await db.collection<ChatMessageDoc>("chat_messages").createIndex(
@@ -398,6 +436,31 @@ export async function chats(): Promise<Collection<ChatDoc>> {
 
 export async function toolCalls(): Promise<Collection<ToolCallDoc>> {
   return (await database()).collection<ToolCallDoc>("tool_calls");
+}
+
+/**
+ * What a run that keeps no transcript has spent so far.
+ *
+ * Program → Spec keeps nothing of a run, so there is no chat row to carry its
+ * running total. This row does, so that each report of the total adds only
+ * what is new — to the month, and to the account's retired counters, which
+ * is where "ran, and is gone" is already counted. See `recordRun`.
+ */
+export type RunSpendDoc = {
+  /** The backend session id. */
+  _id: string;
+  userId: string;
+  turns: number;
+  costUsd: number;
+  updatedAt: Date;
+};
+
+export async function runSpend(): Promise<Collection<RunSpendDoc>> {
+  return (await database()).collection<RunSpendDoc>("run_spend");
+}
+
+export async function spendMonths(): Promise<Collection<SpendMonthDoc>> {
+  return (await database()).collection<SpendMonthDoc>("spend_months");
 }
 
 export async function chatMessages(): Promise<Collection<ChatMessageDoc>> {
