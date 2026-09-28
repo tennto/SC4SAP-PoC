@@ -301,6 +301,9 @@ export const SKILLS: Skill[] = [
     followUp: true,
   },
   {
+    // Not yet worked on for model choice: no cost dialog, so no budget and no
+    // economy, and its Opus agents run unchecked. Add both when this skill is
+    // next developed — see docs/model-selection-improvements.md, item 4.
     slug: "analyze-cbo-obj",
     command: "/sc4sap:analyze-cbo-obj",
     tools: "build",
@@ -316,6 +319,9 @@ export const SKILLS: Skill[] = [
     ],
   },
   {
+    // Not yet worked on for model choice: no cost dialog, so no budget and no
+    // economy, and its Opus agents run unchecked. Add both when this skill is
+    // next developed — see docs/model-selection-improvements.md, item 4.
     slug: "compare-programs",
     command: "/sc4sap:compare-programs",
     tools: "build",
@@ -337,6 +343,9 @@ export const SKILLS: Skill[] = [
 
   // ---------- document ----------
   {
+    // Not yet worked on for model choice: no cost dialog, so no budget and no
+    // economy, and its Opus agents run unchecked. Add both when this skill is
+    // next developed — see docs/model-selection-improvements.md, item 4.
     slug: "program-to-spec",
     command: "/sc4sap:program-to-spec",
     tools: "build",
@@ -356,6 +365,9 @@ export const SKILLS: Skill[] = [
     ],
   },
   {
+    // Not yet worked on for model choice: no cost dialog, so no budget and no
+    // economy, and its Opus agents run unchecked. Add both when this skill is
+    // next developed — see docs/model-selection-improvements.md, item 4.
     slug: "package-to-process",
     command: "/sc4sap:package-to-process",
     tools: "build",

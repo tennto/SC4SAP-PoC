@@ -103,3 +103,31 @@
 - **그래서**: 코드 분석에서는 "Sonnet이면 싸다"가 아직 증명되지 않았습니다. 기본값을 Opus로 돌릴지, 리뷰어 출력 길이를 줄일지는 몇 번 더 재 보고 정하는 게 좋습니다.
 - 증상 분석은 실제 덤프 화면이 필요해서 이번에는 돌리지 않았습니다. 코드는 코드 분석과 같은 경로를 탑니다.
 - 창이 브라우저에서 어떻게 보이는지(항목 이름, Haiku 빠짐)는 타입 검사만 했고, 화면으로는 확인하지 않았습니다.
+
+## 4번 — 보류: 각 기능을 개발할 때 같이 붙이기
+
+**결정 (2026-09-28)**: 아래 네 기능은 지금 따로 손대지 않고, 기능을 실제로 개발할 때 이 내용을 같이 반영합니다. `web/src/lib/skills.ts`의 각 항목 위에 이 문서를 가리키는 주석을 달아 뒀습니다.
+
+**지금 상태**: 네 기능 모두 선택 창(`cost`)이 없습니다. 그래서 예산 상한도 economy도 없고, 스킬이 부르는 Opus 에이전트가 그대로 Opus로 돕니다. 스킬은 모두 `model: sonnet` 고정이고, 서버 기본 모델도 Sonnet 5라 메인이 중간에 바뀌는 손해는 없습니다.
+
+| 기능 | 부르는 에이전트 (설정된 모델) | Opus 비용 위험 |
+|---|---|---|
+| CBO 패키지 인벤토리 (`analyze-cbo-obj`) | sap-stocker (Sonnet) | 없음. 예산 상한만 있으면 됨 |
+| 프로그램 비교 (`compare-programs`) | sap-analyst (Opus), sap-code-reviewer (Opus) ×N, sap-writer (Haiku) | 큼. 프로그램 수만큼 리뷰어가 Opus로 돎 |
+| 프로그램 → 스펙 (`program-to-spec`) | sap-analyst (Opus), sap-critic (Opus), sap-writer (Haiku) | 있음 |
+| 패키지 → 프로세스 (`package-to-process`) | sap-analyst (Opus), sap-stocker (Sonnet), sap-writer (Haiku) | 있음 |
+
+**개발할 때 할 일 (기능마다)**
+
+1. `skills.ts`의 해당 항목에 `cost`를 추가합니다. 코드 분석 항목이 본보기입니다.
+   - `pinnedModel: "claude-sonnet-5"`: 스킬이 Sonnet을 고정하고 있으니 세션도 Sonnet으로 엽니다. 창에는 "서브 에이전트 모델"(Sonnet 또는 Opus)이 나옵니다.
+   - `defaultModel`: 기본은 Sonnet(economy 켬). Opus가 꼭 필요하다는 측정이 나오면 그때 바꿉니다.
+   - `defaultBudgetUsd`: 첫 실측 비용의 2~3배 정도로 잡습니다.
+   - `note`: 무엇이 비용을 쓰는지, 선택이 무엇을 바꾸는지 적습니다. 한국어·일본어 문구는 `web/src/lib/i18n/skills.ts`의 `costNote`에 넣습니다.
+2. 플러그인이 올라가면 스킬 파일의 `model:` 줄과 에이전트 모델이 바뀌었는지 다시 확인합니다. 스킬이 `model: inherit`로 바뀌었으면 `pinnedModel`을 빼고, 컨설턴트에게 묻기처럼 Haiku·Sonnet·Opus 셋을 다 보여 줍니다.
+3. 실제로 한 번 돌려서 사용 내역(`modelUsage`)을 확인합니다. 테스트 스크립트 방식은 위 1·2번 테스트와 같습니다. 백엔드를 켜고 `POST /sessions` → `/messages` → `/stream`의 마지막 `result`를 봅니다.
+   - Sonnet을 골랐을 때 Opus 줄이 없어야 합니다.
+   - 서브 에이전트가 백그라운드로 돌면 `result`가 두 번 옵니다. 두 번째가 실제 답입니다.
+4. 결과를 이 문서에 "4번 — <기능 이름>" 절로 추가합니다.
+
+**주의**: 코드 분석 측정에서는 Sonnet 리뷰어가 Opus 리뷰어보다 싸지 않았습니다(3번 테스트). 비교 기능처럼 리뷰어를 여러 번 부르는 기능은 Sonnet과 Opus를 둘 다 재 보고 기본값을 정하는 게 좋습니다.
