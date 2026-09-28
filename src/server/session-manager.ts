@@ -250,6 +250,48 @@ export function withPluginRoot(
   };
 }
 
+/** Frontmatter `model:` per plugin agent file, read once per process. */
+const agentModels = new Map<string, string | null>();
+
+/** The model a plugin agent's own frontmatter names, or null. */
+function agentFrontmatterModel(pluginPath: string, agent: string): string | null {
+  const cached = agentModels.get(agent);
+  if (cached !== undefined) return cached;
+  let model: string | null = null;
+  try {
+    const text = readFileSync(`${pluginPath}/agents/${agent}.md`, "utf8");
+    const head = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? "";
+    model = /^model:\s*["']?([^"'\s]+)/m.exec(head)?.[1] ?? null;
+  } catch {
+    // An agent this host cannot read keeps whatever the dispatch says.
+  }
+  agentModels.set(agent, model);
+  return model;
+}
+
+/**
+ * An economy session's dispatch, with Opus brought down to Sonnet.
+ *
+ * Looks at the dispatch's own `model` first and, when it has none, at the
+ * agent's frontmatter. Since plugin 0.6.24 the consultants and the reviewer
+ * name `opus` there rather than in the dispatch, so a check of the dispatch
+ * alone let every one of them through on Opus.
+ */
+export function economyDispatch(
+  input: Record<string, unknown>,
+  pluginPath: string,
+): Record<string, unknown> {
+  const requested = input.model;
+  const type = input.subagent_type;
+  const effective =
+    typeof requested === "string"
+      ? requested
+      : typeof type === "string" && type.startsWith("sc4sap:")
+        ? agentFrontmatterModel(pluginPath, type.slice("sc4sap:".length))
+        : null;
+  return effective && /opus/i.test(effective) ? { ...input, model: "sonnet" } : input;
+}
+
 /** The plugin's code reviewer, whose rule files this host hands over itself. */
 const REVIEWER_AGENT = "sc4sap:sap-code-reviewer";
 
@@ -1022,7 +1064,11 @@ export class SessionManager {
         allowedTools,
         // A ceiling the SDK enforces. Undefined means none, as before.
         maxBudgetUsd: options.maxBudgetUsd,
-        ...(options.effort ? { effort: options.effort } : {}),
+        // Not on Haiku: Haiku 4.5 rejects `effort`, so a skill that sets it
+        // (analyze-code) would fail outright when the dialog picked Haiku.
+        ...(options.effort && !/haiku/i.test(options.model ?? this.#config.model)
+          ? { effort: options.effort }
+          : {}),
         // Plan 2-4 — every tool call parks here until a human answers over
         // the SSE channel. Plan 2-5 adds allowedTools on top; note this
         // callback is NOT a complete chokepoint (ToolSearch was observed
@@ -1071,12 +1117,8 @@ export class SessionManager {
                         this.#config.pluginPath,
                         economyLive.reviewFocus,
                       ) ?? original;
-                    const requested = toolInput.model;
                     this.toolLog.decide(toolUseID ?? input.tool_use_id, "auto");
-                    const updated =
-                      typeof requested === "string" && /opus/i.test(requested)
-                        ? { ...toolInput, model: "sonnet" }
-                        : toolInput;
+                    const updated = economyDispatch(toolInput, this.#config.pluginPath);
                     return {
                       hookSpecificOutput: {
                         hookEventName: "PreToolUse" as const,
@@ -1502,11 +1544,7 @@ export class SessionManager {
     // is the SDK's own door for this; nothing else about the call changes.
     if (toolName === AGENT_TOOL && live.record.economy) {
       this.toolLog.decide(context.toolUseID, "auto");
-      const requested = input.model;
-      const updatedInput =
-        typeof requested === "string" && /opus/i.test(requested)
-          ? { ...input, model: "sonnet" }
-          : input;
+      const updatedInput = economyDispatch(input, this.#config.pluginPath);
       return Promise.resolve({ behavior: "allow", updatedInput });
     }
 

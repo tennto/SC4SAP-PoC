@@ -165,6 +165,15 @@ export const SKILLS: Skill[] = [
       { label: "Module", kind: "select", options: MODULES, hint: "Auto-route picks the agent from your question's keywords." },
       { label: "Question", kind: "textarea", placeholder: "e.g. Why does the PO release strategy skip the second approver?" },
     ],
+    cost: {
+      note: "The question is answered by the plugin's module consultant; the orchestrator routes it and checks the answer. The choice here is the orchestrator's model, and since plugin 0.6.24 this skill follows it. The consultant runs on Opus when Opus is chosen and on Sonnet otherwise. Measured on 2026-09-27, a one-sentence answer cost $0.43, of which $0.28 was the session opening on Sonnet and then switching away to the skill's pinned Haiku.",
+      defaultBudgetUsd: 1,
+      // Haiku because the orchestrator here routes and relays: the reasoning
+      // is the consultant's. The skill used to pin Haiku itself, so a session
+      // opened on anything else paid a cache write for nothing; with the pin
+      // now `inherit`, opening on Haiku keeps the whole main thread on it.
+      defaultModel: "claude-haiku-4-5",
+    },
     // A consultant's answer invites the next question, and asking it here
     // keeps the module routing and the context the first one built.
     followUp: true,
