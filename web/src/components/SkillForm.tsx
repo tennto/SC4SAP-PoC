@@ -50,6 +50,7 @@ import { EditModal } from "@/components/settings/EditModal";
 import type { PermissionResponse, RunFile } from "@/lib/types";
 import { specPrompt, type SpecSurvey } from "@/lib/spec-prompt";
 import { SpecSurveyModal, type SpecAnswers } from "@/components/SpecSurveyModal";
+import { HtmlPreview } from "@/components/HtmlPreview";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
 import type { Locale } from "@/lib/i18n/locale";
@@ -1389,28 +1390,11 @@ export function SkillForm({
               ) : null}
 
               {htmlFile && htmlText !== null && (
-                <div className="skill-doc-box html-preview">
-                  <div className="skill-doc-bar">
-                    <span className="skill-doc-kind">
-                      <Icon name="file-html" /> {t.htmlPreview}
-                    </span>
-                    <button
-                      className="ghost skill-doc-save"
-                      onClick={() => download(htmlFile.name, htmlText, "text/html;charset=utf-8")}
-                      title={t.saveReport}
-                    >
-                      <Icon name="download-simple" /> {t.downloadHtml}
-                    </button>
-                  </div>
-                  {/* Sandboxed without same-origin: the page's scripts may run
-                      (its Mermaid flowchart) but can reach nothing of this app. */}
-                  <iframe
-                    className="html-preview-frame"
-                    title={htmlFile.name}
-                    sandbox="allow-scripts"
-                    srcDoc={htmlText}
-                  />
-                </div>
+                <HtmlPreview
+                  name={htmlFile.name}
+                  html={htmlText}
+                  onDownload={() => download(htmlFile.name, htmlText, "text/html;charset=utf-8")}
+                />
               )}
 
               {xlsxFile && (
