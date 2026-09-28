@@ -30,7 +30,7 @@
  * settings screen use it: a native select hands its open list to the operating
  * system to draw, and no CSS in this app reaches inside it.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { api } from "@/lib/client";
 import { useSessionStream } from "@/hooks/useSessionStream";
@@ -47,7 +47,9 @@ import {
 import { ApprovalModal } from "@/components/ApprovalModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { EditModal } from "@/components/settings/EditModal";
-import type { PermissionResponse } from "@/lib/types";
+import type { PermissionResponse, RunFile } from "@/lib/types";
+import { specPrompt, type SpecSurvey } from "@/lib/spec-prompt";
+import { SpecSurveyModal, type SpecAnswers } from "@/components/SpecSurveyModal";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
 import type { Locale } from "@/lib/i18n/locale";
@@ -219,15 +221,99 @@ function readStoredRun(slug: string): StoredRun | null {
  * dispatched by then, and leaving it alive pins the whole document in memory
  * for the life of the tab.
  */
-function download(name: string, text: string): void {
-  const url = URL.createObjectURL(
-    new Blob([text], { type: "text/markdown;charset=utf-8" }),
-  );
+function download(
+  name: string,
+  data: BlobPart,
+  type = "text/markdown;charset=utf-8",
+): void {
+  const url = URL.createObjectURL(new Blob([data], { type }));
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = name;
   anchor.click();
   requestAnimationFrame(() => URL.revokeObjectURL(url));
+}
+
+/** The object a documents run is about. */
+function programOf(values: Record<string, Value>): string {
+  const value = values["Program name"];
+  return typeof value === "string" ? value.trim().toUpperCase() : "";
+}
+
+/**
+ * A documents run's survey from the form, with the dialog's answers — or,
+ * in Economy mode, which asks nothing, with fixed ones: the full level of
+ * detail, for both kinds of reader, in the language of the screen.
+ */
+function surveyOf(
+  values: Record<string, Value>,
+  locale: Locale,
+  answers?: SpecAnswers,
+): SpecSurvey {
+  const pick = (label: string): string => {
+    const value = values[label];
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const format = pick("Output format") || "Markdown";
+  const formats: SpecSurvey["formats"] =
+    format === "HTML"
+      ? ["html"]
+      : format === "Markdown + HTML"
+        ? ["md", "html"]
+        : format === "Excel (xlsx)"
+          ? ["xlsx"]
+          : ["md"];
+  const pkg = pick("Package").toUpperCase();
+  return {
+    program: programOf(values),
+    ...(pkg ? { package: pkg } : {}),
+    method: pick("Mode") === "Standard" ? "Precise" : "Economy",
+    formats,
+    language: (pick("Language") || "Korean") as SpecSurvey["language"],
+    ...(answers ?? { depth: "Detailed", audience: "Both" }),
+  };
+}
+
+/** A run file's bytes, from the base64 the backend sent. */
+function bytesOf(file: RunFile): Uint8Array<ArrayBuffer> {
+  const raw = atob(file.data);
+  const bytes = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+  return bytes;
+}
+
+/** A text run file (Markdown, HTML) as a string. */
+function textOf(file: RunFile): string {
+  return new TextDecoder().decode(bytesOf(file));
+}
+
+/**
+ * The Markdown spec with its pictures inside it.
+ *
+ * The run writes the rendered selection screen, ALV and flow as PNGs beside
+ * the .md and links them by relative path; on this page, and in the file
+ * someone downloads, there is no folder beside it. So each link to one of
+ * the run's images becomes the image itself, as a data URI — the same thing
+ * the HTML converter does.
+ */
+function withImages(markdown: string, files: readonly RunFile[]): string {
+  let text = markdown;
+  for (const file of files) {
+    if (file.mediaType !== "image/png") continue;
+    const uri = `data:image/png;base64,${file.data}`;
+    for (const ref of [file.path, `./${file.path}`]) {
+      text = text.split(`](${ref})`).join(`](${uri})`);
+    }
+  }
+  return text;
+}
+
+/** 12.3 KB — one decimal under a hundred, none above. */
+function sizeLabel(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb < 100 ? kb.toFixed(1) : Math.round(kb)} KB`;
+  return `${(kb / 1024).toFixed(1)} MB`;
 }
 
 /**
@@ -305,6 +391,22 @@ export function SkillForm({
    * the skill page, which has already looked it up.
    */
   const shownSkill = skillDisplay(locale, findSkill(slug)!);
+  /** A run that writes files and keeps nothing — see `Skill.documents`. */
+  const documents = findSkill(slug)?.documents === true;
+  /**
+   * The files the run wrote, once collected. Held here and nowhere else: the
+   * backend deleted them as it handed them over, and nothing is stored.
+   */
+  const [docs, setDocs] = useState<RunFile[] | null>(null);
+  /** The session whose files have been asked for — asked once, ever. */
+  const collected = useRef<string | null>(null);
+  /** Run was pressed on a documents skill, and its survey is up. */
+  const [askingSurvey, setAskingSurvey] = useState(false);
+  /**
+   * The files the reader asked for. HTML is converted from a Markdown file
+   * the run writes on the way, which is not offered unless it was asked for.
+   */
+  const [wanted, setWanted] = useState<SpecSurvey["formats"]>([]);
   const pathname = usePathname();
   const [values, setValues] = useState<Record<string, Value>>(() =>
     initial(fields),
@@ -377,6 +479,8 @@ export function SkillForm({
     // it, a remembered run from an earlier sitting must not come back over
     // the top of the one just started.
     if (autorun || autorunFired.current) return;
+    // Nothing of a documents run is remembered, so there is nothing to pick up.
+    if (documents) return;
     const stored = readStoredRun(slug);
     if (!stored) return;
 
@@ -407,7 +511,7 @@ export function SkillForm({
     return () => {
       cancelled = true;
     };
-  }, [slug, autorun]);
+  }, [slug, autorun, documents]);
 
   /**
    * The run the URL asked for. Once, on arrival, and the URL is rewritten
@@ -536,6 +640,20 @@ export function SkillForm({
     lastAgent?.kind === "agent" ? lastAgent.streaming : false,
   );
 
+  // A documents run's files, by kind. The Markdown one, when there is one, is
+  // the document the viewer shows; the run's own closing words are only a
+  // summary of it.
+  const mdFile = wanted.includes("md")
+    ? (docs?.find((file) => file.name.toLowerCase().endsWith(".md")) ?? null)
+    : null;
+  const htmlFile = docs?.find((file) => file.name.toLowerCase().endsWith(".html")) ?? null;
+  const xlsxFile = docs?.find((file) => file.name.toLowerCase().endsWith(".xlsx")) ?? null;
+  const specText = useMemo(
+    () => (mdFile && docs ? withImages(textOf(mdFile), docs) : null),
+    [mdFile, docs],
+  );
+  const htmlText = useMemo(() => (htmlFile ? textOf(htmlFile) : null), [htmlFile]);
+
   // Anything the run said that was not the answer — "Stopped.", a disconnect.
   const notices = rows.filter((row) => row.kind === "notice");
 
@@ -575,6 +693,21 @@ export function SkillForm({
     if (signature === written.current) return;
     written.current = signature;
 
+    if (documents) {
+      // Only what it cost. The run keeps no transcript, so there is no
+      // conversation to write — but the month's spend should still count it.
+      try {
+        const live = await api.getSession(sessionId);
+        await api.recordRun(sessionId, {
+          turns: live.turns,
+          totalCostUsd: live.totalCostUsd,
+        });
+      } catch (err) {
+        setError((err as Error).message);
+      }
+      return;
+    }
+
     try {
       // The run's totals, read from the backend at the moment it settled —
       // the same record the chat screen saves from. Without them every skill
@@ -601,7 +734,7 @@ export function SkillForm({
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [sessionId, stream.items, title, fields, values]);
+  }, [sessionId, stream.items, title, fields, values, documents]);
 
   /**
    * On the transition into idle, not on every render that finds it there —
@@ -624,7 +757,7 @@ export function SkillForm({
    * exactly the moment there would be nothing stored yet.
    */
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || documents) return;
     try {
       sessionStorage.setItem(
         runKey(slug),
@@ -633,7 +766,44 @@ export function SkillForm({
     } catch {
       // Storage refused. The run still works; only the return trip is poorer.
     }
-  }, [slug, sessionId, streamed]);
+  }, [slug, sessionId, streamed, documents]);
+
+  /**
+   * Collect the run's files when it settles — once, since the backend deletes
+   * them as it hands them over.
+   */
+  useEffect(() => {
+    if (!documents || !sessionId || stream.status !== "idle") return;
+    if (collected.current === sessionId) return;
+    collected.current = sessionId;
+    void api
+      .takeFiles(sessionId)
+      .then((files) => setDocs(files))
+      .catch((err: unknown) => {
+        setDocs([]);
+        setError((err as Error).message);
+      });
+  }, [documents, sessionId, stream.status]);
+
+  /**
+   * A documents run ends with the page: Done, Run again, a reload, a closed
+   * tab or leaving the screen all close its backend session, which drops the
+   * stream it would replay and any file not yet collected. `keepalive` lets
+   * the request outlive the page that sent it.
+   */
+  useEffect(() => {
+    if (!documents || !sessionId) return;
+    const end = (): void => {
+      void fetch(`/api/sessions/${sessionId}`, { method: "DELETE", keepalive: true }).catch(
+        () => {},
+      );
+    };
+    window.addEventListener("pagehide", end);
+    return () => {
+      window.removeEventListener("pagehide", end);
+      end();
+    };
+  }, [documents, sessionId]);
 
   // The backend has taken the prompt, so its own status carries the screen.
   useEffect(() => {
@@ -661,6 +831,7 @@ export function SkillForm({
     setImages([]);
     setSessionId(null);
     setRestored(null);
+    setDocs(null);
     setError(null);
     try {
       sessionStorage.removeItem(runKey(slug));
@@ -679,6 +850,19 @@ export function SkillForm({
    */
   function start(context: string | null = null): void {
     if (running || blocked) return;
+    if (documents) {
+      // The survey needs something to be about before it is worth asking.
+      if (programOf(values) === "") {
+        setError(t.programRequired);
+        return;
+      }
+      setError(null);
+      const survey = surveyOf(values, locale);
+      // Economy asks nothing; only the plugin's own skill has an interview.
+      if (survey.method === "Economy") void run(null, null, survey);
+      else setAskingSurvey(true);
+      return;
+    }
     if (cost && !spend) {
       pendingContext.current = context;
       setAskingCost(true);
@@ -687,11 +871,36 @@ export function SkillForm({
     void run(context, spend);
   }
 
-  async function run(context: string | null, how: Spend | null): Promise<void> {
+  async function run(
+    context: string | null,
+    how: Spend | null,
+    /** A documents run's answers, from `SpecSurveyModal`. */
+    survey: SpecSurvey | null = null,
+  ): Promise<void> {
     if (running || blocked) return;
     setStarting(true);
     setError(null);
+    setDocs(null);
     try {
+      if (survey) {
+        setWanted(survey.formats);
+        // The method is the spending decision here, so there is no cost
+        // dialog: both run on Sonnet with sub-agents kept off Opus, and each
+        // has a ceiling well above what it measured.
+        const session = await api.createSession(undefined, undefined, {
+          model: "claude-sonnet-5",
+          economy: true,
+          maxBudgetUsd: survey.method === "Precise" ? 3 : 1.5,
+          profile: tools,
+          ...(survey.method === "Economy" ? { effort: "medium" as const } : {}),
+        });
+        setSessionId(session.id);
+        await api.sendMessage(session.id, specPrompt(survey, `.sc4sap/out/${session.id}`));
+        requestAnimationFrame(() =>
+          result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+        );
+        return;
+      }
       // Each skill says what it needs; none of them gets everything by
       // default. `analyse` keeps the specialist dispatch and the web lookup
       // and takes the shell and file writes away, which is what a read-only
@@ -999,7 +1208,23 @@ export function SkillForm({
                 {shown.label}
               </span>
               {control()}
-              {shown.hint && <span className="field-hint">{shown.hint}</span>}
+              {shown.optionHints.length > 0 ? (
+                <span className="field-hint hint-stack">
+                  {shown.optionHints.map((entry) => (
+                    <span
+                      key={entry.value}
+                      className={entry.value === value ? undefined : "is-hidden"}
+                      aria-hidden={entry.value === value ? undefined : true}
+                    >
+                      {entry.hint}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                shown.hintFor(value) && (
+                  <span className="field-hint">{shown.hintFor(value)}</span>
+                )
+              )}
             </Tag>
           );
         })}
@@ -1057,7 +1282,7 @@ export function SkillForm({
             <h2>{t.result}</h2>
             {/* Only once there is something to carry over. Before the first
                 answer there is no conversation to open, just an empty one. */}
-            {answer.trim() !== "" && (
+            {answer.trim() !== "" && !documents && (
               <button className="ghost skill-continue" onClick={openInChat}>
                 <Icon name="chat-teardrop-text" /> {t.continueInChat}
               </button>
@@ -1085,7 +1310,15 @@ export function SkillForm({
                   contain it. */}
               <div className="skill-doc-bar">
                 <span className="skill-doc-kind">
-                  <Icon name="markdown-logo" /> Markdown
+                  {documents && !specText ? (
+                    <>
+                      <Icon name="note" /> {t.runSummary}
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="markdown-logo" /> Markdown
+                    </>
+                  )}
                 </span>
                 <button
                   type="button"
@@ -1103,20 +1336,29 @@ export function SkillForm({
                 {/* Not while the run is going. A half-written report saved to
                     disk is indistinguishable from a whole one afterwards, and
                     the file is the thing people forward. */}
-                <button
-                  className="ghost skill-doc-save"
-                  onClick={() => download(filenameFor(title), answer)}
-                  disabled={running}
-                  // The full answer, not the paced one — what is saved is the
-                  // report, not how much of it has been typed out so far.
-                  title={running ? t.availableWhenDone : t.saveReport}
-                >
-                  <Icon name="download-simple" /> {t.downloadMd}
-                </button>
+                {/* A documents run saves the spec it wrote, not its closing
+                    summary — and only when it wrote one. With Excel chosen
+                    there is no Markdown file, and so no button. */}
+                {(!documents || mdFile) && (
+                  <button
+                    className="ghost skill-doc-save"
+                    onClick={() =>
+                      mdFile && specText
+                        ? download(mdFile.name, specText)
+                        : download(filenameFor(title), answer)
+                    }
+                    disabled={running}
+                    // The full answer, not the paced one — what is saved is the
+                    // report, not how much of it has been typed out so far.
+                    title={running ? t.availableWhenDone : t.saveReport}
+                  >
+                    <Icon name="download-simple" /> {t.downloadMd}
+                  </button>
+                )}
               </div>
 
               <div className="skill-doc">
-                <Markdown>{paced}</Markdown>
+                <Markdown>{specText ?? paced}</Markdown>
                 {/* The turn is still going — a tool is running, or more of the
                     report is on its way. Under the document rather than inside
                     it, because it is not part of what was written. */}
@@ -1130,6 +1372,75 @@ export function SkillForm({
                   </span>
                 )}
               </div>
+            </div>
+          )}
+
+          {documents && settled && answer.trim() !== "" && (
+            <div className="run-files">
+              {docs === null ? (
+                <p className="run-files-wait">
+                  <Icon name="circle-notch" className="spin" /> {t.collectingFiles}
+                </p>
+              ) : docs.length === 0 ? (
+                <p className="run-files-none">{t.noFiles}</p>
+              ) : null}
+
+              {htmlFile && htmlText !== null && (
+                <div className="skill-doc-box html-preview">
+                  <div className="skill-doc-bar">
+                    <span className="skill-doc-kind">
+                      <Icon name="file-html" /> {t.htmlPreview}
+                    </span>
+                    <button
+                      className="ghost skill-doc-save"
+                      onClick={() => download(htmlFile.name, htmlText, "text/html;charset=utf-8")}
+                      title={t.saveReport}
+                    >
+                      <Icon name="download-simple" /> {t.downloadHtml}
+                    </button>
+                  </div>
+                  {/* Sandboxed without same-origin: the page's scripts may run
+                      (its Mermaid flowchart) but can reach nothing of this app. */}
+                  <iframe
+                    className="html-preview-frame"
+                    title={htmlFile.name}
+                    sandbox="allow-scripts"
+                    srcDoc={htmlText}
+                  />
+                </div>
+              )}
+
+              {xlsxFile && (
+                <button
+                  type="button"
+                  className="file-card"
+                  onClick={() =>
+                    download(
+                      xlsxFile.name,
+                      bytesOf(xlsxFile),
+                      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                  }
+                  title={t.downloadFile}
+                >
+                  <span className="file-card-icon" aria-hidden="true">
+                    <Icon name="microsoft-excel-logo" weight="fill" />
+                  </span>
+                  <span className="file-card-body">
+                    <span className="file-card-name">{xlsxFile.name}</span>
+                    <span className="file-card-meta">
+                      {t.excelWorkbook} · {sizeLabel(xlsxFile.size)} ·{" "}
+                      {new Date(xlsxFile.createdAt).toLocaleString(locale, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </span>
+                  </span>
+                  <span className="file-card-action" aria-hidden="true">
+                    <Icon name="download-simple" />
+                  </span>
+                </button>
+              )}
             </div>
           )}
 
@@ -1246,11 +1557,22 @@ export function SkillForm({
         </EditModal>
       )}
 
+      {askingSurvey && (
+        <SpecSurveyModal
+          program={programOf(values)}
+          onCancel={() => setAskingSurvey(false)}
+          onRun={(answers) => {
+            setAskingSurvey(false);
+            void run(null, null, surveyOf(values, locale, answers));
+          }}
+        />
+      )}
+
       {confirmDone && (
         <ConfirmModal
           kind={t.runKind}
           heading={t.closeQuestion(subject)}
-          description={t.closeBody}
+          description={documents ? t.closeBodyDocuments : t.closeBody}
           confirmLabel={t.closeIt}
           confirmIcon="check"
           onConfirm={reset}

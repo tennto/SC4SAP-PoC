@@ -200,8 +200,29 @@ const en = {
     inputs: "Inputs",
     inputsNote:
       "Running opens a session against the connected system, the same way chat does. The answer is kept, so it can be picked up there.",
+    inputsNoteDocuments:
+      "Running opens a session against the connected system. Nothing is kept: the result and its files stay on this page until you press Done or leave it.",
   },
 
+  specSurvey: {
+    kind: "Before it runs",
+    title: (program: string) => `Specification · ${program}`,
+    description:
+      "Everything the skill would otherwise stop to ask, answered now so the run goes start to finish on its own.",
+    depthHeader: "Depth",
+    depthQuestion: "How much detail?",
+    detailed: "Detailed",
+    detailedNote: "Screens, data model, authorizations, exceptions, every routine",
+    summary: "Summary",
+    summaryNote: "Purpose, inputs, outputs and the main steps",
+    audienceHeader: "Audience",
+    audienceQuestion: "Who is it for?",
+    both: "Both",
+    functional: "Functional",
+    technical: "Technical",
+    cancel: "Cancel",
+    run: "Run",
+  },
   skillForm: {
     haikuNote: "Half the price of Sonnet. Enough to read a table or a program.",
     sonnetNote: "Fast, and enough to narrow most causes.",
@@ -249,7 +270,17 @@ const en = {
     closeQuestion: (subject: string) => `Close the ${subject} analysis?`,
     closeBody:
       "The report goes off this page. It is kept as a conversation, so it can still be opened in chat.",
+    closeBodyDocuments:
+      "The specification and its files are deleted. Nothing of this run is kept, so download anything you need first.",
     closeIt: "Close it",
+    programRequired: "Enter the program to document.",
+    runSummary: "Summary",
+    collectingFiles: "Collecting the files…",
+    noFiles: "The run finished without writing a file. The summary above is all it produced.",
+    htmlPreview: "HTML preview",
+    downloadHtml: "Download .html",
+    downloadFile: "Download the file",
+    excelWorkbook: "Excel workbook",
   },
 
   chat: {
@@ -1055,8 +1086,28 @@ const ko: Messages = {
     inputs: "입력",
     inputsNote:
       "실행하면 채팅과 같은 방식으로 연결된 시스템에 세션을 엽니다. 답변은 보관되어 채팅에서 이어서 볼 수 있습니다.",
+    inputsNoteDocuments:
+      "실행하면 연결된 시스템에 세션을 엽니다. 아무것도 보관하지 않습니다. 결과와 파일은 Done을 누르거나 이 화면을 떠나기 전까지만 남습니다.",
   },
 
+  specSurvey: {
+    kind: "실행 전 확인",
+    title: (program) => `명세서 · ${program}`,
+    description: "스킬이 실행 중에 물어볼 내용을 미리 정합니다. 답을 정하면 중간에 멈추지 않고 끝까지 진행합니다.",
+    depthHeader: "수준",
+    depthQuestion: "얼마나 자세히 쓸까요?",
+    detailed: "상세",
+    detailedNote: "화면, 데이터 모델, 권한, 예외, 모든 루틴까지",
+    summary: "요약",
+    summaryNote: "목적, 입력, 출력, 주요 처리 단계",
+    audienceHeader: "독자",
+    audienceQuestion: "누가 읽을 문서인가요?",
+    both: "기능 + 기술",
+    functional: "기능 (현업)",
+    technical: "기술 (개발자)",
+    cancel: "취소",
+    run: "실행",
+  },
   skillForm: {
     haikuNote: "Sonnet의 절반 가격입니다. 테이블이나 프로그램을 읽는 데는 충분합니다.",
     sonnetNote: "빠르고, 대부분의 원인을 좁히기에 충분합니다.",
@@ -1100,6 +1151,16 @@ const ko: Messages = {
     runKind: "실행",
     closeQuestion: (subject) => `${subject} 분석을 닫을까요?`,
     closeBody: "보고서가 이 페이지에서 사라집니다. 대화로 보관되므로 채팅에서 다시 열 수 있습니다.",
+    closeBodyDocuments:
+      "명세서와 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하세요.",
+    programRequired: "명세를 만들 프로그램을 입력하세요.",
+    runSummary: "요약",
+    collectingFiles: "파일을 가져오는 중…",
+    noFiles: "파일을 만들지 않고 실행이 끝났습니다. 위의 요약이 결과의 전부입니다.",
+    htmlPreview: "HTML 미리보기",
+    downloadHtml: ".html 다운로드",
+    downloadFile: "파일 다운로드",
+    excelWorkbook: "Excel 통합 문서",
     closeIt: "닫기",
   },
 
@@ -1888,8 +1949,28 @@ const ja: Messages = {
     inputs: "入力",
     inputsNote:
       "実行するとチャットと同じように、接続先システムに対するセッションが開きます。回答は保存され、チャットから続けられます。",
+    inputsNoteDocuments:
+      "実行すると接続先システムに対するセッションが開きます。何も保存されません。結果とファイルは Done を押すかこの画面を離れるまでだけ残ります。",
   },
 
+  specSurvey: {
+    kind: "実行前の確認",
+    title: (program) => `仕様書 · ${program}`,
+    description: "スキルが実行中に尋ねる内容を先に決めます。決めておけば途中で止まらず最後まで進みます。",
+    depthHeader: "詳細度",
+    depthQuestion: "どこまで詳しく書きますか?",
+    detailed: "詳細",
+    detailedNote: "画面、データモデル、権限、例外、すべてのルーチンまで",
+    summary: "要約",
+    summaryNote: "目的、入力、出力、主な処理ステップ",
+    audienceHeader: "読者",
+    audienceQuestion: "誰が読む文書ですか?",
+    both: "機能 + 技術",
+    functional: "機能 (業務)",
+    technical: "技術 (開発者)",
+    cancel: "キャンセル",
+    run: "実行",
+  },
   skillForm: {
     haikuNote: "Sonnet の半額です。テーブルやプログラムを読むには十分です。",
     sonnetNote: "高速で、ほとんどの原因を絞り込むには十分です。",
@@ -1933,6 +2014,16 @@ const ja: Messages = {
     runKind: "実行",
     closeQuestion: (subject) => `${subject} の分析を閉じますか?`,
     closeBody: "レポートはこのページから消えます。会話として保存されるので、チャットから再び開けます。",
+    closeBodyDocuments:
+      "仕様書とファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードしてください。",
+    programRequired: "仕様書を作るプログラムを入力してください。",
+    runSummary: "要約",
+    collectingFiles: "ファイルを取得しています…",
+    noFiles: "ファイルを作らずに実行が終わりました。上の要約が結果のすべてです。",
+    htmlPreview: "HTML プレビュー",
+    downloadHtml: ".html をダウンロード",
+    downloadFile: "ファイルをダウンロード",
+    excelWorkbook: "Excel ブック",
     closeIt: "閉じる",
   },
 

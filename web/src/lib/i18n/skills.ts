@@ -20,6 +20,8 @@ type FieldText = {
   hint?: string;
   /** English option → what the reader sees for it. */
   options?: Record<string, string>;
+  /** English option → its hint. See `SkillField.optionHints`. */
+  optionHints?: Record<string, string>;
 };
 
 type SkillText = {
@@ -205,28 +207,27 @@ const ko: CatalogText = {
       summary:
         "프로그램을 역공학해 기능 또는 기술 명세서로 만들고, 선택 화면과 ALV 목업을 붙입니다",
       fields: {
+        Package: { label: "패키지", hint: "선택 사항. 프로그램과 커스텀 오브젝트를 찾는 데 씁니다." },
         "Program name": { label: "프로그램 이름" },
         "Output format": {
           label: "출력 형식",
-          options: {
-            Markdown: "Markdown",
-            HTML: "HTML",
-            "Excel (xlsx)": "Excel (xlsx)",
-            "Markdown + HTML": "Markdown + HTML",
-            "Markdown + HTML + Excel (xlsx)": "Markdown + HTML + Excel (xlsx)",
-          },
-          hint: "HTML은 목업 이미지가 포함된 단일 파일입니다.",
-        },
-        Scope: {
-          label: "범위",
-          options: {
-            Everything: "전체",
-            "Selection screen only": "선택 화면만",
-            "Business logic only": "업무 로직만",
-            "Interfaces only": "인터페이스만",
+          optionHints: {
+            Markdown: "이 화면에 문서로 표시하고, .md로 저장합니다.",
+            HTML: "실제 모양 그대로 미리보기하고, .html로 저장합니다.",
+            "Markdown + HTML": "문서와 그 아래 HTML 미리보기를 함께 보여주고, 둘 다 저장할 수 있습니다.",
+            "Excel (xlsx)": "통합 문서를 파일로 받습니다.",
           },
         },
-        Language: { label: "언어", options: LANGUAGES_KO },
+        Mode: {
+          label: "모드",
+          options: { Economy: "절약", Standard: "기본" },
+          optionHints: {
+            Economy: "에이전트 1개로 실행합니다. 약 200~400원, 1~3분. 바로 시작합니다.",
+            Standard:
+              "분석 에이전트를 쓰는 플러그인 전체 스킬입니다. 약 1,000~1,600원, 5~10분. 시작 전에 상세 수준과 독자를 묻습니다.",
+          },
+        },
+        Language: { label: "작성 언어", options: LANGUAGES_KO },
       },
     },
     "package-to-process": {
@@ -458,28 +459,27 @@ const ja: CatalogText = {
       summary:
         "プログラムをリバースエンジニアリングして機能仕様書または技術仕様書にし、選択画面と ALV のモックアップを添えます",
       fields: {
+        Package: { label: "パッケージ", hint: "任意。プログラムとカスタムオブジェクトを探すのに使います。" },
         "Program name": { label: "プログラム名" },
         "Output format": {
           label: "出力形式",
-          options: {
-            Markdown: "Markdown",
-            HTML: "HTML",
-            "Excel (xlsx)": "Excel (xlsx)",
-            "Markdown + HTML": "Markdown + HTML",
-            "Markdown + HTML + Excel (xlsx)": "Markdown + HTML + Excel (xlsx)",
-          },
-          hint: "HTML はモックアップ画像を埋め込んだ単一ファイルです。",
-        },
-        Scope: {
-          label: "範囲",
-          options: {
-            Everything: "すべて",
-            "Selection screen only": "選択画面のみ",
-            "Business logic only": "業務ロジックのみ",
-            "Interfaces only": "インターフェースのみ",
+          optionHints: {
+            Markdown: "この画面に文書として表示し、.md で保存します。",
+            HTML: "実際の見た目でプレビューし、.html で保存します。",
+            "Markdown + HTML": "文書とその下の HTML プレビューを並べ、どちらも保存できます。",
+            "Excel (xlsx)": "ブックをファイルで受け取ります。",
           },
         },
-        Language: { label: "言語", options: LANGUAGES_JA },
+        Mode: {
+          label: "モード",
+          options: { Economy: "節約", Standard: "標準" },
+          optionHints: {
+            Economy: "エージェント 1 つで実行します。約 200〜400 ウォン、1〜3 分。すぐ開始します。",
+            Standard:
+              "分析エージェントを使うプラグインのフルスキルです。約 1,000〜1,600 ウォン、5〜10 分。開始前に詳細度と読者を尋ねます。",
+          },
+        },
+        Language: { label: "記述言語", options: LANGUAGES_JA },
       },
     },
     "package-to-process": {
@@ -565,6 +565,10 @@ export type FieldDisplay = {
   hint?: string;
   /** For a select: each English option beside what the reader sees for it. */
   options: { value: string; label: string }[];
+  /** The line under the field for this value: the option's own, else `hint`. */
+  hintFor: (value: unknown) => string | undefined;
+  /** Every option's own hint, where the field has them. */
+  optionHints: { value: string; hint: string }[];
 };
 
 /** A skill as the reader sees it in `locale`. */
@@ -589,6 +593,16 @@ export function skillDisplay(locale: Locale, skill: Skill): SkillDisplay {
         label: own?.label ?? field.label,
         placeholder: own?.placeholder ?? field.placeholder,
         hint: own?.hint ?? field.hint,
+        optionHints: (field.options ?? []).flatMap((option) => {
+          const hint = own?.optionHints?.[option] ?? field.optionHints?.[option];
+          return hint ? [{ value: option, hint }] : [];
+        }),
+        hintFor: (value) =>
+          (typeof value === "string"
+            ? own?.optionHints?.[value] ?? field.optionHints?.[value]
+            : undefined) ??
+          own?.hint ??
+          field.hint,
         options: (field.options ?? []).map((option) => ({
           value: option,
           label: own?.options?.[option] ?? option,

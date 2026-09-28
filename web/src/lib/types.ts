@@ -15,6 +15,21 @@ export type SessionStatus =
   | "error";
 
 /** `SessionRecord` as returned by GET/POST /sessions. */
+/**
+ * A document a skill run wrote, as the backend hands it over — see
+ * `src/server/run-files.ts`. Kept by the page only; the server has deleted it.
+ */
+export type RunFile = {
+  name: string;
+  mediaType: string;
+  size: number;
+  createdAt: string;
+  /** Base64 of the bytes. */
+  data: string;
+  /** Relative to the run's folder — how the Markdown refers to an image. */
+  path: string;
+};
+
 export type Session = {
   id: string;
   sdkSessionId: string | null;

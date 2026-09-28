@@ -438,6 +438,27 @@ export async function toolCalls(): Promise<Collection<ToolCallDoc>> {
   return (await database()).collection<ToolCallDoc>("tool_calls");
 }
 
+/**
+ * What a run that keeps no transcript has spent so far.
+ *
+ * Program → Spec keeps nothing of a run, so there is no chat row to carry its
+ * running total. This row does, so that each report of the total adds only
+ * what is new — to the month, and to the account's retired counters, which
+ * is where "ran, and is gone" is already counted. See `recordRun`.
+ */
+export type RunSpendDoc = {
+  /** The backend session id. */
+  _id: string;
+  userId: string;
+  turns: number;
+  costUsd: number;
+  updatedAt: Date;
+};
+
+export async function runSpend(): Promise<Collection<RunSpendDoc>> {
+  return (await database()).collection<RunSpendDoc>("run_spend");
+}
+
 export async function spendMonths(): Promise<Collection<SpendMonthDoc>> {
   return (await database()).collection<SpendMonthDoc>("spend_months");
 }

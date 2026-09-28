@@ -33,6 +33,13 @@ import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
 import { ToolLog } from "./tool-log.ts";
 import { listPriceCost } from "./pricing.ts";
 import {
+  isOwnRunStep,
+  removeRunFiles,
+  sweepRunFiles,
+  takeRunFiles,
+  type RunFile,
+} from "./run-files.ts";
+import {
   buildToolPolicy,
   isSapReadTool,
   disallowedForProfile,
@@ -143,9 +150,28 @@ const COLLECT_NUDGE_GRACE_MS = 5_000;
  * a different shape at one row versus two. This pins the orientation: fields
  * are columns and records are rows, at any count.
  */
-const OUTPUT_FORMAT_APPEND =
+/**
+ * Where the plugin lives, said once to the main thread.
+ *
+ * Sub-agents are told by `withPluginRoot`; the main thread was not, and a
+ * measured Program → Spec run (2026-09-28) spent its first minute running
+ * `find` across the repository for the plugin's spec scripts and `where` for
+ * a browser. The scripts find the browser themselves.
+ */
+function pluginRootLine(pluginPath: string): string {
+  const root = pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
+  return (
+    `The sc4sap plugin is at ${root}: its scripts are under ${root}/scripts ` +
+    `(run them as \`node ${root}/scripts/...\`) and its skill files under ` +
+    `${root}/skills. Do not search the disk for the plugin, its scripts or a ` +
+    "browser — the scripts locate the browser themselves.\n\n"
+  );
+}
+
+const hostAppend = (pluginPath: string): string =>
   "Host: sc4sap-web — a headless web host that governs tool permissions itself; " +
   "skip any session-trust or permission bootstrap step a skill would otherwise run.\n\n" +
+  pluginRootLine(pluginPath) +
   "When you present data read from a SAP table — whether one record or many — " +
   "always render it as a Markdown table with one column per field and one row " +
   "per record. Keep this same header-and-rows orientation for a single record: " +
@@ -775,6 +801,17 @@ export class SessionManager {
     this.#config = config ?? loadConfig();
     requireApiKey();
     this.toolLog = options.toolLog ?? new ToolLog();
+    // No session is live yet, so nothing in the output folder is anyone's.
+    sweepRunFiles(this.#config.workspace);
+  }
+
+  /**
+   * The documents a run wrote, handed over once and deleted — see
+   * `run-files.ts`. Null for a session this server does not hold.
+   */
+  takeRunFiles(id: string): RunFile[] | null {
+    if (!this.#sessions.has(id)) return null;
+    return takeRunFiles(this.#config.workspace, id);
   }
 
   get config(): PocConfig {
@@ -1040,7 +1077,7 @@ export class SessionManager {
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: OUTPUT_FORMAT_APPEND,
+          append: hostAppend(this.#config.pluginPath),
         },
         // Loads the workspace .claude/settings.json, which is the ONLY place
         // the L1 blocklist guards are declared. Dropping this silently
@@ -1550,6 +1587,21 @@ export class SessionManager {
       return Promise.resolve({ behavior: "allow", updatedInput });
     }
 
+    // A documents run writing into its own output folder, or running the
+    // plugin's spec scripts on what is there. See `isOwnRunStep`.
+    if (
+      isOwnRunStep(
+        this.#config.workspace,
+        this.#config.pluginPath,
+        sessionId,
+        toolName,
+        input,
+      )
+    ) {
+      this.toolLog.decide(context.toolUseID, "auto");
+      return Promise.resolve({ behavior: "allow", updatedInput: input });
+    }
+
     // The account's approval level, applied before a request is raised. A
     // read under "writes", or anything under "never", goes through here and
     // is logged as auto-approved, the same as a policy allow.
@@ -1715,6 +1767,8 @@ export class SessionManager {
       );
     }
     this.#cancelOrphanTimer(live);
+    // Whatever the run wrote and nobody collected goes with it.
+    removeRunFiles(this.#config.workspace, id);
     live.pump.close();
     this.toolLog.abandon(id);
     if (live.collectNudge) clearTimeout(live.collectNudge);

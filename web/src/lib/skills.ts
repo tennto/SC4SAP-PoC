@@ -30,6 +30,12 @@ export type SkillField = {
   options?: string[];
   hint?: string;
   /**
+   * A select's hint per option, shown instead of `hint` for the option that
+   * is chosen — so the line under the field explains the answer on screen
+   * rather than every answer at once.
+   */
+  optionHints?: Record<string, string>;
+  /**
    * The field also takes screenshots — dropped, pasted or picked — which go
    * to the model as images alongside the text. A dump or a job log is a
    * screen far more often than it is a string someone can retype.
@@ -116,6 +122,16 @@ export type Skill = {
    * run is open, instead of sending the reader to chat to answer.
    */
   followUp?: boolean;
+  /**
+   * The run writes documents for the reader to take away, and keeps nothing.
+   *
+   * The page collects the files when the run settles (the backend hands them
+   * over once and deletes them), shows them, and offers them for download.
+   * Nothing of the run is remembered: not in this tab's storage, not as a
+   * conversation — only its cost is recorded. Done, a reload or closing the
+   * tab ends it, and the backend session with it.
+   */
+  documents?: boolean;
 };
 
 export type SkillGroup = {
@@ -343,9 +359,6 @@ export const SKILLS: Skill[] = [
 
   // ---------- document ----------
   {
-    // Not yet worked on for model choice: no cost dialog, so no budget and no
-    // economy, and its Opus agents run unchecked. Add both when this skill is
-    // next developed — see docs/model-selection-improvements.md, item 4.
     slug: "program-to-spec",
     command: "/sc4sap:program-to-spec",
     tools: "build",
@@ -355,14 +368,43 @@ export const SKILLS: Skill[] = [
       "Reverse-engineers a program into a functional or technical specification, with selection-screen and ALV mockups",
     group: "analyze",
     status: "ready",
+    // What to document, what to get back, and how. Economy starts at once
+    // with fixed answers; Standard is the plugin's own skill and asks the rest
+    // of its interview (detail, audience, language) in a dialog when Run is
+    // pressed (`SpecSurveyModal`), so nothing is asked mid-run. See
+    // `lib/spec-prompt.ts`.
     fields: [
-      { label: "Program name", kind: "text", placeholder: "ZPP0050" },
-      // Any combination since plugin 0.6.20; the common ones are listed rather
-      // than every subset, and the skill takes the words as they are.
-      { label: "Output format", kind: "select", options: ["Markdown", "HTML", "Excel (xlsx)", "Markdown + HTML", "Markdown + HTML + Excel (xlsx)"], hint: "HTML is one self-contained file with the mockups inlined." },
-      { label: "Scope", kind: "select", options: ["Everything", "Selection screen only", "Business logic only", "Interfaces only"] },
-      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese", "German"] },
+      { label: "Package", kind: "text", placeholder: "ZMMPAEK", hint: "Optional. Helps find the program and its custom objects." },
+      { label: "Program name", kind: "text", placeholder: "ZMMR00020" },
+      // Excel on its own: the workbook carries the whole spec.
+      {
+        label: "Output format",
+        kind: "select",
+        options: ["Markdown", "HTML", "Markdown + HTML", "Excel (xlsx)"],
+        optionHints: {
+          Markdown: "Shown here as the document, saved as .md.",
+          HTML: "Previewed here as it will look, saved as .html.",
+          "Markdown + HTML": "The document here and an HTML preview under it, saved as either.",
+          "Excel (xlsx)": "A workbook, offered as a file to download.",
+        },
+      },
+      // On the form rather than in the dialog, so Economy — which asks
+      // nothing — writes in the language chosen, not the screen's.
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"] },
+      {
+        label: "Mode",
+        kind: "select",
+        // Economy first and default: the target is a run under ₩500, and the
+        // plugin's full skill measured ~₩1,600 on ZMMR00020 (2026-09-28).
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy: "One agent. About ₩200–400 and 1–3 min. Starts right away.",
+          Standard:
+            "The plugin's full skill, with an analyst agent. About ₩1,000–1,600 and 5–10 min. Asks about detail and audience first.",
+        },
+      },
     ],
+    documents: true,
   },
   {
     // Not yet worked on for model choice: no cost dialog, so no budget and no

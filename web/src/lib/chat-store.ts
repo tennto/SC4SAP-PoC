@@ -1,6 +1,6 @@
 import "server-only";
 import { ObjectId } from "mongodb";
-import { chatMessages, chats, spendMonths, users, type ChatDoc } from "@/lib/mongo";
+import { chatMessages, chats, runSpend, spendMonths, users, type ChatDoc } from "@/lib/mongo";
 
 /**
  * Persisting the conversation the reader can see.
@@ -425,6 +425,48 @@ async function ensureSpendSeeded(userId: string): Promise<void> {
   }
   for (const row of started) at(row._id).chats += row.chats;
   for (const [month, totals] of months) await addSpend(userId, month, totals);
+}
+
+/**
+ * Counts a run that keeps no transcript — its cost and turns, nothing else.
+ *
+ * Reported as a running total, possibly more than once; only the growth since
+ * the last report is added, to this month and to the account's retired
+ * counters, where every run whose transcript is gone is already counted.
+ */
+export async function recordRun(
+  userId: string,
+  runId: string,
+  totals: { turns: number; totalCostUsd: number },
+): Promise<void> {
+  await ensureSpendSeeded(userId);
+  const before = await (await runSpend()).findOneAndUpdate(
+    { _id: runId, userId },
+    {
+      $set: { turns: totals.turns, costUsd: totals.totalCostUsd, updatedAt: new Date() },
+      $setOnInsert: { userId },
+    },
+    { upsert: true, returnDocument: "before" },
+  );
+  const add = {
+    chats: before ? 0 : 1,
+    turns: Math.max(0, totals.turns - (before?.turns ?? 0)),
+    costUsd: Math.max(0, totals.totalCostUsd - (before?.costUsd ?? 0)),
+  };
+  if (add.chats === 0 && add.turns === 0 && add.costUsd === 0) return;
+  await addSpend(userId, monthKey(new Date()), add);
+  if (ObjectId.isValid(userId)) {
+    await (await users()).updateOne(
+      { _id: new ObjectId(userId) },
+      {
+        $inc: {
+          "retired.chats": add.chats,
+          "retired.turns": add.turns,
+          "retired.costUsd": add.costUsd,
+        },
+      },
+    );
+  }
 }
 
 /** One month of the ledger, as the activity panel steps through it. */
