@@ -1025,7 +1025,7 @@ export function SkillForm({
 
   return (
     <>
-      <div className="fields">
+      <div className={`fields${fields.some((field) => field.span) ? " fields-rows" : ""}`}>
         {fields.map((field, index) => {
           const value = values[field.label];
           const id = `skill-field-${index}`;
@@ -1203,7 +1203,10 @@ export function SkillForm({
           const Tag = field.kind === "select" ? "div" : "label";
 
           return (
-            <Tag className={`field field-${field.kind}`} key={field.label}>
+            <Tag
+              className={`field field-${field.kind}${field.span ? ` span-${field.span}` : ""}`}
+              key={field.label}
+            >
               <span className="field-label" id={id}>
                 {shown.label}
               </span>

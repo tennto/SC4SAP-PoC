@@ -4546,6 +4546,29 @@ button.primary:hover:not(:disabled) {
   gap: 16px;
 }
 
+/* A form laid out in rows of its own (`SkillField.span`): the first row's
+   fields, then a fresh row for the rest. Three tracks at the width fields
+   have everywhere else, so no box is wider than it would be on any other
+   form and both rows start on the same left edges. One column when there is
+   no room for three. */
+.fields.fields-rows {
+  grid-template-columns: repeat(3, minmax(0, 300px));
+}
+
+.fields.fields-rows .span-half + .span-third {
+  grid-column-start: 1;
+}
+
+@media (max-width: 1040px) {
+  .fields.fields-rows {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fields.fields-rows .span-half + .span-third {
+    grid-column-start: auto;
+  }
+}
+
 /* Free text wants the full width even when the grid could fit two columns. */
 .field-textarea {
   grid-column: 1 / -1;

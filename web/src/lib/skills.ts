@@ -36,6 +36,12 @@ export type SkillField = {
    */
   optionHints?: Record<string, string>;
   /**
+   * Lays the form out in rows of its own: `half` fields share the first row,
+   * and the first `third` field after them starts a new row that the rest
+   * follow. Without it the form is the usual auto-fitted grid.
+   */
+  span?: "half" | "third";
+  /**
    * The field also takes screenshots — dropped, pasted or picked — which go
    * to the model as images alongside the text. A dump or a job log is a
    * screen far more often than it is a string someone can retype.
@@ -374,12 +380,27 @@ export const SKILLS: Skill[] = [
     // pressed (`SpecSurveyModal`), so nothing is asked mid-run. See
     // `lib/spec-prompt.ts`.
     fields: [
-      { label: "Package", kind: "text", placeholder: "ZMMPAEK", hint: "Optional. Helps find the program and its custom objects." },
-      { label: "Program name", kind: "text", placeholder: "ZMMR00020" },
+      // Two rows: what to document, then how — mode, files, language.
+      { label: "Package", kind: "text", placeholder: "ZMMPAEK", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
+      { label: "Program name", kind: "text", placeholder: "ZMMR00020", span: "half" },
       // Excel on its own: the workbook carries the whole spec.
+      {
+        label: "Mode",
+        kind: "select",
+        span: "third",
+        // Economy first and default: the target is a run under ₩500, and the
+        // plugin's full skill measured ~₩1,600 on ZMMR00020 (2026-09-28).
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy: "One agent. About ₩200–400 and 1–3 min. Starts right away.",
+          Standard:
+            "The plugin's full skill, with an analyst agent. About ₩1,000–1,600 and 5–10 min. Asks about detail and audience first.",
+        },
+      },
       {
         label: "Output format",
         kind: "select",
+        span: "third",
         options: ["Markdown", "HTML", "Markdown + HTML", "Excel (xlsx)"],
         optionHints: {
           Markdown: "Shown here as the document, saved as .md.",
@@ -390,19 +411,7 @@ export const SKILLS: Skill[] = [
       },
       // On the form rather than in the dialog, so Economy — which asks
       // nothing — writes in the language chosen, not the screen's.
-      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"] },
-      {
-        label: "Mode",
-        kind: "select",
-        // Economy first and default: the target is a run under ₩500, and the
-        // plugin's full skill measured ~₩1,600 on ZMMR00020 (2026-09-28).
-        options: ["Economy", "Standard"],
-        optionHints: {
-          Economy: "One agent. About ₩200–400 and 1–3 min. Starts right away.",
-          Standard:
-            "The plugin's full skill, with an analyst agent. About ₩1,000–1,600 and 5–10 min. Asks about detail and audience first.",
-        },
-      },
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
     ],
     documents: true,
   },
