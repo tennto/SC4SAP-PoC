@@ -31,6 +31,7 @@ import {
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { loadConfig, requireApiKey, type PocConfig } from "../config.ts";
 import { ToolLog } from "./tool-log.ts";
+import { listPriceCost } from "./pricing.ts";
 import {
   buildToolPolicy,
   isSapReadTool,
@@ -1801,7 +1802,8 @@ export class SessionManager {
               // adds — and what it does not know about is whatever the
               // conversation spent before this session picked it up.
               live.record.totalCostUsd =
-                live.priorCostUsd + message.total_cost_usd;
+                live.priorCostUsd +
+                listPriceCost(message.modelUsage, message.total_cost_usd);
             }
             // Only if nothing is still running underneath. A skill that
             // dispatches a background reviewer ends its own turn seconds after

@@ -404,12 +404,14 @@ export default async function HomePage() {
             <span className="panel-note">{t.last7Days}</span>
           </div>
 
-          {/* Turns rather than conversations: it is the number that moves
-              during a working session, and the one the spend below tracks. */}
+          {/* The week's spend rather than its turns: what an operator asks
+              of this panel is what the work cost, and a turn count only
+              answers that by way of a guess at the price of a turn. */}
           <p className="figure">
-            {activity.week.turns.toLocaleString(tag)}
-            <span className="figure-unit">{t.turns(activity.week.turns)}</span>
+            {money(activity.week.costUsd)}
+            <span className="figure-unit">{t.spent}</span>
           </p>
+          <p className="field-note">{t.spendBasis}</p>
 
           <dl className="facts">
             <div>
@@ -429,6 +431,15 @@ export default async function HomePage() {
                 {t.weekAndAllTime(
                   money(activity.week.costUsd),
                   money(activity.all.costUsd),
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>{t.turnsLabel}</dt>
+              <dd>
+                {t.weekAndAllTime(
+                  activity.week.turns.toLocaleString(tag),
+                  activity.all.turns.toLocaleString(tag),
                 )}
               </dd>
             </div>
