@@ -3308,10 +3308,10 @@ button.primary:hover:not(:disabled) {
 }
 
 .month-label {
-  min-width: 44px;
+  min-width: 38px;
   text-align: center;
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
@@ -3334,48 +3334,91 @@ button.primary:hover:not(:disabled) {
   place-items: center;
   width: 22px;
   height: 22px;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
+  background: transparent;
   font-size: 13px;
   color: var(--ink-55);
-  text-decoration: none;
+  cursor: pointer;
   transition:
     color var(--t-fast) var(--ease),
     background var(--t-fast) var(--ease),
-    transform var(--t-fast) var(--ease);
+    transform var(--t-fast) var(--ease),
+    opacity var(--t-fast) var(--ease);
 }
 
-a.month-step:hover {
+.month-step:not(:disabled):hover {
   color: var(--ink);
   background: var(--line-soft);
 }
 
-a.month-step:first-child:hover {
+.month-step:first-child:not(:disabled):hover {
   transform: translateX(-1px);
 }
 
-a.month-step:last-child:hover {
+.month-step:last-child:not(:disabled):hover {
   transform: translateX(1px);
 }
 
-a.month-step:focus-visible {
+.month-step:not(:disabled):active {
+  background: var(--line);
+}
+
+.month-step:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
 
-.month-step.is-disabled {
+.month-step:disabled {
   color: var(--ink-38);
   opacity: 0.45;
+  cursor: default;
+}
+
+/* One height for the figure with its note and for an empty month, so the
+   rows below never move when the month changes. */
+.month-slot {
+  min-height: 96px;
+  margin: 4px 0 6px;
+}
+
+.month-slot .figure {
+  margin-top: 0;
+}
+
+.month-slot-body {
+  animation: month-in var(--t-base) var(--ease) both;
+}
+
+@keyframes month-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+/* Waiting on a month not fetched yet: the figure's shape, quiet, so the
+   slot holds its size and the arrival reads as the number filling in. */
+.figure.is-waiting {
+  color: var(--ink-38);
+  opacity: 0.35;
 }
 
 .month-empty {
-  /* The figure's slot, so the rows below stay put when stepping from a
-     month with spend to one without. */
   display: flex;
   align-items: center;
-  min-height: 62px;
-  margin: 4px 0 14px;
+  /* The whole slot, so the sentence sits in the middle of it. */
+  min-height: 96px;
+  margin: 0;
   font-size: 13px;
   color: var(--ink-55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .month-slot-body {
+    animation: none;
+  }
 }
 
 .conn-actions {

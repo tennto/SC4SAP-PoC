@@ -79,7 +79,8 @@ const en = {
 
     activity: "Activity",
     conversations: "Conversations",
-    spend: "Spend",
+    totalSpend: "Total spend",
+    monthFailed: "This month could not be loaded. Step away and back to try again.",
     spent: "spent",
     monthAndAllTime: (month: string, all: string, current: boolean) =>
       `${month} ${current ? "this month" : "that month"} · ${all} all time`,
@@ -937,7 +938,8 @@ const ko: Messages = {
 
     activity: "활동",
     conversations: "대화",
-    spend: "사용 금액",
+    totalSpend: "전체 사용 금액",
+    monthFailed: "이 달을 불러오지 못했습니다. 다른 달로 갔다가 돌아오면 다시 시도합니다.",
     spent: "사용",
     monthAndAllTime: (month, all, current) => `${current ? "이번 달" : "해당 월"} ${month} · 전체 ${all}`,
     monthNav: "월",
@@ -1769,7 +1771,8 @@ const ja: Messages = {
 
     activity: "アクティビティ",
     conversations: "会話",
-    spend: "利用額",
+    totalSpend: "累計利用額",
+    monthFailed: "この月を読み込めませんでした。別の月へ移って戻ると再試行します。",
     spent: "利用",
     monthAndAllTime: (month, all, current) => `${current ? "今月" : "当月"} ${month} · 累計 ${all}`,
     monthNav: "月",

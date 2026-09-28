@@ -28,13 +28,14 @@ import { BACKEND } from "@/lib/backend";
 import type { Health, ProfileList } from "@/lib/types";
 import { CREDITS } from "@/lib/account";
 import { requireAccount } from "@/lib/auth/session";
-import { readActivity, shiftMonth } from "@/lib/chat-store";
+import { readActivity } from "@/lib/chat-store";
 import { readConnection } from "@/lib/setup-store";
 import { readMessages } from "@/lib/i18n/server";
 import { localeTag } from "@/lib/i18n/locale";
 import type { Messages } from "@/lib/i18n/messages";
 import { Icon } from "@/components/Icon";
 import { FavoriteSkills } from "@/components/FavoriteSkills";
+import { ActivityPanel } from "@/components/ActivityPanel";
 import { ReconnectButton } from "@/components/ReconnectButton";
 
 export const dynamic = "force-dynamic";
@@ -401,127 +402,24 @@ export default async function HomePage({
           )}
         </section>
 
-        <section
-          className="panel panel-activity rise"
-          style={{ "--delay": "440ms" } as React.CSSProperties}
-        >
-          <div className="panel-head panel-head-row">
-            <h2>
-              <Icon name="pulse" /> {t.activity}
-            </h2>
-            {/* Links, not client state: the month is in the URL, so a
-                reload or a shared link lands on the same month, and the
-                page stays a server component. */}
-            <nav className="month-nav" aria-label={t.monthNav}>
-              {activity.firstMonth && activity.month > activity.firstMonth ? (
-                <Link
-                  className="month-step"
-                  href={`/?month=${shiftMonth(activity.month, -1)}`}
-                  aria-label={t.previousMonth}
-                  scroll={false}
-                >
-                  <Icon name="caret-left" />
-                </Link>
-              ) : (
-                <span className="month-step is-disabled" aria-hidden="true">
-                  <Icon name="caret-left" />
-                </span>
-              )}
-              {/* `26/09`: the year short and quiet, the month carrying the
-                  weight — the year rarely changes, the month is what you
-                  are stepping through. */}
-              <time className="month-label" dateTime={activity.month}>
-                <span className="month-year">{activity.month.slice(2, 4)}</span>
-                <span className="month-sep">/</span>
-                {activity.month.slice(5)}
-              </time>
-              {activity.month < activity.currentMonth ? (
-                <Link
-                  className="month-step"
-                  href={
-                    shiftMonth(activity.month, 1) === activity.currentMonth
-                      ? "/"
-                      : `/?month=${shiftMonth(activity.month, 1)}`
-                  }
-                  aria-label={t.nextMonth}
-                  scroll={false}
-                >
-                  <Icon name="caret-right" />
-                </Link>
-              ) : (
-                <span className="month-step is-disabled" aria-hidden="true">
-                  <Icon name="caret-right" />
-                </span>
-              )}
-            </nav>
-          </div>
-
-          {activity.monthTotals ? (
-            <>
-              {/* The month's spend, from the 1st to today: what an operator
-                  asks of this panel is what the work cost. */}
-              <p className="figure">
-                {money(activity.monthTotals.costUsd)}
-                <span className="figure-unit">{t.spent}</span>
-              </p>
-              <p className="field-note">{t.spendBasis}</p>
-            </>
-          ) : (
-            <p className="panel-empty month-empty">{t.noSpend}</p>
-          )}
-
-          <dl className="facts">
-            <div>
-              <dt>{t.conversations}</dt>
-              {/* Both numbers, because one of them alone is unreadable: a
-                  month's count means nothing without the total behind it. */}
-              <dd>
-                {t.monthAndAllTime(
-                  (activity.monthTotals?.chats ?? 0).toLocaleString(tag),
-                  activity.all.chats.toLocaleString(tag), activity.month === activity.currentMonth,
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.spend}</dt>
-              <dd>
-                {t.monthAndAllTime(
-                  money(activity.monthTotals?.costUsd ?? 0),
-                  money(activity.all.costUsd), activity.month === activity.currentMonth,
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.turnsLabel}</dt>
-              <dd>
-                {t.monthAndAllTime(
-                  (activity.monthTotals?.turns ?? 0).toLocaleString(tag),
-                  activity.all.turns.toLocaleString(tag), activity.month === activity.currentMonth,
-                )}
-              </dd>
-            </div>
-            {/* The backend's count, which is every session it is holding open
-                and not only this account's. One backend to one operator for
-                now; when that stops being true this row needs its own
-                per-account source rather than a different label. */}
-            <div>
-              <dt>{t.liveSessions}</dt>
-              <dd>
-                {health
-                  ? t.openOnBackend(health.sessions)
-                  : t.backendNotAnswering}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.lastActivity}</dt>
-              <dd>
-                {activity.lastActiveAt
-                  ? ago(activity.lastActiveAt, tag, t.justNow)
-                  : t.nothingRunYet}
-              </dd>
-            </div>
-          </dl>
-        </section>
+        <ActivityPanel
+          initial={{ month: activity.month, totals: activity.monthTotals }}
+          firstMonth={activity.firstMonth}
+          currentMonth={activity.currentMonth}
+          all={activity.all}
+          // The backend's count, which is every session it is holding open
+          // and not only this account's. One backend to one operator for now;
+          // when that stops being true this row needs its own per-account
+          // source rather than a different label.
+          liveSessions={
+            health ? t.openOnBackend(health.sessions) : t.backendNotAnswering
+          }
+          lastActivity={
+            activity.lastActiveAt
+              ? ago(activity.lastActiveAt, tag, t.justNow)
+              : t.nothingRunYet
+          }
+        />
       </div>
 
       <p

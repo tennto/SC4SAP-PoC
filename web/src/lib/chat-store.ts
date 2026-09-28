@@ -317,8 +317,11 @@ export type Activity = {
   month: string;
   /** What that month spent, or null when nothing was recorded in it. */
   monthTotals: UsageTotals | null;
-  /** The first month with anything recorded — the left arrow stops there. */
-  firstMonth: string | null;
+  /**
+   * How far back the left arrow goes: the month the account was made, or
+   * the first month with spend on record if that is earlier.
+   */
+  firstMonth: string;
   /** The current month — the right arrow stops there. */
   currentMonth: string;
   /** Everything this account has ever run. */
@@ -424,6 +427,34 @@ async function ensureSpendSeeded(userId: string): Promise<void> {
   for (const [month, totals] of months) await addSpend(userId, month, totals);
 }
 
+/** One month of the ledger, as the activity panel steps through it. */
+export type MonthSpend = {
+  month: string;
+  /** Null when nothing was recorded in the month. */
+  totals: UsageTotals | null;
+};
+
+/**
+ * One account's month from the ledger.
+ *
+ * A month with a row but nothing in it — a conversation opened and never
+ * answered — reads as empty too: there is no spend to show.
+ */
+export async function readMonthSpend(
+  userId: string,
+  month: string,
+): Promise<MonthSpend> {
+  await ensureSpendSeeded(userId);
+  const shown = await (await spendMonths()).findOne({ _id: `${userId}:${month}` });
+  return {
+    month,
+    totals:
+      shown && (shown.costUsd > 0 || shown.turns > 0 || shown.chats > 0)
+        ? { chats: shown.chats, turns: shown.turns, costUsd: shown.costUsd }
+        : null,
+  };
+}
+
 /**
  * One account's month, and its lifetime totals, for the dashboard.
  *
@@ -443,20 +474,29 @@ export async function readActivity(
       ? requestedMonth
       : currentMonth;
 
-  const ledger = await spendMonths();
   const [shown, first] = await Promise.all([
-    ledger.findOne({ _id: `${userId}:${month}` }),
-    ledger.find({ userId }, { projection: { month: 1 } }).sort({ month: 1 }).limit(1).next(),
+    readMonthSpend(userId, month),
+    (await spendMonths())
+      .find({ userId }, { projection: { month: 1 } })
+      .sort({ month: 1 })
+      .limit(1)
+      .next(),
   ]);
 
   const user = ObjectId.isValid(userId)
     ? await (await users()).findOne(
         { _id: new ObjectId(userId) },
-        { projection: { retired: 1 } },
+        { projection: { retired: 1, createdAt: 1 } },
       )
     : null;
   // Absent on every row written before retiring existed.
   const retired = user?.retired ?? { chats: 0, turns: 0, costUsd: 0 };
+
+  // Every month since the account existed can be stepped to — an empty one
+  // says so in the box rather than being out of reach.
+  const joined = user?.createdAt ? monthKey(user.createdAt) : currentMonth;
+  const firstMonth =
+    first?.month && first.month < joined ? first.month : joined;
 
   const [row] = await (await chats())
     .aggregate<{
@@ -478,17 +518,10 @@ export async function readActivity(
     ])
     .toArray();
 
-  // A month with a row but nothing in it — a conversation opened and never
-  // answered — reads as empty too: there is no spend to show.
-  const monthTotals =
-    shown && (shown.costUsd > 0 || shown.turns > 0 || shown.chats > 0)
-      ? { chats: shown.chats, turns: shown.turns, costUsd: shown.costUsd }
-      : null;
-
   return {
     month,
-    monthTotals,
-    firstMonth: first?.month ?? null,
+    monthTotals: shown.totals,
+    firstMonth,
     currentMonth,
     // No chats yet is no group; the retired counters still count, since an
     // account that deleted everything it ran has certainly run something.
