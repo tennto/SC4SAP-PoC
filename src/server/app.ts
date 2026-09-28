@@ -62,7 +62,7 @@ type IdParams = { id: string };
 export const MODELS = [
   { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "Half the price of Sonnet. Enough to read a table or a program." },
   { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
-  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about five times the price." },
+  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about two and a half times the price of Sonnet." },
 ] as const;
 
 /**

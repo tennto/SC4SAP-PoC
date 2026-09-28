@@ -495,10 +495,11 @@ export type SessionRecord = {
   /**
    * Sub-agents run on Sonnet whatever the skill asked for.
    *
-   * The plugin's heavier skills dispatch a reviewer with `model: "opus"`,
-   * which is the right call for a production incident and five times the
-   * price of Sonnet for a PoC. With this on, the dispatch is let through
-   * with that one field rewritten — see `#requestApproval`.
+   * The plugin's heavier skills dispatch a reviewer on Opus, by a `model`
+   * field or by the agent's own frontmatter — the right call for a
+   * production incident and two and a half times the price of Sonnet for a
+   * PoC. With this on, the dispatch is let through with its model brought
+   * down — see `economyDispatch`.
    */
   economy: boolean;
 };

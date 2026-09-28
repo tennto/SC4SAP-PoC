@@ -199,7 +199,7 @@ const en = {
   skillForm: {
     haikuNote: "Half the price of Sonnet. Enough to read a table or a program.",
     sonnetNote: "Fast, and enough to narrow most causes.",
-    opusNote: "Deeper cross-file reasoning, about five times the price.",
+    opusNote: "Deeper cross-file reasoning, about two and a half times the price of Sonnet.",
     onlyImages: (file: string) =>
       `${file}: only images (PNG, JPEG, GIF, WebP) can be attached here.`,
     atMostImages: (count: number) => `At most ${count} images`,
@@ -1048,7 +1048,7 @@ const ko: Messages = {
   skillForm: {
     haikuNote: "Sonnet의 절반 가격입니다. 테이블이나 프로그램을 읽는 데는 충분합니다.",
     sonnetNote: "빠르고, 대부분의 원인을 좁히기에 충분합니다.",
-    opusNote: "파일 간 추론이 더 깊고, 가격은 약 5배입니다.",
+    opusNote: "파일 간 추론이 더 깊고, 가격은 Sonnet의 약 2.5배입니다.",
     onlyImages: (file) => `${file}: 여기에는 이미지(PNG, JPEG, GIF, WebP)만 첨부할 수 있습니다.`,
     atMostImages: (count) => `이미지는 최대 ${count}개`,
     addScreenshotTitle: "스크린샷 추가 — 붙여넣거나 끌어다 놓아도 됩니다",
@@ -1875,7 +1875,7 @@ const ja: Messages = {
   skillForm: {
     haikuNote: "Sonnet の半額です。テーブルやプログラムを読むには十分です。",
     sonnetNote: "高速で、ほとんどの原因を絞り込むには十分です。",
-    opusNote: "ファイル横断の推論がより深く、価格は約 5 倍です。",
+    opusNote: "ファイル横断の推論がより深く、価格は Sonnet の約 2.5 倍です。",
     onlyImages: (file) => `${file}: ここに添付できるのは画像 (PNG, JPEG, GIF, WebP) のみです。`,
     atMostImages: (count) => `画像は最大 ${count} 枚`,
     addScreenshotTitle: "スクリーンショットを追加 — 貼り付けやドロップでも可",
