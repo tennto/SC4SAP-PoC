@@ -427,7 +427,14 @@ export default async function HomePage({
                   <Icon name="caret-left" />
                 </span>
               )}
-              <span className="month-label">{activity.month.replace("-", ".")}</span>
+              {/* `26/09`: the year short and quiet, the month carrying the
+                  weight — the year rarely changes, the month is what you
+                  are stepping through. */}
+              <time className="month-label" dateTime={activity.month}>
+                <span className="month-year">{activity.month.slice(2, 4)}</span>
+                <span className="month-sep">/</span>
+                {activity.month.slice(5)}
+              </time>
               {activity.month < activity.currentMonth ? (
                 <Link
                   className="month-step"

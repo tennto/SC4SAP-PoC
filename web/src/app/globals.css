@@ -3296,52 +3296,86 @@ button.primary:hover:not(:disabled) {
   gap: 14px;
 }
 
-/* The activity panel's month: < 2026.09 >, top right of the box. */
+/* The activity panel's month: ‹ 26/09 ›, top right of the box, sitting on
+   the same line as the panel's heading. No boxes: the carets are glyphs that
+   darken and lean the way they go, so the control reads as part of the
+   heading rather than a toolbar bolted onto it. */
 .month-nav {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  margin-top: -4px;
 }
 
 .month-label {
-  min-width: 58px;
+  min-width: 44px;
   text-align: center;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  color: var(--ink-80);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.month-year {
+  font-weight: 500;
+  color: var(--ink-38);
+}
+
+.month-sep {
+  margin: 0 2px;
+  font-weight: 400;
+  color: var(--ink-38);
 }
 
 .month-step {
   display: inline-grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--ink-80);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 13px;
+  color: var(--ink-55);
   text-decoration: none;
-  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  transition:
+    color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
 }
 
 a.month-step:hover {
-  border-color: var(--line-strong);
+  color: var(--ink);
   background: var(--line-soft);
+}
+
+a.month-step:first-child:hover {
+  transform: translateX(-1px);
+}
+
+a.month-step:last-child:hover {
+  transform: translateX(1px);
 }
 
 a.month-step:focus-visible {
   outline: 2px solid var(--ink);
-  outline-offset: 2px;
+  outline-offset: 1px;
 }
 
 .month-step.is-disabled {
   color: var(--ink-38);
-  border-color: var(--line-soft);
+  opacity: 0.45;
 }
 
 .month-empty {
-  padding: 18px 0 14px;
+  /* The figure's slot, so the rows below stay put when stepping from a
+     month with spend to one without. */
+  display: flex;
+  align-items: center;
+  min-height: 62px;
+  margin: 4px 0 14px;
   font-size: 13px;
+  color: var(--ink-55);
 }
 
 .conn-actions {
