@@ -3296,6 +3296,54 @@ button.primary:hover:not(:disabled) {
   gap: 14px;
 }
 
+/* The activity panel's month: < 2026.09 >, top right of the box. */
+.month-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.month-label {
+  min-width: 58px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-80);
+}
+
+.month-step {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink-80);
+  text-decoration: none;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+
+a.month-step:hover {
+  border-color: var(--line-strong);
+  background: var(--line-soft);
+}
+
+a.month-step:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.month-step.is-disabled {
+  color: var(--ink-38);
+  border-color: var(--line-soft);
+}
+
+.month-empty {
+  padding: 18px 0 14px;
+  font-size: 13px;
+}
+
 .conn-actions {
   display: flex;
   align-items: center;

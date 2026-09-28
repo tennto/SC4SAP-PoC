@@ -28,7 +28,7 @@ import { BACKEND } from "@/lib/backend";
 import type { Health, ProfileList } from "@/lib/types";
 import { CREDITS } from "@/lib/account";
 import { requireAccount } from "@/lib/auth/session";
-import { readActivity } from "@/lib/chat-store";
+import { readActivity, shiftMonth } from "@/lib/chat-store";
 import { readConnection } from "@/lib/setup-store";
 import { readMessages } from "@/lib/i18n/server";
 import { localeTag } from "@/lib/i18n/locale";
@@ -152,18 +152,26 @@ async function loadProfiles(): Promise<ProfileList | null> {
   }
 }
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   // Before anything is fetched or rendered. `proxy.ts` has already turned away
   // requests with no cookie at all; this is the check that the cookie still
   // names a session, and it redirects rather than rendering an empty shell.
   const account = await requireAccount();
+  // `?month=YYYY-MM` from the activity panel's arrows. Anything else, or a
+  // month still to come, falls back to this month inside `readActivity`.
+  const query = await searchParams;
+  const requestedMonth = typeof query.month === "string" ? query.month : undefined;
   // Independent of each other: one is an HTTP call to the backend, the other a
   // Mongo aggregate, and waiting for them in turn would add the slower to the
   // faster for nothing.
   const [{ health, error }, activity, connection, profiles, { locale, t: messages }] =
     await Promise.all([
       loadHealth(),
-      readActivity(account.id),
+      readActivity(account.id, requestedMonth),
       readConnection(account.id),
       loadProfiles(),
       readMessages(),
@@ -401,45 +409,87 @@ export default async function HomePage() {
             <h2>
               <Icon name="pulse" /> {t.activity}
             </h2>
-            <span className="panel-note">{t.last7Days}</span>
+            {/* Links, not client state: the month is in the URL, so a
+                reload or a shared link lands on the same month, and the
+                page stays a server component. */}
+            <nav className="month-nav" aria-label={t.monthNav}>
+              {activity.firstMonth && activity.month > activity.firstMonth ? (
+                <Link
+                  className="month-step"
+                  href={`/?month=${shiftMonth(activity.month, -1)}`}
+                  aria-label={t.previousMonth}
+                  scroll={false}
+                >
+                  <Icon name="caret-left" />
+                </Link>
+              ) : (
+                <span className="month-step is-disabled" aria-hidden="true">
+                  <Icon name="caret-left" />
+                </span>
+              )}
+              <span className="month-label">{activity.month.replace("-", ".")}</span>
+              {activity.month < activity.currentMonth ? (
+                <Link
+                  className="month-step"
+                  href={
+                    shiftMonth(activity.month, 1) === activity.currentMonth
+                      ? "/"
+                      : `/?month=${shiftMonth(activity.month, 1)}`
+                  }
+                  aria-label={t.nextMonth}
+                  scroll={false}
+                >
+                  <Icon name="caret-right" />
+                </Link>
+              ) : (
+                <span className="month-step is-disabled" aria-hidden="true">
+                  <Icon name="caret-right" />
+                </span>
+              )}
+            </nav>
           </div>
 
-          {/* The week's spend rather than its turns: what an operator asks
-              of this panel is what the work cost, and a turn count only
-              answers that by way of a guess at the price of a turn. */}
-          <p className="figure">
-            {money(activity.week.costUsd)}
-            <span className="figure-unit">{t.spent}</span>
-          </p>
-          <p className="field-note">{t.spendBasis}</p>
+          {activity.monthTotals ? (
+            <>
+              {/* The month's spend, from the 1st to today: what an operator
+                  asks of this panel is what the work cost. */}
+              <p className="figure">
+                {money(activity.monthTotals.costUsd)}
+                <span className="figure-unit">{t.spent}</span>
+              </p>
+              <p className="field-note">{t.spendBasis}</p>
+            </>
+          ) : (
+            <p className="panel-empty month-empty">{t.noSpend}</p>
+          )}
 
           <dl className="facts">
             <div>
               <dt>{t.conversations}</dt>
               {/* Both numbers, because one of them alone is unreadable: a
-                  week's count means nothing without the total behind it. */}
+                  month's count means nothing without the total behind it. */}
               <dd>
-                {t.weekAndAllTime(
-                  activity.week.chats.toLocaleString(tag),
-                  activity.all.chats.toLocaleString(tag),
+                {t.monthAndAllTime(
+                  (activity.monthTotals?.chats ?? 0).toLocaleString(tag),
+                  activity.all.chats.toLocaleString(tag), activity.month === activity.currentMonth,
                 )}
               </dd>
             </div>
             <div>
               <dt>{t.spend}</dt>
               <dd>
-                {t.weekAndAllTime(
-                  money(activity.week.costUsd),
-                  money(activity.all.costUsd),
+                {t.monthAndAllTime(
+                  money(activity.monthTotals?.costUsd ?? 0),
+                  money(activity.all.costUsd), activity.month === activity.currentMonth,
                 )}
               </dd>
             </div>
             <div>
               <dt>{t.turnsLabel}</dt>
               <dd>
-                {t.weekAndAllTime(
-                  activity.week.turns.toLocaleString(tag),
-                  activity.all.turns.toLocaleString(tag),
+                {t.monthAndAllTime(
+                  (activity.monthTotals?.turns ?? 0).toLocaleString(tag),
+                  activity.all.turns.toLocaleString(tag), activity.month === activity.currentMonth,
                 )}
               </dd>
             </div>
