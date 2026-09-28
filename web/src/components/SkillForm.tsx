@@ -285,6 +285,8 @@ export function SkillForm({
     defaultBudgetUsd: number;
     /** Which model the dialog opens on — see `Skill.cost`. */
     defaultModel?: string;
+    /** The main thread's model when the skill pins one — see `Skill.cost`. */
+    pinnedModel?: string;
   } | null;
   /**
    * The skill answers in rounds and asks back — see `Skill.followUp`. With
@@ -1184,10 +1186,12 @@ export function SkillForm({
           onSubmit={() => {
             const chosen: Spend = {
               maxBudgetUsd: Math.max(0, Number(costForm.budget) || 0),
-              model: costForm.model,
-              // On Sonnet the whole run stays on Sonnet, reviewers included,
-              // whatever the skill asks for. On Opus the skill gets what it
-              // asked for.
+              // A skill that pins its main thread opens on that pin, so the
+              // session never switches models mid-run and rewrites its cache;
+              // the choice then only decides the sub-agents.
+              model: cost.pinnedModel ?? costForm.model,
+              // Short of Opus, sub-agents run on Sonnet whatever the skill
+              // asks for. On Opus the skill gets what it asked for.
               economy: !/opus/i.test(costForm.model),
             };
             setSpend(chosen);
@@ -1202,18 +1206,23 @@ export function SkillForm({
         >
           <div className="field">
             <span className="field-label" id="cost-model-label">
-              {t.model}
+              {cost.pinnedModel ? t.subAgentModel : t.model}
             </span>
             <Select
               name="model"
               labelledBy="cost-model-label"
               value={costForm.model}
-              options={MODELS.map((entry) => ({ value: entry.id, label: entry.label }))}
+              options={MODELS
+                // Haiku is not offered where the skill pins its main thread:
+                // it would reach neither half — the pin keeps the main thread
+                // and economy stops the sub-agents at Sonnet.
+                .filter((entry) => !cost.pinnedModel || !/haiku/i.test(entry.id))
+                .map((entry) => ({ value: entry.id, label: entry.label }))}
               onChange={(next) => setCostForm((current) => ({ ...current, model: next }))}
             />
             <span className="field-hint">
               {t[MODELS.find((entry) => entry.id === costForm.model)!.note] as string}{" "}
-              {t.modelHint}
+              {cost.pinnedModel ? t.pinnedModelHint : t.modelHint}
             </span>
           </div>
 

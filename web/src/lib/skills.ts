@@ -98,6 +98,15 @@ export type Skill = {
      * reorders an array is not a default, it is an accident.
      */
     defaultModel: string;
+    /**
+     * The main thread's model, where the skill's own `SKILL.md` pins one.
+     *
+     * The session opens on it whatever the dialog says, and the dialog's
+     * choice decides only the sub-agents. Opening anywhere else paid for a
+     * cache write and then switched to the pin: on 2026-09-27 a Haiku choice
+     * made Analyze Code cost more, not less.
+     */
+    pinnedModel?: string;
   };
   /**
    * The skill answers in rounds and asks back.
@@ -208,13 +217,12 @@ export const SKILLS: Skill[] = [
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
     ],
     cost: {
-      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the orchestrator only formats them. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus. Note that this choice moves the orchestrator, not the reviewer: the plugin's agents pin their own model today, so the heavy half of a run ignores it until that changes.",
+      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the main run, which the skill keeps on Sonnet, only formats them. The choice here is the reviewer's model: Sonnet by default, or Opus for the reviewer the plugin asks for. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus.",
       defaultBudgetUsd: 3,
-      // Sonnet rather than Haiku for the half this choice does move: the
-      // orchestrator's job here is to turn a findings list into the report,
-      // and that part has not been measured on Haiku the way the symptom
-      // triage was.
+      // The reviewer on Sonnet: $0.50 of a $0.69 run was the reviewer on Opus
+      // (2026-09-27), and Opus stays one choice away.
       defaultModel: "claude-sonnet-5",
+      pinnedModel: "claude-sonnet-5",
     },
     // The report ends on a menu — explain finding #N, show the callers — and
     // the reply goes to the same session, where the reviewer's findings are
@@ -282,16 +290,13 @@ export const SKILLS: Skill[] = [
       },
     ],
     cost: {
-      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code. A short dump is triaged on the cheap path; the skill escalates to Opus by itself, and only when the dump alone cannot explain the failure. Note that this choice moves the orchestrator, not the debugger: the plugin's agents pin their own model today, so the heavy half of a run ignores it until that changes.",
+      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code; the main run stays on Sonnet, which the skill pins. A short dump is triaged on Sonnet, and when the dump alone cannot explain the failure the skill escalates to Opus by itself. The choice here decides whether it may: on Sonnet the escalation also runs on Sonnet, on Opus it goes to Opus.",
       defaultBudgetUsd: 3,
-      // Haiku, on the evidence rather than to be cheap: asked to analyse an
-      // ST22 screenshot it produced a report at least as good as Sonnet's —
-      // it caught the "(Source code changed)" flag, compared both function
-      // module interfaces field by field and found the one-digit name typo.
-      // The work is retrieval and comparison, which is the shape it is good
-      // at, and the skill's own `BLOCKED — needs full` escalation is the
-      // safety net that makes starting cheap safe.
-      defaultModel: "claude-haiku-4-5",
+      // Was Haiku, on a report judged as good as Sonnet's. That run was very
+      // likely Sonnet all along: the skill pins `model: sonnet`, and no
+      // `modelUsage` was kept to say otherwise. Sonnet now, stated plainly.
+      defaultModel: "claude-sonnet-5",
+      pinnedModel: "claude-sonnet-5",
     },
     followUp: true,
   },
