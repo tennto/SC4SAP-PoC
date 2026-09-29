@@ -884,12 +884,14 @@ export function SkillForm({
       if (survey) {
         setWanted(survey.formats);
         // The method is the spending decision here, so there is no cost
-        // dialog: both run on Sonnet with sub-agents kept off Opus, and each
-        // has a ceiling well above what it measured.
+        // dialog: both run on Sonnet with sub-agents kept off Opus. And no
+        // ceiling either — this page has nowhere to set one, and a ceiling
+        // the reader never chose only stops a run half-way with its cost
+        // already spent (2026-09-30: a Precise run hit a hidden $3 cap
+        // before writing its files, with the account's credit untouched).
         const session = await api.createSession(undefined, undefined, {
           model: "claude-sonnet-5",
           economy: true,
-          maxBudgetUsd: survey.method === "Precise" ? 3 : 1.5,
           profile: tools,
           ...(survey.method === "Economy" ? { effort: "medium" as const } : {}),
         });
