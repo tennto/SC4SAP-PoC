@@ -47,6 +47,8 @@ Emit Phase Banner before each dispatch (see `SKILL.md` § Phase_Banner):
 - **sap-writer** (Haiku 4.5 base; **`model: "sonnet"` override for L3/L4 depth** — longer narrative + deeper cross-reference + stronger consistency requirement) renders every selected format at the chosen depth + language: the `.md` when `formats[]` has `md` or `html` (HTML is converted from it in Step 4, never written separately), the two Excel JSON files when it has `xlsx`. For Excel, map the analyst's business-first narrative into Sheet 4 per [`spec-templates.md`](spec-templates.md) § Business-process narrative (Step text = business-first, `Event / FORM` = technical anchor, `processFlow[]` = business steps) and obey § Language consistency for every string.
 - **sap-critic** (Opus 4.7, frontmatter) gate (only if L4): verifies every claim cross-references a line range.
 
+**Keep the split — only sap-writer (or the main thread) writes files.** sap-analyst has no `Write` tool: never dispatch it to "analyze and write" the spec; it returns findings as text. Every file (`.md`, `image-spec.json`, `tr.json`) is written with the `Write` tool, one call per file — never through Bash (heredoc, `cat >`, `echo >`, a Python script): long or non-ASCII text breaks shell quoting, and each failed retry re-emits the whole document. An agent without `Write` returns the content to its caller instead.
+
 **Step 3.5 — Draw screens**
 
 Both formats now render the SAME program-specific PNGs (Selection / ALV / Process Flow) from one `image-spec.json` — see [`spec-templates.md`](spec-templates.md) § Image Replacement for the schema (the `processFlow` graph form gives the branching `flowchart TD`).

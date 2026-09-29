@@ -584,6 +584,313 @@ export function isReadOnlyCommand(command: string): boolean {
 }
 
 /**
+ * Where the SDK spills a tool result too large to hand back inline:
+ * `~/.claude/projects/<project>/<session>/tool-results/<file>`.
+ */
+const TOOL_RESULT_PATH = /(^|\/)\.claude\/projects\/[^/]+\/(?:[^/]+\/)*tool-results\/[^/]+$/i;
+
+/** Modules a tool-result read may import. Nothing that reaches the OS. */
+const PYTHON_IMPORTS: ReadonlySet<string> = new Set(["sys", "json", "re"]);
+
+/** Bare functions a tool-result read may call. `open` is checked on its own. */
+const PYTHON_CALLS: ReadonlySet<string> = new Set([
+  "open", "print", "len", "min", "max", "sum", "sorted", "reversed", "enumerate",
+  "range", "zip", "map", "filter", "any", "all", "abs", "round", "str", "int",
+  "float", "bool", "repr", "list", "dict", "set", "tuple", "isinstance", "chr",
+  "ord", "hex", "divmod", "next", "iter", "slice",
+]);
+
+/**
+ * Attributes a tool-result read may touch, and the only names it may import
+ * with `from x import`. `write` is missing on purpose, and so is `modules` —
+ * `sys.modules["os"]` is the way out of an import list.
+ */
+const PYTHON_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "read", "readline", "readlines", "splitlines", "split", "rsplit", "strip",
+  "lstrip", "rstrip", "find", "rfind", "index", "rindex", "count", "startswith",
+  "endswith", "lower", "upper", "casefold", "title", "replace", "join", "encode",
+  "decode", "partition", "rpartition", "isdigit", "isalpha", "isalnum",
+  "isspace", "zfill", "ljust", "rjust", "center", "expandtabs", "get", "keys",
+  "values", "items", "append", "extend", "insert", "pop", "sort", "reverse",
+  "copy", "update", "loads", "load", "dumps", "stdout", "reconfigure", "flush",
+  "argv", "exit", "maxsize", "search", "match", "fullmatch", "findall",
+  "finditer", "sub", "subn", "compile", "escape", "group", "groups",
+  "groupdict", "span", "start", "end", "IGNORECASE", "MULTILINE", "DOTALL",
+  "I", "M", "S",
+]);
+
+/**
+ * Names that are never let through, called or not. Aliasing one of these is
+ * how a call list gets walked around (`f = exec; f(...)` fails the call list,
+ * `map(exec, ...)` would not).
+ */
+const PYTHON_DENIED: ReadonlySet<string> = new Set([
+  "exec", "eval", "compile", "getattr", "setattr", "delattr", "globals",
+  "locals", "vars", "dir", "breakpoint", "input", "help", "exit", "quit",
+  "type", "object", "super", "memoryview", "classmethod", "staticmethod",
+  "property", "class", "global", "nonlocal", "async", "await", "yield",
+]);
+
+const PYTHON_KEYWORDS: ReadonlySet<string> = new Set([
+  "import", "from", "as", "for", "in", "if", "elif", "else", "while", "with",
+  "not", "and", "or", "is", "None", "True", "False", "try", "except",
+  "finally", "pass", "break", "continue", "return", "lambda", "def", "del",
+  "raise", "assert",
+]);
+
+const PYTHON_READ_MODES: ReadonlySet<string> = new Set(["r", "rt", "tr", "rb", "br"]);
+
+/** Keyword arguments `open` may take. `opener` is the one that runs code. */
+const PYTHON_OPEN_KEYWORDS: ReadonlySet<string> = new Set(["mode", "encoding", "errors", "newline"]);
+
+/**
+ * The code of `python -c "<code>"`, unquoted the way bash would, or null when
+ * the command is anything else or the shell would expand something in it.
+ */
+function pythonInlineCode(command: string): string | null {
+  const head = /^\s*python3?(?:\.exe)?\s+-c\s+/.exec(command);
+  if (!head) return null;
+  const rest = command.slice(head[0].length);
+  const quote = rest.charAt(0);
+  let code = "";
+  let i = 1;
+  if (quote === "'") {
+    const close = rest.indexOf("'", 1);
+    if (close < 0) return null;
+    code = rest.slice(1, close);
+    i = close + 1;
+  } else if (quote === '"') {
+    for (; i < rest.length; i++) {
+      const char = rest.charAt(i);
+      if (char === '"') break;
+      if (char === "$" || char === "`") return null;
+      if (char === "\\" && i + 1 < rest.length) {
+        const next = rest.charAt(i + 1);
+        if (next === "\n") { i++; continue; }
+        if ('$`"\\'.includes(next)) { code += next; i++; continue; }
+      }
+      code += char;
+    }
+    if (rest.charAt(i) !== '"') return null;
+    i++;
+  } else {
+    return null;
+  }
+  // Folding stderr in or throwing it away is still a read.
+  if (!/^\s*(?:2>&1|2>\s*\/dev\/null)?\s*$/.test(rest.slice(i))) return null;
+  return code;
+}
+
+/**
+ * Python source with every string literal pulled out and every comment
+ * dropped, so the checks below see only code. A literal becomes `\0<n>\0`.
+ * Null for an f-string, whose braces are code again.
+ */
+function pythonSkeleton(code: string): { skeleton: string; literals: string[] } | null {
+  const literals: string[] = [];
+  let skeleton = "";
+  let i = 0;
+  while (i < code.length) {
+    const prefix = /^[rRbBuUfF]{0,2}(?:"""|'''|"|')/.exec(code.slice(i));
+    const afterName = i > 0 && /[A-Za-z0-9_]/.test(code.charAt(i - 1));
+    if (prefix && !afterName) {
+      const flags = prefix[0].replace(/["']/g, "");
+      if (/f/i.test(flags)) return null;
+      const delimiter = prefix[0].slice(flags.length);
+      let j = i + prefix[0].length;
+      let value = "";
+      for (;;) {
+        if (j >= code.length) return null;
+        if (code.startsWith(delimiter, j)) break;
+        if (delimiter.length === 1 && code.charAt(j) === "\n") return null;
+        if (code.charAt(j) === "\\" && j + 1 < code.length) {
+          const next = code.charAt(j + 1);
+          value += /r/i.test(flags) ? code.charAt(j) + next : next === "\\" || next === "'" || next === '"' ? next : code.charAt(j) + next;
+          j += 2;
+          continue;
+        }
+        value += code.charAt(j);
+        j++;
+      }
+      skeleton += `\0${literals.length}\0`;
+      literals.push(value);
+      i = j + delimiter.length;
+      continue;
+    }
+    if (code.charAt(i) === "#") {
+      while (i < code.length && code.charAt(i) !== "\n") i++;
+      continue;
+    }
+    skeleton += code.charAt(i);
+    i++;
+  }
+  return { skeleton, literals };
+}
+
+/** A literal that names a file rather than holding text. */
+function looksLikePath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || /^[/~]/.test(value) || (value.match(/[\\/]/g) ?? []).length >= 2;
+}
+
+/** The arguments of the call whose `(` is at `open`, split at top level. */
+function callArguments(skeleton: string, open: number): string[] | null {
+  let depth = 0;
+  let current = "";
+  const args: string[] = [];
+  for (let i = open; i < skeleton.length; i++) {
+    const char = skeleton.charAt(i);
+    if ("([{".includes(char)) {
+      depth++;
+      if (depth === 1) continue;
+    } else if (")]}".includes(char)) {
+      depth--;
+      if (depth === 0) {
+        if (current.trim() !== "") args.push(current.trim());
+        return args;
+      }
+    } else if (char === "," && depth === 1) {
+      args.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  return null;
+}
+
+/**
+ * Whether a command is a `python -c` that only reads a tool result the SDK
+ * spilled to disk, and prints something about it.
+ *
+ * When a lookup like `GetProgFullCode` returns more than fits inline, the SDK
+ * writes it under `tool-results/` and hands the model the path. The model
+ * then tends to open it with a one-line Python script rather than `Read` —
+ * in a Program → Spec run on 2026-09-30 it did so to count characters, and
+ * the reader was asked to approve a shell command that looked at nothing but
+ * the program it had just asked about.
+ *
+ * `python -c` can do anything, so this is an allow list and not a filter:
+ * only `sys`, `json` and `re` are importable; every bare call, every attribute
+ * and every `from x import` name comes from a fixed list with no way to
+ * write, spawn, or reach another module; `open` takes a read mode and no
+ * `opener`; and every path spelled in the script is a tool result. A path
+ * built at run time is not followed — it can only be read, which `Read`
+ * already does unasked for any file. Anything else is a no, which means a
+ * dialog, as for every other command this cannot judge.
+ */
+export function isToolResultRead(command: string): boolean {
+  const code = pythonInlineCode(command);
+  if (code === null) return false;
+  const parsed = pythonSkeleton(code);
+  if (!parsed) return false;
+  const { skeleton, literals } = parsed;
+  const literalAt = (text: string): string | null => {
+    const match = /^\0(\d+)\0$/.exec(text.trim());
+    return match ? (literals[Number(match[1])] ?? null) : null;
+  };
+
+  if (/__|@/.test(skeleton)) return false;
+
+  // Every path spelled out is a tool result, and there is at least one.
+  const paths = literals.filter(looksLikePath);
+  if (paths.length === 0) return false;
+  for (const path of paths) {
+    const normal = path.replace(/\\/g, "/");
+    if (!TOOL_RESULT_PATH.test(normal)) return false;
+    if (normal.split("/").includes("..")) return false;
+  }
+
+  // Imports: the module list, and for `from x import`, attribute names only.
+  const importsSeen = (skeleton.match(/\bimport\b/g) ?? []).length;
+  let importsChecked = 0;
+  for (const match of skeleton.matchAll(/\b(?:from\s+([\w.]+)\s+)?import\s+([^\n;]+)/g)) {
+    importsChecked++;
+    const items = (match[2] ?? "").split(",").map((item) => (item.trim().split(/\s+as\s+/)[0] ?? "").trim());
+    if (match[1] !== undefined) {
+      if (!PYTHON_IMPORTS.has(match[1])) return false;
+      if (!items.every((item) => PYTHON_ATTRIBUTES.has(item))) return false;
+    } else if (!items.every((item) => PYTHON_IMPORTS.has(item))) {
+      return false;
+    }
+  }
+  if (importsChecked !== importsSeen) return false;
+
+  // Every name: never a denied one, an attribute from the list, a call from
+  // the list, and `open` only ever called directly.
+  const importLines = /\b(?:from\s+[\w.]+\s+)?import\s+[^\n;]+/g;
+  const names = skeleton.replace(importLines, (line) => " ".repeat(line.length));
+  for (const match of names.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
+    const name = match[0];
+    const start = match.index ?? 0;
+    if (start > 0 && /[0-9]/.test(names.charAt(start - 1))) continue; // 1e5, 0x1f
+    const before = names.slice(0, start).trimEnd().slice(-1);
+    const after = names.slice(start + name.length).trimStart()[0] ?? "";
+    if (before === ".") {
+      if (!PYTHON_ATTRIBUTES.has(name)) return false;
+      continue;
+    }
+    if (PYTHON_DENIED.has(name)) return false;
+    if (PYTHON_KEYWORDS.has(name)) continue;
+    if (after === "(" && !PYTHON_CALLS.has(name)) return false;
+    if (name === "open" && after !== "(") return false;
+  }
+
+  // Nothing is called that is not a name: no `f()()`, no `x[0](...)`.
+  for (const match of skeleton.matchAll(/\(/g)) {
+    const before = skeleton.slice(0, match.index).trimEnd().slice(-1);
+    if (before === ")" || before === "]" || before === "\0") return false;
+  }
+
+  // `open`: a read mode, no opener, nothing positional past the mode.
+  for (const match of skeleton.matchAll(/(?<![\w.])open\s*\(/g)) {
+    const args = callArguments(skeleton, (match.index ?? 0) + match[0].length - 1);
+    if (!args || args.length === 0) return false;
+    const positional = args.filter((arg) => !/^\w+\s*=(?!=)/.test(arg));
+    const keywords = args.filter((arg) => /^\w+\s*=(?!=)/.test(arg));
+    if (positional.length > 2) return false;
+    let mode: string | null = positional.length === 2 ? (positional[1] ?? null) : null;
+    for (const keyword of keywords) {
+      const [key = "", ...value] = keyword.split("=");
+      if (!PYTHON_OPEN_KEYWORDS.has(key.trim())) return false;
+      if (key.trim() === "mode") mode = value.join("=");
+    }
+    if (mode !== null) {
+      const literal = literalAt(mode);
+      if (literal === null || !PYTHON_READ_MODES.has(literal)) return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Whether a shell command writes a file through a heredoc: `cat > f << EOF`,
+ * `cat << EOF > f`, `… << EOF | tee f`.
+ *
+ * Refused rather than asked about, because the `Write` tool does the same job
+ * without the shell in the way. Measured on 2026-09-30: a Program → Spec run's
+ * sub-agent tried to write a Korean spec this way twice, bash failed both
+ * times on the quoting ("unexpected EOF while looking for matching `''"), and
+ * the run spent the rest of its budget testing heredocs instead of writing
+ * the file — every retry re-sent the whole document as output.
+ *
+ * Only the file-writing shape: a heredoc fed to a script (`python - << EOF`)
+ * is not this, and goes to the dialog like any other command.
+ */
+export function isHeredocFileWrite(command: string): boolean {
+  for (const line of command.split("\n")) {
+    const heredoc = /<<-?\s*["']?[A-Za-z_]\w*["']?/.exec(line);
+    if (!heredoc || line.includes("<<<")) continue;
+    if (!/(^|[\s;&|(])(cat|tee)\b/.test(line)) continue;
+    const rest = line
+      .replace(heredoc[0], "")
+      .replace(/2>&1|2>\s*\/dev\/null/g, "");
+    if (/>/.test(rest) || /\btee\b/.test(rest)) return true;
+  }
+  return false;
+}
+
+/**
  * Whether the session's approval level lets this call through unasked.
  *
  * `all` lets nothing through — that is what it means. `never` lets everything
@@ -605,7 +912,10 @@ export function allowedByLevel(
   }
   if (LOCAL_READ_TOOLS.has(toolName)) return true;
   if (toolName === "Bash") {
-    return typeof input.command === "string" && isReadOnlyCommand(input.command);
+    return (
+      typeof input.command === "string" &&
+      (isReadOnlyCommand(input.command) || isToolResultRead(input.command))
+    );
   }
   return false;
 }

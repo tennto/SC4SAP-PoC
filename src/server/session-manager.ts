@@ -44,6 +44,7 @@ import {
   isSapReadTool,
   disallowedForProfile,
   capRows,
+  isHeredocFileWrite,
   MAX_ROWS_PER_READ,
   needsHookApproval,
   outsideWorkspace,
@@ -172,6 +173,11 @@ const hostAppend = (pluginPath: string): string =>
   "Host: sc4sap-web — a headless web host that governs tool permissions itself; " +
   "skip any session-trust or permission bootstrap step a skill would otherwise run.\n\n" +
   pluginRootLine(pluginPath) +
+  "Write files with the Write tool, in one call per file — never through Bash " +
+  "(a heredoc, cat >, echo > or a Python script): long or non-ASCII text " +
+  "breaks the shell's quoting here. A sub-agent without the Write tool " +
+  "(sap-analyst, the module consultants) cannot write files: ask it for the " +
+  "content and write it yourself, or dispatch sap-writer.\n\n" +
   "When you present data read from a SAP table — whether one record or many — " +
   "always render it as a Markdown table with one column per field and one row " +
   "per record. Keep this same header-and-rows orientation for a single record: " +
@@ -1283,6 +1289,30 @@ export class SessionManager {
                           "paths above it are not part of this task.",
                       },
                     };
+                  }
+
+                  // A file written through a heredoc. Refused with the way
+                  // that works, rather than asked about: the shell's quoting
+                  // is what breaks, and approving it only lets it fail. See
+                  // `isHeredocFileWrite`.
+                  if (input.tool_name === "Bash") {
+                    const command = ((input.tool_input ?? {}) as Record<string, unknown>).command;
+                    if (typeof command === "string" && isHeredocFileWrite(command)) {
+                      this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");
+                      return {
+                        hookSpecificOutput: {
+                          hookEventName: "PreToolUse" as const,
+                          permissionDecision: "deny" as const,
+                          permissionDecisionReason:
+                            "Files are not written through a shell heredoc on this " +
+                            "host: long or non-ASCII text breaks its quoting. Write " +
+                            "the file with the Write tool in one call. If you do not " +
+                            "have the Write tool, do not try another shell route — " +
+                            "return the file's full content and its path in your " +
+                            "final answer, and the caller will write it.",
+                        },
+                      };
+                    }
                   }
 
                   if (!needsHookApproval(input.tool_name)) return {};

@@ -59,6 +59,9 @@ function precisePrompt(survey: SpecSurvey, outDir: string): string {
     "",
     "Every interview answer is given above: do not ask any of them, and skip the Step 5 review loop — finalize directly.",
     `Write every file this run produces — the spec files and their _assets, _tr and _img working files — under \`${outDir}/\` (relative to the working directory) instead of \`.sc4sap/specs/\`, and nowhere else.`,
+    // Measured 2026-09-30: sap-analyst was sent to "analyze and write" the
+    // spec, had no Write tool, and spent the run's budget on shell heredocs.
+    "Keep the skill's split: sap-analyst only analyses and returns its findings — it has no Write tool, so never ask it to write a file. The spec's files are written with the Write tool, by sap-writer or by you.",
     "",
     `Write the report in ${survey.language}.`,
   ].join("\n");
