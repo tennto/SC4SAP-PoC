@@ -110,15 +110,6 @@ export type Skill = {
      * reorders an array is not a default, it is an accident.
      */
     defaultModel: string;
-    /**
-     * The main thread's model, where the skill's own `SKILL.md` pins one.
-     *
-     * The session opens on it whatever the dialog says, and the dialog's
-     * choice decides only the sub-agents. Opening anywhere else paid for a
-     * cache write and then switched to the pin: on 2026-09-27 a Haiku choice
-     * made Analyze Code cost more, not less.
-     */
-    pinnedModel?: string;
   };
   /**
    * The skill answers in rounds and asks back.
@@ -239,12 +230,13 @@ export const SKILLS: Skill[] = [
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
     ],
     cost: {
-      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the main run, which the skill keeps on Sonnet, only formats them. The choice here is the reviewer's model: Sonnet by default, or Opus for the reviewer the plugin asks for. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus.",
+      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the main run only formats them. The main run uses the model chosen here, and since plugin 0.6.25 the skill keeps it. The reviewer runs on Opus when Opus is chosen and on Sonnet otherwise. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus.",
       defaultBudgetUsd: 3,
       // The reviewer on Sonnet: $0.50 of a $0.69 run was the reviewer on Opus
-      // (2026-09-27), and Opus stays one choice away.
+      // (2026-09-27), and Opus stays one choice away. Haiku is offered too
+      // since plugin 0.6.25 stopped pinning the main thread, but no review
+      // has been measured on it yet.
       defaultModel: "claude-sonnet-5",
-      pinnedModel: "claude-sonnet-5",
     },
     // The report ends on a menu — explain finding #N, show the callers — and
     // the reply goes to the same session, where the reviewer's findings are
@@ -312,13 +304,14 @@ export const SKILLS: Skill[] = [
       },
     ],
     cost: {
-      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code; the main run stays on Sonnet, which the skill pins. A short dump is triaged on Sonnet, and when the dump alone cannot explain the failure the skill escalates to Opus by itself. The choice here decides whether it may: on Sonnet the escalation also runs on Sonnet, on Opus it goes to Opus.",
+      note: "Each round dispatches a debugger agent against the SAP system — dumps, transports, code. The main run uses the model chosen here, and since plugin 0.6.25 the skill keeps it. A short dump is triaged first, and when the dump alone cannot explain the failure the skill escalates to Opus by itself. The choice here decides whether it may: short of Opus the debugger and its escalation run on Sonnet, on Opus it goes to Opus.",
       defaultBudgetUsd: 3,
       // Was Haiku, on a report judged as good as Sonnet's. That run was very
-      // likely Sonnet all along: the skill pins `model: sonnet`, and no
-      // `modelUsage` was kept to say otherwise. Sonnet now, stated plainly.
+      // likely Sonnet all along: the skill pinned `model: sonnet` until
+      // plugin 0.6.25, and no `modelUsage` was kept to say otherwise. Haiku
+      // now really runs the main thread when chosen (probe 2026-09-29), but
+      // its triage has not been judged again, so the default stays Sonnet.
       defaultModel: "claude-sonnet-5",
-      pinnedModel: "claude-sonnet-5",
     },
     followUp: true,
   },
