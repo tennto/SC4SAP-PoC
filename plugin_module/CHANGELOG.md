@@ -3,6 +3,131 @@
 All notable changes to **SuperClaude for SAP (sc4sap)** will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.31] — 2026-09-30
+
+### Added — `program-to-manual`: edit the finished manual in the page
+
+- The manual page has an **Edit** button. Key users change the finished manual like a slide deck, with nothing installed and nothing loaded from the network:
+  - Click any text to change it. Selecting text shows a small toolbar with bold, highlight (red) and bullet list. The toolbar is Quill 2.0.3 (BSD-3-Clause), inlined from `scripts/manual/third_party/quill-2.0.3/` and mounted only on the field being edited.
+  - Move, duplicate and delete steps. Add and delete callouts, and drag a callout number to a better place; a leader line keeps it tied to its frame.
+  - Replace a drawn screen with a real screenshot: click the step and press Ctrl+V, or use the button. "Original screen" brings the drawing back.
+  - Add and delete rows of the field, message and glossary tables, edit every cell, and switch the ● cells (required, F4) with a click.
+  - Undo every change with Ctrl+Z or the Undo button.
+  - Edits are kept in the browser (IndexedDB) until saved. Reopening the page offers "Continue editing" or "Discard".
+  - A short guide opens the first time and stays available under Help.
+- **Save** writes a copy of the page (`…-edited.html`) with the edited `manual.json` embedded. `build-manual.mjs --import <edited.html> <manual.json>` reads it back (the old draft is kept as `.bak`), and workflow Step 0 imports a user-edited copy before anything else, so the next version keeps the users' edits.
+- New `manual.json` keys written by the edit mode: step `image` (a pasted screenshot, drawn instead of `screen`), callout `offset` / `pos`, top-level `edited`. Prose markup gains `==highlight==` and `- ` bullet lines.
+- The page is about 480 KB instead of about 220 KB, because the editor is inlined.
+
+### Added — `program-to-manual`: Excel worksheet screens
+
+- A screen with `"kind": "excel"` is drawn as an Excel worksheet: title bar with the file name, formula bar, column letters, row numbers, the note row, header cells in the template's own fill colours, data rows and the sheet tab. Use it for steps the user performs inside an upload template, instead of an SAP grid. Anchors: `col:<name>`, `row:<n>`, `note`, `sheet`, `title`.
+- Workflow Step 2 reads a user-supplied upload template (header row, fill colours, note cells); mockup rows stay invented.
+
+### Changed — `program-to-manual` builds an English companion by default
+
+- After the main-language manual is confirmed, Step 8 translates it into `<PROGRAM>-en.manual.json` and builds `…-en.html` with its own revision history. Screens, anchors, sample values, SAP identifiers and message texts stay unchanged. It is skipped when the manual is already in English or the user opts out.
+
+## [0.6.30] — 2026-09-30
+
+### Added — `program-to-manual`: an end-user manual for one program
+
+- New skill `/sc4sap:program-to-manual` writes the manual a business user follows, as one self-contained HTML file. On screen it is a web document with a contents sidebar; printed or saved as PDF, every scenario step starts a new A4 landscape page, and the confidentiality notice repeats at the foot of each page.
+- The body is organised by usage scenario. Each step shows the screen it happens on (selection screen, output ALV, popups and follow-up screens), drawn from the source with the `program-to-spec` renderer, with numbered callouts on the fields, radio options, buttons and columns the user touches. The same numbers head the step's instruction list.
+- Each scenario ends with check points taken from the source (mandatory inputs, selection-screen checks, confirmation popups, processing that cannot be undone). The manual also has a field reference, a table of messages with their cause and the action to take, a glossary, and a revision history that numbers versions automatically.
+- A module consultant drafts the business context. The skill asks the user about at most three statements it could not confirm from the source, and marks any that stay unconfirmed with a "to be confirmed" badge.
+- Author, team, company and the confidentiality notice are asked once and stored in the active profile's `config.json` under `manual` (`scripts/manual/manual-config.mjs`).
+- A small screen (a confirmation popup) keeps its natural size instead of stretching to the page width.
+- A screen image drawn smaller than its natural size (a wide grid) opens at full size on click and scrolls sideways; a second click closes it. Print keeps the fitted size.
+- `scripts/manual/build-manual.mjs` builds the page. It warns about callouts that point at something not drawn on their screen (and lists what is drawn), scenarios without check points, and English prose in a Korean or Japanese manual.
+
+### Changed — screen mockups are drawn in SAP Signature
+
+- Selection screens, output screens and popups in `program-to-spec` and `program-to-manual` images now look like SAP GUI's Signature theme. They have the Signature title area with a bold italic title, a flat application toolbar, group boxes with a header strip, and a square ALV grid with a grey header, ruled cells and tinted key columns (`"key": true`). The screen background is the blue-grey of the default colour scheme. The colours were sampled from real SAP GUI screenshots.
+- `"theme"` in `image-spec.json` or `manual.json`, or `"screenTheme"` in the profile `config.json`, picks the look: `signature` (default), `signature-pink` (the pink system colour scheme), `modern` (the earlier look, unchanged) or a palette of your own (`{ "base": "signature", … }`).
+- `selection.title` draws the program title above the selection screen.
+- A dialog box (`"modal": true` on a screen: `CALL SCREEN … STARTING AT`, status type P, `POPUP_TO_CONFIRM`) is drawn as SAP draws it. Its application toolbar sits at the bottom edge with the buttons flush right, and the popup has a window frame.
+- `/sc4sap:sap-option` sets the theme per SAP system ("screen theme", new `skills/sap-option/screen-theme.md`) and shows it in the status snapshot. `scripts/spec/screen-theme.mjs get | set | reset` validates names and custom `#RRGGBB` palettes and writes the profile `config.json` atomically.
+
+### Changed — screen mockups carry callout anchors
+
+- `screen-image-renderer.mjs` wraps selection rows, radio options, toolbar buttons, GUI status and ALV buttons, dynpro elements, column headers, and screen and pane titles in `<g data-anchor="…">`. The wrapper draws nothing, so `program-to-spec` images are unchanged.
+- Selection screens can show a block nested inside another block (`BEGIN OF BLOCK … WITH FRAME` inside a block). Write it as a `{ "type": "frame", "label", "items" }` item at its place in the outer block. It is drawn as an inner border with its title on the top edge, and its fields line up with the fields of the outer block. Before, a nested block had to be flattened into a separate top-level block. Applies to `program-to-spec` and `program-to-manual`.
+- Button `icon` also takes the SAP icon name from the GUI status or ALV toolbar (`ICON_TRANSPORT`, `ICON_OPERATOR`, …). It is drawn with the matching glyph, and an SAP icon with no glyph draws none instead of its name.
+- A wide ALV grid is no longer cut off. The canvas stopped at 1600px, and columns past it were dropped without a warning. It now grows with the grid, and toolbars and screen fields still wrap within 1600px.
+- ALV column headers no longer run into the next column: a narrow column is widened for its header (up to 120px) and a header that still does not fit ends with "…". A cell whose value is `red`, `yellow` or `green` is drawn as a status lamp, as SAP shows traffic-light and LED icon columns.
+- Output screens can show the ALV grid title (`SET_GRID_TITLE` / layout `grid_title`) as a bar above the grid, set with `alv.gridTitle` (and on `screens[]`).
+- A screen with a `screen` block but no `columns` or `panes` (a confirmation or input popup) is drawn with its title, buttons and fields only. Before, an empty grid was drawn under it.
+
+## [0.6.29] — 2026-09-30
+
+### Added — `program-to-spec` documents every screen, not only the main ALV
+
+- `image-spec.json.screens[]` draws each further dynpro — popups, detail screens — as `screen-<dynnr>.png`, with the same shape as `alv` (GUI status title and buttons, grid toolbar, columns, sample rows). Buttons on those screens are checked like main-screen buttons, and a popup's confirm button can join the flow of the button that opened it through `codes`.
+- `alv.screen.fields` draws the dynpro elements between the GUI status and the grid: input fields, checkboxes, output-only text and push buttons. A push button sends a PAI function code, so it carries a flow badge like a status button.
+- The skill now reads `GetScreen` for every dynpro except the selection screen and writes one subsection per screen: its image, what calls it, and a PBO / PAI table built from the flow logic (every PBO module, every PAI function code, `AT EXIT-COMMAND`, value-request modules). A screen element is no longer described as "inferred" before its dynpro has been read.
+- The xlsx template has no slot for further screens; `build-spec.mjs` skips them.
+
+### Fixed — flowchart layout
+
+- A tall message node (a long list of messages) overlapped the message node above it or ran off the top of the image. Its decision now moves down until the message node clears, and several message nodes of one decision stack with bent connectors.
+- The label of a loop-back line along the right edge was cut off at the image border. It now stays inside the image.
+- Checked on a real report with a main ALV screen, three popups and a push button on the screen: no render warnings, every screen drawn.
+
+## [0.6.28] — 2026-09-30
+
+### Added — `program-to-spec` draws output-screen buttons and one business flow per button
+
+- The ALV image (xlsx Sheet 3 and MD/HTML §3.2) now shows what a user can press: `image-spec.json.alv.screen` draws the GUI status title and its application toolbar (PAI function codes), `alv.toolbar` / `panes[].toolbar` draw the ALV grid toolbar, and `standardToolbar` adds the generic ALV icons.
+- `buttonFlows` draws one business flow per button that changes data or starts processing (`flow-<n>-<CODE>.png`, embedded in MD/HTML §4.2). The button in the ALV image carries the same number as an orange badge. The main process flow now stops at the ALV output and points to the button flows.
+- `codes[]` on a `buttonFlows` entry lets one flow cover a whole business stage — its online, batch and cancel buttons, and a button on the other toolbar (`{ "code", "source" }`). All of them carry the flow's badge, so a screen with ~30 function codes needs ~10 flows.
+- `render-md-images.mjs` and `build-spec.mjs` warn about business buttons without a flow, flows without a button, codes claimed twice and malformed `codes`. Navigation buttons opt out with `"flow": false`. The xlsx keeps the badges; the template has no slot for the flow images.
+- New `skills/program-to-spec/alv-buttons-schema.md`: how to inventory PAI and ALV buttons, the JSON shape, stage grouping and where the flows go in the spec.
+
+### Changed — `program-to-spec` HTML output and message references
+
+- `md-to-html.mjs` builds a web page instead of a plain document: contents sidebar with section folding, cover fact card, cross-linked SAP names with tooltips, sortable / filterable tables, callouts, and an All / Functional toggle that hides technical detail. New `skills/program-to-spec/html-markup.md` lists the Markdown conventions the page reads (`[!WARNING]` callouts, `<span class="tech">`, `<!-- audience: technical -->`).
+- Text elements are read in English (`language: "E"`) whatever the spec language; a program often has no text pool in it.
+- Every message is written as `CODE (English text)` — `M07 (Already FD Done)`, `E01 (IR amount is different from SO.)` — in prose, tables and flow images. Message class texts come from T100 through `GetSqlQuery` with explicit fields, the one table read the skill now allows. On BASIS < 7.50, where `GetSqlQuery` is unavailable, the `WITH` text in the source is used.
+
+### Fixed
+
+- Flowcharts: a decision with several branches that skip nodes (a three-way "which button?") drew all their labels on one spot, so only the last one was readable. Each extra branch now leaves on its own row with its own label.
+- `md-to-html.mjs` held literal NUL bytes, so git treated it as a binary file. It now uses `\u0000` escapes.
+- Checked end to end on two real ALV cockpit reports (8 and 29 function codes): no render warnings, a badge on every business button.
+
+## [0.6.27] — 2026-09-30
+
+### Fixed — hooks, skill frontmatter and manifests checked against Claude Code 2.1.285
+
+- `setup-init` / `setup-maintenance` were registered under `SessionStart` with the matchers `init` / `maintenance`, which belong to the `Setup` event, so they never fired. They are now `Setup` hooks and run on `claude --init-only`, `claude -p --init` and `claude -p --maintenance`. Setup output does not reach Claude, so both print a plain-text summary instead of `additionalContext`.
+- `PreCompact` accepts only a top-level `decision`, so the context `pre-compact.mjs` and `project-memory-precompact.mjs` injected was dropped. Both are removed. `SessionStart` already runs again after a compact; `project-memory-session.mjs` now also carries recent transports and recent objects.
+- Skills ended with `Task: {{ARGUMENTS}}`, which is not a substitution. They now use `$ARGUMENTS`.
+- Skill frontmatter: removed the unrecognised `level:` key; `name:` no longer repeats the `sc4sap:` prefix (Claude Code adds it, commands are unchanged); `trust-session` declares `user-invocable: false` instead of the unrecognised `internal: true`, so a typed `/sc4sap:trust-session` is refused by Claude Code itself.
+- Manifests: removed `statusLine` from `plugin.json` and `examples` from the marketplace entry (both stripped at load; the HUD status line is still installed into `settings.json` by `install-statusline.mjs`). `claude plugin validate` now passes without warnings.
+- Docs: agent count 25 → 26 (CBO Stocker), skill count 14, missing `package-to-process` row and broken table-of-contents anchors in README / FEATURES (en, ko, ja, de).
+- Removed the empty `rules.md`.
+
+## [0.6.26] — 2026-09-29
+
+### Fixed — `program-to-spec` selection-screen mockup dropped buttons and radio buttons
+
+- The Selection PNG (xlsx Sheet 3 and MD/HTML §3.1) could only draw input fields and checkboxes in two fixed blocks. Push buttons, toolbar buttons and extra blocks were dropped, and radio groups were drawn as checkboxes, although the analyst had already extracted them into the Parameters table.
+- `image-spec.json.selection` now takes `blocks[]` (one per `SELECTION-SCREEN BEGIN OF BLOCK`) with typed items: `param`, `range` (`noIntervals`, `noExtension`), `checkbox` (`labelLeft`), `radioGroup` and `checkboxGroup` (`label` for a leading `COMMENT`, vertical or horizontal layout), `pushbutton`, `comment`, plus `toolbar` for `FUNCTXT_nn` buttons. `default` / `defaultHigh` are drawn inside the input box.
+- New `skills/program-to-spec/selection-schema.md` gives the ABAP → JSON transcription rules: one item per field (no merging), defaults followed into methods called from `INITIALIZATION`, dynamic fields kept with a note, `NO-DISPLAY` fields and their `COMMENT … FOR FIELD` omitted.
+- The legacy `fields` / `optionFields` shape still renders. `build-spec.mjs` and `render-md-images.mjs` print a `⚠` warning when they see it or when an `R_*` field sits in `optionFields`.
+- Rendering changes: plain `PARAMETERS` no longer show a multiple-selection ▼ button (only `SELECT-OPTIONS` do). Checkboxes sit in the label column as on a real screen. Long notes widen the image instead of being clipped, and long defaults are cut with `…`.
+- Checked against three real selection screens (push button + three radio groups; titled radio and checkbox lines; seven blocks with dynamic fields).
+
+## [0.6.25] — 2026-09-29
+
+### Changed — main-thread model now follows the session (`model: inherit`)
+
+- The remaining 12 skills declared `model: sonnet` (analyze-code, analyze-symptom, analyze-cbo-obj, compare-programs, create-object, create-program, package-to-process, program-to-spec) or `model: haiku` (mcp-setup, sap-doctor, sap-option, trust-session). All 14 skills now declare `model: inherit`.
+- Why: a host that opens a session on a chosen model (e.g. an Agent SDK app) applies a skill's `model:` as a switch, so the pin replaced the user's choice. The prompt cache is per model, so each switch also re-wrote ~26–46k tokens of cached context. Measured through an Agent SDK host: `ask-consultant` pinned to Haiku cost $0.43 for a one-sentence answer ($0.28 of it the re-write), and $0.09 with `inherit` on a Haiku session; `analyze-code` pinned to Sonnet cost more on a Haiku session than on a Sonnet one.
+- `trust-session` runs inside twelve other skills, so a pin there switched the model twice per pipeline.
+- Work that needs a specific tier already runs in `Agent(...)` dispatches with their own model; those are unchanged. The per-skill session-model suggestion moved to `docs/skill-model-architecture.md` § 2 as guidance. A preference-driven main-thread pin is not offered: frontmatter is applied before the skill body runs, so a runtime setting cannot change it.
+
 ## [0.6.24] — 2026-09-28
 
 ### Added — user-selectable model dispatch mode

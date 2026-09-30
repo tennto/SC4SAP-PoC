@@ -6,7 +6,7 @@
 //   cell-border wireframe approach (v5..v7) with embedded images.
 //
 // PUBLIC API
-//   renderSelectionScreenSVG({ fields, blockLabels? })       → svg string
+//   renderSelectionScreenSVG({ toolbar?, blocks | fields… })  → svg string
 //   renderAlvLayoutSVG({ columns, sampleRows, maxRows=3 })   → svg string
 //   rasterizeSvgToPng(svg, { width, height })                → Promise<Buffer|null>
 //   renderScreenImages(spec)                                 → Promise<{selection,alv}|null>
@@ -37,6 +37,22 @@ function xml(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// Callout anchors (program-to-manual). A screen element is wrapped in
+// <g data-anchor="prefix:id"> so a manual can find it and draw a numbered
+// callout on it; the wrapper draws nothing, so images are unchanged.
+//   tb:<code|label>   selection-screen toolbar button
+//   block:<label>     selection-screen block frame title
+//   frame:<label>     block nested inside a block (selection item type 'frame')
+//   sel:<name|group>  selection-screen row (radio option: sel:<option name>)
+//   col:<name>        ALV column header
+//   pai:<code> / alv:<code>   GUI status / ALV toolbar button
+//   fld:<name|code|label>     dynpro element above the grid
+//   title / pane:<title>      screen title bar / multi-pane title
+//   gridtitle                 ALV grid title bar (alv.gridTitle)
+const anchorKey = (prefix, id) => (id == null || id === '' ? '' : `${prefix}:${id}`);
+const anchored = (key, inner) => (key && inner ? `<g data-anchor="${xml(key)}">${inner}</g>` : inner);
+const selAnchor = (it) => anchorKey('sel', it?.name || it?.group || it?.label || it?.text);
 
 function wrapTextSvg(text, charsPerLine = 60) {
   const words = text.split(' ');
@@ -69,6 +85,7 @@ const LEGEND = {
     hotspot_text:   '밑줄 파랑',
     hotspot_label:  'Hotspot (더블클릭 이동)',
     editable_cell:  '노랑 셀',
+    editable_cell_white: '흰 셀',
     editable_label: '편집 가능',
     block_label:    '조회 조건',
     option_label:   '옵션',
@@ -91,6 +108,7 @@ const LEGEND = {
     hotspot_text:   'Blue underline',
     hotspot_label:  '= Hotspot (click to navigate)',
     editable_cell:  'Yellow cell',
+    editable_cell_white: 'White cell',
     editable_label: '= Editable',
     block_label:    'Selection Criteria',
     option_label:   'Options',
@@ -113,6 +131,7 @@ const LEGEND = {
     hotspot_text:   '青下線',
     hotspot_label:  '= Hotspot (ダブルクリックで遷移)',
     editable_cell:  '黄色セル',
+    editable_cell_white: '白セル',
     editable_label: '= 編集可能',
     block_label:    '照会条件',
     option_label:   'オプション',
@@ -150,119 +169,427 @@ function approxTextWidthPx(s) {
   return w;
 }
 
-/**
- * fields: [{
- *   required?: boolean,
- *   label: string,             e.g. '구매조직'
- *   name: string,              e.g. 'S_EKORG'
- *   range?: boolean,           true → LOW ~ HIGH two inputs
- *   note?: string,
- * }, ...]
- *
- * NOTE: `defaultLow` / `defaultHigh` are ACCEPTED in the field schema for
- *  spec documentation (they show up in the Parameters table), but they are
- *  NOT rendered inside the input-box graphic any more. The field name is
- *  already labeled next to the box; stuffing "BOM" / "1000" / "오늘" inside
- *  the input box just adds visual noise. Callers can still pass these
- *  values — the renderer silently ignores them.
- *
- * `lang` controls the bottom legend text ('ko' | 'en' | 'ja').
- */
 // Shared image-mockup polish (v13): soft drop-shadow + rounded-top header path,
 // so Selection/ALV mockups match the v12 flowchart + v13 process/sequence look.
 const IMG_SHADOW = '<filter id="imgsh" x="-8%" y="-20%" width="116%" height="142%"><feDropShadow dx="0" dy="1.4" stdDeviation="1.6" flood-color="#8C9BAA" flood-opacity="0.4"/></filter>';
+// ──────────────────────────────────────────────────────────────
+// Screen themes — the look of SAP screens in the mockups
+// ──────────────────────────────────────────────────────────────
+// 'signature' (default) draws screens as SAP GUI's Signature theme with its
+// default blue-grey colour scheme: title area, flat application toolbar,
+// group boxes with a header strip, square ALV grid with a grey header.
+// 'signature-pink' is the same theme with the pink system colour scheme; its
+// values were sampled from real SAP GUI screenshots, and the default scheme
+// is those values with the hue moved to Signature blue (lightness and
+// saturation kept). 'modern' is the earlier sc4sap look, unchanged.
+// A theme may also be an object: { base: 'signature', page: '#…', … }.
+const SIGNATURE = {
+  flat: true,
+  page: '#DEE8F4', titleTop: '#BCCDE0', titleBot: '#ADC2DB', titleInk: '#1B2A3A',
+  toolbar: '#CEDAE8', toolbarLine: '#B3C4D8', frameHead: '#C4D7EC', frameLine: '#92AFD0',
+  ink: '#000000', muted: '#4A5664', inputFill: '#FFFFFF', inputLine: '#8E9BA8', dropFill: '#E7EEF5',
+  gridHeadTop: '#D8DDE2', gridHeadBot: '#D0D6DC', gridLine: '#9FAAB7', cellLine: '#C3CEDA',
+  cell: '#DFE9F5', keyCell: '#BFCAD6', editFill: '#FFFFFF', editLine: '#7F8C99',
+  pushTop: '#FBFCFD', pushBot: '#E3E9EF', pushLine: '#8C9AAA', link: '#1A4FA0',
+};
+export const SCREEN_THEMES = {
+  signature: SIGNATURE,
+  'signature-pink': {
+    ...SIGNATURE,
+    page: '#F4DEE2', titleTop: '#E0BCC4', titleBot: '#DBADB5', titleInk: '#2A1A1E',
+    toolbar: '#E8CED4', toolbarLine: '#D6B0B8', frameHead: '#ECC4CC', frameLine: '#D0929D',
+    dropFill: '#F4E6E9', gridHeadTop: '#E2D8D9', gridHeadBot: '#DCD0D1', gridLine: '#B79FA2',
+    cellLine: '#DCC3C8', cell: '#F5DFE4', keyCell: '#D5BFC2', pushBot: '#EFE2E5', pushLine: '#A88E94',
+  },
+  modern: { flat: false },
+};
+/** Theme name or { base, …overrides } → palette. Unknown names fall back to 'signature'. */
+export function resolveScreenTheme(theme) {
+  if (theme && typeof theme === 'object') {
+    return { ...(SCREEN_THEMES[theme.base] || SIGNATURE), ...theme };
+  }
+  return SCREEN_THEMES[String(theme || '').toLowerCase()] || SIGNATURE;
+}
+// The palette of the render in progress. Public renderers set it with
+// useTheme() and restore it when they return; a nested render that is not
+// given a theme keeps its caller's, so a whole screen draws in one theme.
+let TH = null;
+function useTheme(theme) {
+  const prev = TH;
+  TH = theme != null ? resolveScreenTheme(theme) : (TH || SIGNATURE);
+  return () => { TH = prev; };
+}
+const flat = () => (TH || SIGNATURE).flat;
+/** Signature title area: two-stop gradient, bold italic title. */
+function sigTitleBar(id, x, y, w, h, title) {
+  const t = TH || SIGNATURE;
+  return `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${t.titleTop}"/><stop offset="1" stop-color="${t.titleBot}"/></linearGradient></defs>`
+    + `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${id})"/>`
+    + `<text x="${x + 12}" y="${y + h / 2 + 5}" font-size="14" font-weight="700" font-style="italic" fill="${t.titleInk}">${xml(title)}</text>`;
+}
+// Gradient ids come from the palette, not a counter: the same input renders
+// byte-identical SVG, and screens inlined into one HTML page that share an id
+// also share the identical gradient it names.
+const gradId = (p) => {
+  const t = TH || SIGNATURE;
+  return `${p}-${[t.page, t.titleTop, t.titleBot, t.gridHeadTop, t.gridHeadBot, t.pushTop, t.pushBot].join('').replace(/[^0-9A-Za-z]/g, '')}`;
+};
+
 function roundedTopRectPath(x, y, w, h, r) {
   return `M${x},${y + h} V${y + r} a${r},${r} 0 0 1 ${r},-${r} H${x + w - r} a${r},${r} 0 0 1 ${r},${r} V${y + h} Z`;
 }
 
-export function renderSelectionScreenSVG({
-  fields = [],
-  blockLabel = null,
-  optionFields = [],
-  optionBlockLabel = null,
-  lang = 'ko',
-} = {}) {
+/**
+ * Selection-screen mockup (v14 — block / control model).
+ *
+ * Preferred input — one block per SELECTION-SCREEN BEGIN OF BLOCK:
+ *   { toolbar?: [label | { label }],          // SSCRFIELDS-FUNCTXT_01..05 buttons
+ *     blocks:   [{ label, items: [item, ...] }] }
+ *
+ * item.type (omitted → 'param', or 'range' when the legacy `range: true` is set):
+ *   'param'       { name, label, required?, default?, note? }          PARAMETERS
+ *   'range'       { name, label, required?, default?, defaultHigh?,    SELECT-OPTIONS
+ *                   noIntervals?, noExtension?, note? }
+ *   'checkbox'    { name, label, checked?, labelLeft?, note? }         PARAMETERS … AS CHECKBOX
+ *                                                                       (labelLeft = COMMENT before it on one line)
+ *   'radioGroup'  { group, label?, layout?: 'vertical'|'horizontal',   PARAMETERS … RADIOBUTTON GROUP
+ *                   options: [{ name, label, selected? }], note? }     (horizontal = BEGIN OF LINE;
+ *                                                                       label = leading COMMENT on that line)
+ *   'checkboxGroup' { label?, layout?, options: [{ name, label,        several AS CHECKBOX on one line
+ *                   checked? }], note? }
+ *   'pushbutton'  { label, name?, note? }                              SELECTION-SCREEN PUSHBUTTON
+ *   'comment'     { text }                                             SELECTION-SCREEN COMMENT
+ *
+ * Legacy input `{ blockLabel, fields, optionBlockLabel, optionFields }` is
+ * converted to two blocks (optionFields → checkboxes) so older image-spec
+ * files keep rendering.
+ *
+ * `default` / `defaultHigh` are drawn in grey inside the input box so the
+ * mockup matches the real screen. The older `defaultLow` key stays
+ * documentation-only (ignored here).
+ *
+ * `lang` controls the default block labels + bottom legend ('ko' | 'en' | 'ja').
+ */
+const SEL = {
+  rowH: 24, LABEL_X: 38, LABEL_GAP: 16, BOX_W: 150, SEP_GAP: 8,
+  BLOCK_PAD_TOP: 20, BLOCK_PAD_BOTTOM: 16, BLOCK_GAP: 26,
+  BTN_ROW_H: 30, RADIO_GAP: 36, TOOLBAR_H: 30, MAX_W: 1400, TITLE_H: 30,
+  FRAME_X: 22, FRAME_PAD_TOP: 18, FRAME_PAD_BOTTOM: 8, FRAME_GAP: 6,
+};
+
+const isChoiceGroup = (t) => t === 'radioGroup' || t === 'checkboxGroup';
+
+function selItemType(it) {
+  return it?.type || (it?.range ? 'range' : 'param');
+}
+
+// Coerce malformed JSON (null / object / string where an array belongs) and drop null entries.
+const selArr = (x) => (Array.isArray(x) ? x.filter(v => v != null) : []);
+
+// A 'frame' item is a BEGIN OF BLOCK nested inside another block: its own
+// border and title, with its items laid out in the parent's columns.
+const normSelItem = (it) => (isChoiceGroup(it.type) ? { ...it, options: selArr(it.options) }
+  : it.type === 'frame' ? { ...it, items: selArr(it.items).map(normSelItem) } : it);
+/** Every control of a block, with nested frames opened up. */
+const leafItems = (items) => items.flatMap(it => (it.type === 'frame' ? leafItems(it.items) : [it]));
+
+function normalizeSelection(sel, L) {
+  const { blockLabel, optionBlockLabel } = sel || {};
+  const toolbar = selArr(sel?.toolbar), blocks = selArr(sel?.blocks);
+  const fields = selArr(sel?.fields), optionFields = selArr(sel?.optionFields);
+  if (blocks.length) {
+    return {
+      toolbar,
+      blocks: blocks.map(b => ({
+        label: b.label || '',
+        items: selArr(b.items).map(normSelItem),
+      })),
+    };
+  }
+  const out = [];
+  if (fields.length || !optionFields.length) out.push({ label: blockLabel || L.block_label, items: fields });
+  if (optionFields.length) {
+    out.push({ label: optionBlockLabel || L.option_label, items: optionFields.map(f => ({ ...f, type: f.type || 'checkbox' })) });
+  }
+  return { toolbar, blocks: out };
+}
+
+const selLabelText = (it) => (it?.name ? `${it.label ?? ''} (${it.name})` : String(it?.label ?? ''));
+const toolbarText = (t) => String(typeof t === 'string' ? t : t?.label ?? '');
+
+// Single source of truth for geometry — used by both the SVG renderer and
+// selectionScreenMetrics() so the headless viewport never drifts from the SVG.
+function layoutSelectionScreen(selection, lang) {
   const L = legendFor(lang);
-  // Lang-aware defaults: when the caller omits the block labels, fall back to
-  // the localized strings so an EN/JA spec never inherits the Korean default
-  // (and vice-versa). Explicit caller values always win.
-  blockLabel = blockLabel || L.block_label;
-  optionBlockLabel = optionBlockLabel || L.option_label;
-  const rowH = 24;
-  const padTop = 40, padBottom = 60, optionBlockH = optionFields.length ? 24 + optionFields.length * rowH : 0;
+  const { toolbar, blocks } = normalizeSelection(selection, L);
+  const S = SEL;
 
-  // ── Dynamic label-column layout ───────────────────────────────
-  // Compute the label column's pixel width from the actual longest
-  // label across BOTH the main block and the option block, then push
-  // every input-box x-coord right of that so labels never overlap the
-  // inputs. Minimum inputX stays at 200 to preserve the legacy look
-  // for short CJK labels (typical 구매조직 (S_EKORG) ≈ 135 px).
-  const LABEL_X = 38;
-  const LABEL_GAP = 16;            // gap between label end and input start
-  const BOX_W = 150;
-  const SEP_GAP = 8;
-  const allLabels = [
-    ...fields.map(f => `${f.label} (${f.name})`),
-    ...optionFields.map(f => `${f.label} (${f.name})`),
-  ];
-  const maxLabelPx = allLabels.length ? Math.max(...allLabels.map(approxTextWidthPx)) : 150;
-  const inputX = Math.max(200, LABEL_X + maxLabelPx + LABEL_GAP);
-  const sepX   = inputX + BOX_W + SEP_GAP;              // '~' center
-  const highX  = sepX + 10;                              // HIGH box left
-  const rangeDropX = highX + BOX_W + 2;                  // range dropdown
-  const singleDropX = inputX + BOX_W + 2;                // single dropdown
+  // Label column is sized only from controls that actually sit in it.
+  const colLabels = [];
+  for (const b of blocks) for (const it of leafItems(b.items)) {
+    const t = selItemType(it);
+    if (t === 'param' || t === 'range' || (t === 'checkbox' && it.labelLeft)) colLabels.push(selLabelText(it));
+  }
+  const maxLabelPx = colLabels.length ? Math.max(...colLabels.map(approxTextWidthPx)) : 150;
+  const inputX = Math.max(200, S.LABEL_X + maxLabelPx + S.LABEL_GAP);
+  const sepX = inputX + S.BOX_W + S.SEP_GAP;
+  const highX = sepX + 10;
+  const rangeDropX = highX + S.BOX_W + 2;
   const rangeNoteX = rangeDropX + 28;
-  const singleNoteX = singleDropX + 28;
-  // Trailing note text can be up to ~200 px wide; block frame + 10 margin.
-  const noteReserve = 200;
-  const w = Math.max(900, rangeNoteX + noteReserve);
-  const h = padTop + fields.length * rowH + padBottom + optionBlockH + 60;
 
-  const rows = fields.map((f, i) => {
-    const y = padTop + (i + 1) * rowH - 6;
-    const star = f.required ? `<text x="25" y="${y}" fill="#B00020" font-weight="700">*</text>` : '';
-    const label = `<text x="${LABEL_X}" y="${y}">${xml(f.label)} (${xml(f.name)})</text>`;
-    if (f.range) {
-      return [
-        star, label,
-        `<rect x="${inputX}" y="${y - 12}" width="${BOX_W}" height="16" fill="#FFFFFF" stroke="#9AA7B4" rx="2"/>`,
-        `<text x="${sepX}" y="${y}" text-anchor="middle">~</text>`,
-        `<rect x="${highX}" y="${y - 12}" width="${BOX_W}" height="16" fill="#FFFFFF" stroke="#9AA7B4" rx="2"/>`,
-        `<rect x="${rangeDropX}" y="${y - 12}" width="16" height="16" fill="#E7EEF5" stroke="#9AA7B4" rx="2"/><text x="${rangeDropX + 8}" y="${y}" text-anchor="middle">▼</text>`,
-        f.note ? `<text x="${rangeNoteX}" y="${y}" fill="#666">${xml(f.note)}</text>` : '',
-      ].join('');
+  // A labelled choice group (leading COMMENT on a BEGIN OF LINE) starts its options right after
+  // the widest group label — like SAP's short COMMENT column — aligned across all labelled groups.
+  const groupLabels = [];
+  for (const b of blocks) for (const it of leafItems(b.items)) {
+    if (isChoiceGroup(selItemType(it)) && it.label) groupLabels.push(approxTextWidthPx(it.label));
+  }
+  const groupOptX = S.LABEL_X + (groupLabels.length ? Math.max(...groupLabels) : 0) + 40;
+  const groupX = (it) => (it.label ? groupOptX : S.LABEL_X);
+  // Width: base grid + note reserve, widened for toolbar / horizontal choice groups, capped.
+  const radioW = (o) => 20 + approxTextWidthPx(selLabelText(o));
+  let need = rangeNoteX + 200;
+  if (toolbar.length) need = Math.max(need, 20 + toolbar.reduce((s, t) => s + approxTextWidthPx(toolbarText(t)) + 34, 0));
+  for (const b of blocks) for (const it of leafItems(b.items)) {
+    const t = selItemType(it);
+    const noteW = it.note ? approxTextWidthPx(it.note) + 20 : 0;
+    if (isChoiceGroup(t)) {
+      const opts = it.options || [];
+      const optsW = it.layout === 'horizontal'
+        ? opts.reduce((s, o) => s + radioW(o) + S.RADIO_GAP, 0)
+        : Math.max(0, ...opts.map(radioW)) + S.RADIO_GAP;
+      need = Math.max(need, groupX(it) + optsW + noteW);
+    } else if (noteW) {
+      // Mirror the note x-positions used by the renderer so long notes are never clipped.
+      const noteX = t === 'range' ? (it.noIntervals ? inputX + S.BOX_W + 30 : rangeNoteX)
+        : t === 'param' ? inputX + S.BOX_W + 14
+        : t === 'checkbox' ? (it.labelLeft ? inputX + 30 : S.LABEL_X + 40 + approxTextWidthPx(selLabelText(it)))
+        : t === 'pushbutton' ? S.LABEL_X + Math.max(120, approxTextWidthPx(it.label) + 40) + 14
+        : 0;
+      need = Math.max(need, noteX + noteW);
     }
-    return [
-      star, label,
-      `<rect x="${inputX}" y="${y - 12}" width="${BOX_W}" height="16" fill="#FFFFFF" stroke="#9AA7B4" rx="2"/>`,
-      `<rect x="${singleDropX}" y="${y - 12}" width="16" height="16" fill="#E7EEF5" stroke="#9AA7B4" rx="2"/><text x="${singleDropX + 8}" y="${y}" text-anchor="middle">▼</text>`,
-      f.note ? `<text x="${singleNoteX}" y="${y}" fill="#666">${xml(f.note)}</text>` : '',
-    ].join('');
-  }).join('');
+  }
+  const w = Math.min(S.MAX_W, Math.max(900, need));
 
-  const blockTop = 20;
-  const blockH = padTop + fields.length * rowH + 20;
-  const optBlockY = blockTop + blockH + 20;
+  // Optional title area (the program title SAP shows above the selection screen).
+  const titleH = selection?.title ? S.TITLE_H : 0;
+  let y = titleH + (toolbar.length ? S.TOOLBAR_H + 12 : 0);
+  const placed = [];
+  for (const b of blocks) {
+    const top = y + 20;
+    let cy = top + S.BLOCK_PAD_TOP;
+    const rows = [];
+    const place = (items) => { for (const it of items) {
+      const t = selItemType(it);
+      if (t === 'frame') {
+        // The frame row comes first so its border is drawn under its items.
+        const frame = { it, t, y: cy, h: 0 };
+        rows.push(frame);
+        cy += S.FRAME_PAD_TOP;
+        place(it.items || []);
+        cy += S.FRAME_PAD_BOTTOM;
+        frame.h = cy - frame.y;
+        cy += S.FRAME_GAP;
+      } else if (isChoiceGroup(t)) {
+        const opts = it.options || [];
+        const lines = [];
+        const x0 = groupX(it);
+        if (it.layout === 'horizontal') {
+          let line = [], x = x0;
+          for (const o of opts) {
+            const ow = radioW(o);
+            if (line.length && x + ow > w - 30) { lines.push(line); line = []; x = x0; }
+            line.push({ o, x });
+            x += ow + S.RADIO_GAP;
+          }
+          if (line.length) lines.push(line);
+        } else {
+          for (const o of opts) lines.push([{ o, x: x0 }]);
+        }
+        rows.push({ it, t, y: cy, lines });
+        cy += Math.max(1, lines.length) * S.rowH;
+      } else if (t === 'pushbutton') {
+        rows.push({ it, t, y: cy });
+        cy += S.BTN_ROW_H;
+      } else {
+        rows.push({ it, t, y: cy });
+        cy += S.rowH;
+      }
+    } };
+    place(b.items);
+    const h = cy - top + S.BLOCK_PAD_BOTTOM;
+    placed.push({ label: b.label, top, h, rows });
+    y = top + h + (S.BLOCK_GAP - 20);
+  }
+  const legendY = y + 24;
+  const h = legendY + 16;
+  return { L, toolbar, blocks: placed, w, h, inputX, sepX, highX, rangeDropX, rangeNoteX, legendY, titleH };
+}
 
-  const optionRows = optionFields.map((f, i) => {
-    const y = optBlockY + 34 + i * rowH;
-    return [
-      `<rect x="${inputX}" y="${y - 10}" width="12" height="12" fill="#FFF" stroke="#555"/>`,
-      `<text x="${inputX + 20}" y="${y}">${xml(f.label)} (${xml(f.name)})</text>`,
-      f.note ? `<text x="${inputX + 220}" y="${y}" fill="#666">${xml(f.note)}</text>` : '',
-    ].join('');
-  }).join('');
+export function renderSelectionScreenSVG({ theme, ...rest } = {}) {
+  const restore = useTheme(theme);
+  try { return selectionScreenSvg(rest); } finally { restore(); }
+}
 
-  const legendY = optBlockY + optionBlockH + 30;
+function selectionScreenSvg({ lang = 'ko', ...selection } = {}) {
+  const lay = layoutSelectionScreen(selection, lang);
+  const T = TH || SIGNATURE;
+  const sig = T.flat;
+  const { L, w, h, inputX, sepX, highX, rangeDropX, rangeNoteX, legendY } = lay;
+  const S = SEL;
+  // User text inside at() templates escapes '{' so it can never collide with the {Y}/{B} placeholders.
+  const xmlT = (s) => xml(s).replace(/\{/g, '&#123;');
+  // Long defaults are truncated with '…' so they never spill out of the box into the note.
+  const fit = (v) => {
+    let out = '';
+    for (const ch of String(v)) {
+      if (approxTextWidthPx(out + ch + '…') > S.BOX_W - 8) return out + '…';
+      out += ch;
+    }
+    return out;
+  };
+  const box = (x, val) => (sig
+    ? `<rect x="${x}" y="{Y}" width="${S.BOX_W}" height="16" fill="${T.inputFill}" stroke="${T.inputLine}"/>`
+    : `<rect x="${x}" y="{Y}" width="${S.BOX_W}" height="16" fill="#FFFFFF" stroke="#9AA7B4" rx="2"/>`)
+    + (val != null && val !== '' ? `<text x="${x + 4}" y="{B}" fill="${sig ? T.ink : '#555'}">${xmlT(fit(val))}</text>` : '');
+  const drop = (x) => `<rect x="${x}" y="{Y}" width="16" height="16" fill="${sig ? T.dropFill : '#E7EEF5'}" stroke="${sig ? T.inputLine : '#9AA7B4'}" rx="${sig ? 0 : 2}"/><text x="${x + 8}" y="{B}" text-anchor="middle">▼</text>`;
+  const note = (x, n) => (n ? `<text x="${x}" y="{B}" fill="${sig ? T.muted : '#666'}">${xmlT(n)}</text>` : '');
+  const at = (s, base) => s.replace(/\{Y\}/g, String(base - 12)).replace(/\{B\}/g, String(base));
 
-  // Dynamic legend — only emit items that actually apply to this spec.
-  // (No required fields → omit *; no ranges → omit ~; empty field set →
-  // omit legend entirely.)
-  const allFields = [...fields, ...optionFields];
+  // Toolbar (application toolbar buttons on the selection screen).
+  let tbSvg = '';
+  if (lay.toolbar.length) {
+    let x = 14;
+    const ty = lay.titleH;
+    const parts = [sig
+      ? `<rect x="0" y="${ty}" width="${w}" height="${S.TOOLBAR_H}" fill="${T.toolbar}"/><line x1="0" y1="${ty + S.TOOLBAR_H}" x2="${w}" y2="${ty + S.TOOLBAR_H}" stroke="${T.toolbarLine}"/>`
+      : `<rect x="0" y="${ty}" width="${w}" height="${S.TOOLBAR_H}" fill="#EEF3F8" stroke="#C9D6E3"/>`];
+    for (const t of lay.toolbar) {
+      const label = toolbarText(t);
+      const bw = approxTextWidthPx(label) + 24;
+      // Signature application-toolbar buttons are flat: text (and icon) without a frame.
+      parts.push(anchored(anchorKey('tb', t?.code || label), sig
+        ? `<rect x="${x}" y="${ty + 5}" width="${bw}" height="20" fill="none"/><text x="${x + bw / 2}" y="${ty + 19}" text-anchor="middle" fill="${T.ink}">${xml(label)}</text>`
+        : `<rect x="${x}" y="${ty + 5}" width="${bw}" height="20" rx="3" fill="#FFFFFF" stroke="#9AA7B4"/><text x="${x + bw / 2}" y="${ty + 19}" text-anchor="middle">${xml(label)}</text>`));
+      x += bw + 10;
+    }
+    tbSvg = parts.join('');
+  }
+
+  const rowSvg = ({ it, t, y, lines, h: frameH }) => {
+    if (t === 'frame') {
+      const fw = w - 2 * S.FRAME_X;
+      if (sig) {
+        // A nested group box: the same header strip as a block, inset.
+        const head = it.label
+          ? `<rect x="${S.FRAME_X}" y="${y + 4}" width="${fw}" height="16" fill="${T.frameHead}"/>`
+            + `<text x="${S.FRAME_X + 8}" y="${y + 16}" font-size="11.5" fill="${T.ink}">${xml(it.label)}</text>`
+          : '';
+        return head + `<rect x="${S.FRAME_X}" y="${y + 4}" width="${fw}" height="${frameH - 4}" fill="none" stroke="${T.frameLine}"/>`;
+      }
+      const label = it.label
+        ? `<rect x="${S.FRAME_X + 10}" y="${y - 3}" width="${approxTextWidthPx(it.label) + 14}" height="14" fill="#FFFFFF"/>`
+          + `<text x="${S.FRAME_X + 17}" y="${y + 8}" font-size="11.5" font-weight="700" fill="#24598F">${xml(it.label)}</text>`
+        : '';
+      return `<rect x="${S.FRAME_X}" y="${y + 4}" width="${fw}" height="${frameH - 4}" rx="5" fill="none" stroke="#9DBBD6"/>${label}`;
+    }
+    const base = y + S.rowH - 6;
+    const star = it.required ? `<text x="25" y="${base}" fill="#B00020" font-weight="700">*</text>` : '';
+    if (t === 'range') {
+      const label = `<text x="${S.LABEL_X}" y="${base}">${xml(selLabelText(it))}</text>`;
+      // NO-EXTENSION removes the multiple-selection button.
+      if (it.noIntervals) {
+        const dx = inputX + S.BOX_W + 2;
+        return star + label + at(box(inputX, it.default)
+          + (it.noExtension ? note(dx + 12, it.note) : drop(dx) + note(dx + 28, it.note)), base);
+      }
+      return star + label + at(
+        box(inputX, it.default) + `<text x="${sepX}" y="{B}" text-anchor="middle">~</text>`
+        + box(highX, it.defaultHigh) + (it.noExtension ? '' : drop(rangeDropX)) + note(rangeNoteX, it.note), base);
+    }
+    if (t === 'checkbox') {
+      const text = selLabelText(it);
+      // labelLeft: COMMENT … FOR FIELD before the checkbox → text in the label column, box at the input column.
+      const bx = it.labelLeft ? inputX : S.LABEL_X;
+      const mark = it.checked
+        ? `<path d="M${bx + 2},${base - 4} l3,3 l6,-7" fill="none" stroke="#1F4E79" stroke-width="1.6"/>` : '';
+      const box12 = `<rect x="${bx}" y="${base - 10}" width="12" height="12" fill="#FFF" stroke="#555"/>${mark}`;
+      if (it.labelLeft) {
+        return `<text x="${S.LABEL_X}" y="${base}">${xml(text)}</text>` + box12
+          + at(note(inputX + 30, it.note), base);
+      }
+      return box12
+        + `<text x="${S.LABEL_X + 20}" y="${base}">${xml(text)}</text>`
+        + at(note(S.LABEL_X + 40 + approxTextWidthPx(text), it.note), base);
+    }
+    if (isChoiceGroup(t)) {
+      const opts = it.options || [];
+      const radio = t === 'radioGroup';
+      const selIdx = Math.max(0, opts.findIndex(o => o?.selected));
+      let lastBase = base, lastEnd = S.LABEL_X;
+      const head = it.label ? `<text x="${S.LABEL_X}" y="${base}">${xml(it.label)}</text>` : '';
+      const svg = (lines || []).map((line, li) => {
+        const lb = y + li * S.rowH + S.rowH - 6;
+        return line.map(({ o, x }) => {
+          const text = selLabelText(o);
+          lastBase = lb; lastEnd = x + 20 + approxTextWidthPx(text);
+          const mark = radio
+            ? `<circle cx="${x + 6}" cy="${lb - 4}" r="6" fill="#FFF" stroke="#555"/>`
+              + (opts.indexOf(o) === selIdx ? `<circle cx="${x + 6}" cy="${lb - 4}" r="3" fill="#333"/>` : '')
+            : `<rect x="${x}" y="${lb - 10}" width="12" height="12" fill="#FFF" stroke="#555"/>`
+              + (o.checked ? `<path d="M${x + 2},${lb - 4} l3,3 l6,-7" fill="none" stroke="#1F4E79" stroke-width="1.6"/>` : '');
+          return anchored(anchorKey('sel', o.name), mark + `<text x="${x + 18}" y="${lb}">${xml(text)}</text>`);
+        }).join('');
+      }).join('');
+      return head + svg + at(note(lastEnd + 20, it.note), lastBase);
+    }
+    if (t === 'pushbutton') {
+      const text = String(it.label ?? '');
+      const bw = Math.max(120, approxTextWidthPx(text) + 40);
+      const by = y + 4;
+      const face = sig
+        ? (() => { const id = gradId('selpb'); return `<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.pushTop}"/><stop offset="1" stop-color="${T.pushBot}"/></linearGradient></defs>`
+          + `<rect x="${S.LABEL_X}" y="${by}" width="${bw}" height="20" rx="2" fill="url(#${id})" stroke="${T.pushLine}"/>`; })()
+        : `<rect x="${S.LABEL_X}" y="${by}" width="${bw}" height="20" rx="3" fill="#FCE9A0" stroke="#C9A646"/>`;
+      return face
+        + `<text x="${S.LABEL_X + bw / 2}" y="${by + 14}" text-anchor="middle">${xml(text)}</text>`
+        + (it.note ? `<text x="${S.LABEL_X + bw + 14}" y="${by + 14}" fill="#666">${xml(it.note)}</text>` : '');
+    }
+    if (t === 'comment') {
+      return `<text x="${S.LABEL_X}" y="${base}" fill="${sig ? T.ink : '#444'}">${xml(it.text ?? it.label ?? '')}</text>`;
+    }
+    // 'param' (PARAMETERS) — no multiple-selection button on a real screen.
+    const label = `<text x="${S.LABEL_X}" y="${base}">${xml(selLabelText(it))}</text>`;
+    return star + label + at(box(inputX, it.default) + note(inputX + S.BOX_W + 14, it.note), base);
+  };
+
+  const blockSvg = lay.blocks.map(b => {
+    if (sig) {
+      // Signature group box: square frame with a header strip carrying the title.
+      const head = b.label
+        ? anchored(anchorKey('block', b.label), `<rect x="10" y="${b.top}" width="${w - 20}" height="18" fill="${T.frameHead}"/>`
+          + `<text x="18" y="${b.top + 13}" fill="${T.ink}">${xml(b.label)}</text>`)
+        : '';
+      const box = `<rect x="10" y="${b.top}" width="${w - 20}" height="${b.h}" fill="none" stroke="${T.frameLine}"/>`;
+      const rows = b.rows.map(r => anchored(r.t === 'frame' ? anchorKey('frame', r.it.label) : selAnchor(r.it), rowSvg(r))).join('');
+      return head + box + rows;
+    }
+    const frame = `<rect x="10" y="${b.top}" width="${w - 20}" height="${b.h}" rx="8" fill="#FFFFFF" stroke="#3E7DB3" stroke-width="1.3" filter="url(#imgsh)"/>`
+      + (b.label
+        ? anchored(anchorKey('block', b.label),
+          `<rect x="28" y="${b.top - 9}" width="${Math.max(70, approxTextWidthPx(b.label) + 46)}" height="18" rx="4" fill="#DCE7F1" stroke="#9DBBD6"/>`
+          + `<text x="38" y="${b.top + 4}" font-weight="700" fill="#24598F">◆ ${xml(b.label)}</text>`)
+        : '');
+    const rows = b.rows.map(r => anchored(r.t === 'frame' ? anchorKey('frame', r.it.label) : selAnchor(r.it), rowSvg(r))).join('');
+    return frame + rows;
+  }).join('\n');
+
+  // Dynamic legend — only items that apply to this spec.
+  const all = lay.blocks.flatMap(b => b.rows.map(r => r));
+  const ranges = all.filter(r => r.t === 'range');
   const legendParts = [];
-  if (allFields.some(f => f.required)) legendParts.push(`<tspan fill="#B00020" font-weight="700">*</tspan> ${xml(L.required)}`);
-  if (fields.length) legendParts.push(xml(L.dropdown));
-  if (fields.some(f => f.range)) legendParts.push(xml(L.range));
+  if (all.some(r => r.it.required)) legendParts.push(`<tspan fill="#B00020" font-weight="700">*</tspan> ${xml(L.required)}`);
+  if (ranges.some(r => !r.it.noExtension)) legendParts.push(xml(L.dropdown));
+  if (ranges.some(r => !r.it.noIntervals)) legendParts.push(xml(L.range));
   const legendSvg = legendParts.length
     ? `<text x="25" y="${legendY}" fill="#555" font-size="11">${legendParts.join(' · ')}</text>`
     : '';
@@ -270,40 +597,49 @@ export function renderSelectionScreenSVG({
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w * RENDER_SCALE)}" height="${Math.round(h * RENDER_SCALE)}" viewBox="0 0 ${w} ${h}" font-family="Arial,sans-serif" font-size="12">
 <defs>${IMG_SHADOW}</defs>
-<rect width="${w}" height="${h}" fill="#FFF"/>
-<rect x="10" y="${blockTop}" width="${w - 20}" height="${blockH}" rx="8" fill="#FFFFFF" stroke="#3E7DB3" stroke-width="1.3" filter="url(#imgsh)"/>
-<rect x="28" y="${blockTop - 9}" width="${Math.max(120, approxTextWidthPx(blockLabel) + 46)}" height="18" rx="4" fill="#DCE7F1" stroke="#9DBBD6"/>
-<text x="38" y="${blockTop + 4}" font-weight="700" fill="#24598F">◆ ${xml(blockLabel)}</text>
-${rows}
-${optionFields.length ? `
-<rect x="10" y="${optBlockY}" width="${w - 20}" height="${optionBlockH}" rx="8" fill="#FFFFFF" stroke="#3E7DB3" stroke-width="1.3" filter="url(#imgsh)"/>
-<rect x="28" y="${optBlockY - 9}" width="${Math.max(70, approxTextWidthPx(optionBlockLabel) + 46)}" height="18" rx="4" fill="#DCE7F1" stroke="#9DBBD6"/>
-<text x="38" y="${optBlockY + 4}" font-weight="700" fill="#24598F">◆ ${xml(optionBlockLabel)}</text>
-${optionRows}
-` : ''}
+<rect width="${w}" height="${h}" fill="${sig ? T.page : '#FFF'}"/>
+${lay.titleH ? anchored('title', sig ? sigTitleBar(gradId('seltitle'), 0, 0, w, lay.titleH, selection.title)
+    : `<rect x="0" y="0" width="${w}" height="${lay.titleH}" fill="#1F4E79"/><text x="12" y="${lay.titleH / 2 + 5}" font-size="13" font-weight="700" fill="#FFF">${xml(selection.title)}</text>`) : ''}
+${tbSvg}
+${blockSvg}
 ${legendSvg}
 </svg>`;
 }
 
 /**
- * Compute final SVG dimensions for a selection-screen spec — matches the
- * internal math of renderSelectionScreenSVG so renderScreenImages() can
- * allocate the headless browser viewport without duplicating formulas.
+ * Schema lint for image-spec.selection — returns human-readable warnings.
+ * The legacy shape cannot express pushbuttons, radio groups or more than two
+ * blocks, so writers silently flattened them (radios drawn as checkboxes).
  */
-export function selectionScreenMetrics({ fields = [], optionFields = [] } = {}) {
-  const rowH = 24;
-  const padTop = 40, padBottom = 60;
-  const optionBlockH = optionFields.length ? 24 + optionFields.length * rowH : 0;
-  const h = padTop + fields.length * rowH + padBottom + optionBlockH + 60;
-  const LABEL_X = 38, LABEL_GAP = 16, BOX_W = 150, SEP_GAP = 8;
-  const allLabels = [
-    ...fields.map(f => `${f.label} (${f.name})`),
-    ...optionFields.map(f => `${f.label} (${f.name})`),
-  ];
-  const maxLabelPx = allLabels.length ? Math.max(...allLabels.map(approxTextWidthPx)) : 150;
-  const inputX = Math.max(200, LABEL_X + maxLabelPx + LABEL_GAP);
-  const rangeNoteX = inputX + BOX_W + SEP_GAP + 10 + BOX_W + 2 + 28;
-  const w = Math.max(900, rangeNoteX + 200);
+export function selectionSchemaWarnings(selection) {
+  if (!selection) return [];
+  const warns = [];
+  const hasBlocks = Array.isArray(selection.blocks) && selection.blocks.length > 0;
+  if (!hasBlocks && (selection.fields?.length || selection.optionFields?.length)) {
+    warns.push('selection uses the legacy fields/optionFields shape — pushbuttons, radio groups and multiple blocks cannot be drawn. Use selection.blocks[] (skills/program-to-spec/selection-schema.md).');
+    const radios = (selection.optionFields || []).filter(f => !f.type && /^R_/i.test(f.name || '')).map(f => f.name);
+    if (radios.length) warns.push(`optionFields ${radios.join(', ')} look like RADIOBUTTONs but render as checkboxes — use a { type: "radioGroup" } item.`);
+  }
+  const known = new Set(['param', 'range', 'checkbox', 'checkboxGroup', 'radioGroup', 'pushbutton', 'comment', 'frame']);
+  const check = (items) => { for (const it of (Array.isArray(items) ? items : [])) {
+    if (it?.type && !known.has(it.type)) warns.push(`unknown selection item type "${it.type}" (${it.name || it.label || '?'}) — rendered as a plain parameter.`);
+    if (isChoiceGroup(it?.type) && !(it.options || []).length) warns.push(`${it.type} ${it.group || it.label || '?'} has no options.`);
+    if (it?.type === 'frame') {
+      if (!(it.items || []).length) warns.push(`frame "${it.label || '?'}" has no items.`);
+      check(it.items);
+    }
+  } };
+  for (const b of (selection.blocks || [])) check(b?.items);
+  return warns;
+}
+
+/**
+ * Final SVG dimensions for a selection-screen spec — shares
+ * layoutSelectionScreen() with the renderer so renderScreenImages() can size
+ * the headless browser viewport without duplicating formulas.
+ */
+export function selectionScreenMetrics(selection = {}) {
+  const { w, h } = layoutSelectionScreen(selection, selection.lang || 'ko');
   return { width: Math.round(w * RENDER_SCALE), height: Math.round(h * RENDER_SCALE) };
 }
 
@@ -320,11 +656,38 @@ export function selectionScreenMetrics({ fields = [], optionFields = [] } = {}) 
  * the SVG height shrinks by ~30 px. This stops the renderer from telling
  * readers that a program has features it does not actually have.
  */
-export function renderAlvLayoutSVG({ columns = [], sampleRows = [], maxRows = 3, lang = 'ko' } = {}) {
+const ALV_LEGEND_PAD = 44;
+const ALV_PLAIN_PAD = 16;
+const ALV_HEADER_PAD = 12, ALV_AUTO_COL_MAX = 120;
+const LAMP_FILL = { red: '#D64545', yellow: '#E0A800', green: '#2E9E4F' };
+
+// Bold 12px header text is ~10% wider than the regular-weight estimate.
+const alvHeaderPx = (c) => Math.ceil(approxTextWidthPx(c.header || c.name) * 1.1);
+/**
+ * A column's drawn width: its `width` (default 100), widened up to what its
+ * header needs — but never past ALV_AUTO_COL_MAX, so a long header cannot push
+ * the grid past its cap; alvHeaderText() shortens such a header instead.
+ * A narrow `width` used to let the header run into its neighbours.
+ */
+function alvColW(c) {
+  const w = Number(c.width) || 100;
+  return Math.max(w, Math.min(alvHeaderPx(c) + ALV_HEADER_PAD, ALV_AUTO_COL_MAX));
+}
+const alvHeaderText = (c) => fitLabel(c.header || c.name, Math.max(12, alvColW(c) - ALV_HEADER_PAD) / 1.1);
+
+export function renderAlvLayoutSVG({ theme, ...rest } = {}) {
+  const restore = useTheme(theme);
+  try { return alvLayoutSvg(rest); } finally { restore(); }
+}
+
+function alvLayoutSvg({ columns = [], sampleRows = [], maxRows = 3, lang = 'ko' } = {}) {
   const L = legendFor(lang);
+  const T = TH || SIGNATURE;
+  const sig = T.flat;
   const rows = sampleRows.slice(0, Math.max(1, Math.min(maxRows, 5)));
-  const totalW = columns.reduce((s, c) => s + (c.width || 100), 0) + 20;
-  const w = Math.max(900, Math.min(totalW, 1600));
+  const totalW = columns.reduce((s, c) => s + alvColW(c), 0) + 20;
+  // No upper cap: a capped canvas cut off the columns past it without a word.
+  const w = Math.max(900, totalW);
   const rowH = 24;
   const headerH = 22;
   // Spec-driven legend feature detection — only include items that apply.
@@ -332,37 +695,51 @@ export function renderAlvLayoutSVG({ columns = [], sampleRows = [], maxRows = 3,
   const hasHotspot  = columns.some(c => c.hotspot);
   const hasEditable = columns.some(c => c.editable);
   const hasLegend   = hasStatus || hasHotspot || hasEditable;
-  const legendPad   = hasLegend ? 80 : 30;
+  // The legend's baseline sits 30 px under the grid; 44 leaves room for its
+  // descenders. (It was 80, which left a band of empty space under every grid.)
+  const legendPad   = hasLegend ? ALV_LEGEND_PAD : ALV_PLAIN_PAD;
   const h = 10 + headerH + rows.length * rowH + legendPad;
 
   let x = 10;
-  const colX = columns.map(c => { const left = x; x += (c.width || 100); return left; });
+  const colX = columns.map(c => { const left = x; x += alvColW(c); return left; });
   const gridRight = x;
 
   const headerCells = columns.map((c, i) => {
-    const cx = colX[i] + (c.width || 100) / 2;
-    return `<text x="${cx}" y="${10 + headerH - 7}" text-anchor="middle" font-weight="700" fill="#FFFFFF">${xml(c.header || c.name)}</text>`;
+    const cx = colX[i] + alvColW(c) / 2;
+    const text = sig
+      ? `<text x="${cx}" y="${10 + headerH - 7}" text-anchor="middle" fill="${T.ink}">${xml(alvHeaderText(c))}</text>`
+      : `<text x="${cx}" y="${10 + headerH - 7}" text-anchor="middle" font-weight="700" fill="#FFFFFF">${xml(alvHeaderText(c))}</text>`;
+    // The unfilled rect gives the anchor the whole header cell as its box.
+    return anchored(anchorKey('col', c.name), `<rect x="${colX[i]}" y="10" width="${alvColW(c)}" height="${headerH}" fill="none"/>${text}`);
   }).join('');
 
-  const sepLines = colX.slice(1).map(lx =>
+  const sepLines = sig
+    // Signature: every cell is ruled, and the header has its own darker separators.
+    ? colX.slice(1).map(lx => `<line x1="${lx}" y1="10" x2="${lx}" y2="${10 + headerH}" stroke="${T.gridLine}"/>`
+        + `<line x1="${lx}" y1="${10 + headerH}" x2="${lx}" y2="${10 + headerH + rows.length * rowH}" stroke="${T.cellLine}"/>`).join('')
+      + rows.slice(1).map((_, i) => `<line x1="10" y1="${10 + headerH + (i + 1) * rowH}" x2="${gridRight}" y2="${10 + headerH + (i + 1) * rowH}" stroke="${T.cellLine}"/>`).join('')
+    : colX.slice(1).map(lx =>
     `<line x1="${lx}" y1="${10 + headerH}" x2="${lx}" y2="${10 + headerH + rows.length * rowH}" stroke="#C8D4E2"/>`).join('');
 
   const dataRows = rows.map((r, rIdx) => {
     const y = 10 + headerH + rIdx * rowH;
     const bg = r._locked ? '#F0F5FA' : (rIdx % 2 === 1 ? '#F5F9FC' : '#FFF');
-    const bandBg = rIdx % 2 === 1 || r._locked
-      ? `<rect x="10" y="${y}" width="${gridRight - 10}" height="${rowH}" fill="${bg}"/>` : '';
+    // Signature: no zebra; key columns (`key: true`) are tinted like SAP's key fields.
+    const bandBg = sig
+      ? columns.map((c, ci) => (c.key ? `<rect x="${colX[ci]}" y="${y}" width="${alvColW(c)}" height="${rowH}" fill="${T.keyCell}"/>` : '')).join('')
+      : rIdx % 2 === 1 || r._locked
+        ? `<rect x="10" y="${y}" width="${gridRight - 10}" height="${rowH}" fill="${bg}"/>` : '';
     const cells = columns.map((c, ci) => {
-      const cx = colX[ci] + (c.width || 100) / 2;
-      const leftX = colX[ci] + 8, rightX = colX[ci] + (c.width || 100) - 8;
+      const cx = colX[ci] + alvColW(c) / 2;
+      const leftX = colX[ci] + 8, rightX = colX[ci] + alvColW(c) - 8;
       const cy = y + rowH - 8;
       const val = r[c.name];
       const statusFill = { '●': '#D4A017', '○': '#C0392B', '◉': '#1E8449' };
       if (c.name === '_status' || c.editable) {
         if (c.editable) {
-          const editBg = r._locked ? '#E5E5E5' : '#FFF6C8';
-          const editStroke = r._locked ? '#999' : '#A67F25';
-          return `<rect x="${colX[ci] + 2}" y="${y + 3}" width="${(c.width || 100) - 4}" height="${rowH - 6}" fill="${editBg}" stroke="${editStroke}"/>`
+          const editBg = r._locked ? '#E5E5E5' : sig ? T.editFill : '#FFF6C8';
+          const editStroke = r._locked ? '#999' : sig ? T.editLine : '#A67F25';
+          return `<rect x="${colX[ci] + 2}" y="${y + 3}" width="${alvColW(c) - 4}" height="${rowH - 6}" fill="${editBg}" stroke="${editStroke}"/>`
             + (val !== undefined ? `<text x="${rightX}" y="${cy}" text-anchor="end" font-family="monospace" fill="${r._locked ? '#888' : '#000'}">${xml(val)}</text>` : '');
         }
       }
@@ -371,8 +748,14 @@ export function renderAlvLayoutSVG({ columns = [], sampleRows = [], maxRows = 3,
       if (c.name === '_status') {
         return `<text x="${cx}" y="${cy}" text-anchor="middle" fill="${statusFill[strVal] || '#555'}" font-weight="700">${xml(strVal)}</text>`;
       }
+      // Traffic-light / LED icon columns (ICON_RED_LIGHT, ICON_LED_GREEN …): a
+      // cell whose value is just red / yellow / green is drawn as the lamp.
+      const lamp = LAMP_FILL[strVal.toLowerCase()];
+      if (lamp) {
+        return `<circle cx="${cx}" cy="${cy - 4}" r="6" fill="${lamp}" stroke="#FFFFFF" stroke-width="1"/>`;
+      }
       if (c.hotspot) {
-        return `<text x="${cx}" y="${cy}" text-anchor="middle" font-family="monospace" fill="#1F5AA0" text-decoration="underline">${xml(strVal)}</text>`;
+        return `<text x="${cx}" y="${cy}" text-anchor="middle" font-family="monospace" fill="${sig ? T.link : '#1F5AA0'}" text-decoration="underline">${xml(strVal)}</text>`;
       }
       const anchor = c.align === 'end' ? 'end' : (c.align === 'left' ? 'start' : 'middle');
       const tx = anchor === 'end' ? rightX : anchor === 'start' ? leftX : cx;
@@ -393,21 +776,33 @@ export function renderAlvLayoutSVG({ columns = [], sampleRows = [], maxRows = 3,
     );
   }
   if (hasHotspot)  legendParts.push(`<tspan fill="#1F5AA0" text-decoration="underline">${xml(L.hotspot_text)}</tspan> ${xml(L.hotspot_label)}`);
-  if (hasEditable) legendParts.push(`<tspan>${xml(L.editable_cell)}</tspan> ${xml(L.editable_label)}`);
+  if (hasEditable) legendParts.push(`<tspan>${xml(sig ? L.editable_cell_white : L.editable_cell)}</tspan> ${xml(L.editable_label)}`);
   const legendSvg = hasLegend
     ? `<text x="10" y="${legendY}" font-size="11" fill="#555">${legendParts.join(' · ')}</text>`
     : '';
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(w * RENDER_SCALE)}" height="${Math.round(h * RENDER_SCALE)}" viewBox="0 0 ${w} ${h}" font-family="Arial,sans-serif" font-size="12">
-<defs>${IMG_SHADOW}</defs>
+${sig ? (() => {
+  const gid = gradId('alvhead');
+  const gh = headerH + rows.length * rowH;
+  return `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${T.gridHeadTop}"/><stop offset="1" stop-color="${T.gridHeadBot}"/></linearGradient></defs>
+<rect width="${w}" height="${h}" fill="${T.page}"/>
+<rect x="10" y="10" width="${gridRight - 10}" height="${gh}" fill="${T.cell}"/>
+<rect x="10" y="10" width="${gridRight - 10}" height="${headerH}" fill="url(#${gid})"/>
+${headerCells}
+${dataRows}
+${sepLines}
+<line x1="10" y1="${10 + headerH}" x2="${gridRight}" y2="${10 + headerH}" stroke="${T.gridLine}"/>
+<rect x="10" y="10" width="${gridRight - 10}" height="${gh}" fill="none" stroke="${T.gridLine}"/>`;
+})() : `<defs>${IMG_SHADOW}</defs>
 <rect width="${w}" height="${h}" fill="#FFF"/>
 <rect x="10" y="10" width="${gridRight - 10}" height="${headerH + rows.length * rowH}" rx="7" fill="#FFFFFF" stroke="#C8D4E2" filter="url(#imgsh)"/>
 <path d="${roundedTopRectPath(10, 10, gridRight - 10, headerH, 7)}" fill="#2E6FB0" stroke="#24598F" stroke-width="1.1"/>
 ${headerCells}
 ${dataRows}
 ${sepLines}
-<rect x="10" y="10" width="${gridRight - 10}" height="${headerH + rows.length * rowH}" rx="7" fill="none" stroke="#C8D4E2"/>
+<rect x="10" y="10" width="${gridRight - 10}" height="${headerH + rows.length * rowH}" rx="7" fill="none" stroke="#C8D4E2"/>`}
 ${legendSvg}
 </svg>`;
 }
@@ -419,12 +814,12 @@ ${legendSvg}
  */
 export function alvLayoutMetrics({ columns = [], sampleRows = [], maxRows = 3 } = {}) {
   const rows = sampleRows.slice(0, Math.max(1, Math.min(maxRows, 5)));
-  const totalW = columns.reduce((s, c) => s + (c.width || 100), 0) + 20;
-  const w = Math.max(900, Math.min(totalW, 1600));
+  const totalW = columns.reduce((s, c) => s + alvColW(c), 0) + 20;
+  const w = Math.max(900, totalW);
   const hasStatus   = columns.some(c => c.name === '_status') || rows.some(r => r && r._status);
   const hasHotspot  = columns.some(c => c.hotspot);
   const hasEditable = columns.some(c => c.editable);
-  const legendPad   = (hasStatus || hasHotspot || hasEditable) ? 80 : 30;
+  const legendPad   = (hasStatus || hasHotspot || hasEditable) ? ALV_LEGEND_PAD : ALV_PLAIN_PAD;
   const h = 10 + 22 + rows.length * 24 + legendPad;
   return { width: Math.round(w * RENDER_SCALE), height: Math.round(h * RENDER_SCALE) };
 }
@@ -742,6 +1137,10 @@ const FC_LINE_H   = 17;
 const FC_VGAP     = 48;
 const FC_PAD_TOP  = 66;
 const FC_PAD_BOT  = 56;
+const FC_SKIP_X   = 62;   // left lane for spine edges that skip nodes; the widest box starts at 100
+const FC_LANE_GAP = 12;   // spacing between parallel lane edges
+const FC_SIB_GAP  = 20;   // vertical offset between left-lane edges that leave the same node
+const FC_SIDE_GAP = 14;   // minimum vertical gap between stacked side (message) nodes
 const FC_INK      = '#2B3A4A';
 const FC_EDGE     = '#5E7388';
 
@@ -776,25 +1175,75 @@ function layoutFlowchart(graph = {}) {
   const edges = graph.edges || [];
   const byId = Object.fromEntries(nodes.map(n => [n.id, n]));
   const pos = {};
-  // Stack spine nodes (centre column).
+  // Side nodes hang off the spine node that points at them, centred on it.
+  const sidesOf = {};
+  for (const n of nodes) {
+    if (n.lane !== 'right') continue;
+    const src = edges.find(e => e.to === n.id && byId[e.from] && byId[e.from].lane !== 'right');
+    if (src) (sidesOf[src.from] ||= []).push(n);
+  }
+  // Stack spine nodes (centre column); `spine` is the stacking order. A tall
+  // side node (a long message list) would overlap the side node above it or
+  // run off the top, so its spine node moves down until the side node clears.
   let y = FC_PAD_TOP;
+  let order = 0;
+  let sideBottom = FC_PAD_TOP - FC_SIDE_GAP;
   for (const n of nodes) {
     if (n.lane === 'right') continue;
     const m = fcMeasure(n);
-    pos[n.id] = { ...m, x: FC_CENTER_X, yTop: y, cy: y + m.h / 2 };
+    const sides = (sidesOf[n.id] || []).map(s => ({ id: s.id, m: fcMeasure(s) }));
+    const sideH = sides.reduce((h, s) => h + s.m.h, 0) + FC_SIDE_GAP * Math.max(0, sides.length - 1);
+    if (sides.length) y = Math.max(y, sideBottom + FC_SIDE_GAP + sideH / 2 - m.h / 2);
+    const cy = y + m.h / 2;
+    pos[n.id] = { ...m, x: FC_CENTER_X, yTop: y, cy, spine: order++ };
+    let top = cy - sideH / 2;
+    for (const s of sides) {
+      pos[s.id] = { ...s.m, x: FC_RIGHT_X, yTop: top, cy: top + s.m.h / 2 };
+      top += s.m.h + FC_SIDE_GAP;
+    }
+    if (sides.length) sideBottom = cy + sideH / 2;
     y += m.h + FC_VGAP;
   }
-  let maxY = y - FC_VGAP;
-  // Place side nodes aligned to the decision that points at them.
+  let maxY = Math.max(y - FC_VGAP, sideBottom);
+  // A side node no spine node points at goes to the top of the side column.
   for (const n of nodes) {
-    if (n.lane !== 'right') continue;
+    if (n.lane !== 'right' || pos[n.id]) continue;
     const m = fcMeasure(n);
-    const src = edges.find(e => e.to === n.id && pos[e.from]);
-    const cy = src ? pos[src.from].cy : FC_PAD_TOP + m.h / 2;
-    pos[n.id] = { ...m, x: FC_RIGHT_X, yTop: cy - m.h / 2, cy };
-    if (cy + m.h / 2 > maxY) maxY = cy + m.h / 2;
+    pos[n.id] = { ...m, x: FC_RIGHT_X, yTop: FC_PAD_TOP, cy: FC_PAD_TOP + m.h / 2 };
+    maxY = Math.max(maxY, FC_PAD_TOP + m.h);
   }
-  return { nodes, edges, byId, pos, width: FC_WIDTH, height: maxY + FC_PAD_BOT };
+  // Lanes for edges that cannot run straight. A spine edge that skips nodes
+  // (a "no → end" shortcut) or climbs back up gets its own left lane; a side
+  // node's exit gets an outer right lane when another side node sits in its
+  // way. Each such edge has its own offset so parallel ones stay apart.
+  // Several left-lane edges from one node (a three-way decision) each get a
+  // sibling number: the first leaves at the node's centre line, the others
+  // on their own row below (or above) it, so every edge keeps a visible label.
+  const lanes = new Map();
+  const leftFrom = new Map();
+  let left = 0;
+  let right = 0;
+  edges.forEach((e, i) => {
+    const a = pos[e.from], b = pos[e.to];
+    if (!a || !b) return;
+    const aSide = byId[e.from]?.lane === 'right', bSide = byId[e.to]?.lane === 'right';
+    if (!aSide && !bSide && b.spine !== a.spine + 1) {
+      const sib = leftFrom.get(e.from) || 0;
+      leftFrom.set(e.from, sib + 1);
+      lanes.set(i, { side: 'left', k: left++, sib });
+    }
+    if (aSide && !bSide) {
+      const lo = Math.min(a.cy, b.cy), hi = Math.max(a.cy, b.cy);
+      const blocked = nodes.some(n => n.id !== e.from && n.lane === 'right' && pos[n.id]
+        && pos[n.id].yTop < hi && pos[n.id].yTop + pos[n.id].h > lo);
+      if (blocked) lanes.set(i, { side: 'right', k: right++ });
+    }
+  });
+  edges.forEach((e, i) => {
+    const lane = lanes.get(i);
+    if (lane?.side === 'left') lane.sibN = leftFrom.get(e.from);
+  });
+  return { nodes, edges, byId, pos, lanes, width: FC_WIDTH, height: maxY + FC_PAD_BOT };
 }
 
 function fcNodeSvg(p, n) {
@@ -822,7 +1271,7 @@ function fcChip(x, y, text, color) {
     + `<text x="${x}" y="${y + 1}" text-anchor="middle" font-size="11" font-weight="700" fill="${color}">${xml(text)}</text>`;
 }
 
-function fcEdgeSvg(e, L, lang) {
+function fcEdgeSvg(e, L, lang, i) {
   const a = L.pos[e.from], b = L.pos[e.to];
   if (!a || !b) return '';
   const aSide = L.byId[e.from]?.lane === 'right';
@@ -830,9 +1279,41 @@ function fcEdgeSvg(e, L, lang) {
   const south = p => ({ x: p.x, y: p.yTop + p.h });
   const north = p => ({ x: p.x, y: p.yTop });
   const east  = p => ({ x: p.x + p.w / 2, y: p.cy });
+  const west  = p => ({ x: p.x - p.w / 2, y: p.cy });
+  const lane = L.lanes?.get(i);
   let pts, label = e.label, lx, ly, lcol = '#56657A';
-  if (!aSide && bSide) {                       // decision → exception (horizontal)
-    pts = [east(a), { x: b.x - b.w / 2, y: a.cy }];
+  const yesNo = () => {
+    if (label === legendFor(lang).fc_no || /no|아니|いいえ/i.test(label || '')) lcol = '#B0402F';
+    else if (label === legendFor(lang).fc_yes || /yes|예|はい/i.test(label || '')) lcol = '#1E7A46';
+  };
+  if (lane?.side === 'left') {                 // spine shortcut / climb-back: left lane
+    const x = FC_SKIP_X - lane.k * FC_LANE_GAP;
+    const w0 = west(a);
+    if (!lane.sib) {
+      pts = [w0, { x, y: a.cy }, { x, y: b.cy }, west(b)];
+      lx = (x + w0.x) / 2; ly = a.cy - 7;
+    } else {
+      // Drop to its own row first; the sibling with the largest offset jogs
+      // closest to the node so the jogs never cross each other's rows.
+      const row = a.cy + (b.cy >= a.cy ? 1 : -1) * lane.sib * FC_SIB_GAP;
+      const jx = w0.x - 6 - 8 * (lane.sibN - 1 - lane.sib);
+      pts = [w0, { x: jx, y: a.cy }, { x: jx, y: row }, { x, y: row }, { x, y: b.cy }, west(b)];
+      lx = (x + jx) / 2; ly = row - 7;
+    }
+    yesNo();
+  } else if (lane?.side === 'right') {         // side exit around another side node
+    const x = FC_WIDTH - 12 - lane.k * FC_LANE_GAP;
+    pts = [east(a), { x, y: a.cy }, { x, y: b.cy }, east(b)];
+    // The lane hugs the right edge; keep its chip inside the canvas.
+    lx = Math.min(x, FC_WIDTH - (approxTextWidthPx(label || '') + 12) / 2 - 4);
+    ly = (a.cy + b.cy) / 2; lcol = '#7A4B9C';
+  } else if (!aSide && bSide) {                // decision → exception (horizontal)
+    // Straight when the side node sits on the source row; an elbow when it
+    // was stacked below another side node of the same source.
+    const mx = (a.x + a.w / 2 + b.x - b.w / 2) / 2;
+    pts = Math.abs(b.cy - a.cy) < 1
+      ? [east(a), { x: b.x - b.w / 2, y: a.cy }]
+      : [east(a), { x: mx, y: a.cy }, { x: mx, y: b.cy }, { x: b.x - b.w / 2, y: b.cy }];
     lx = (a.x + a.w / 2 + b.x - b.w / 2) / 2; ly = a.cy - 7;
     if (label === legendFor(lang).fc_no || /no|아니|いいえ/i.test(label || '')) lcol = '#B0402F';
   } else if (aSide && !bSide) {                // side → spine (loop-back up / exit down)
@@ -876,7 +1357,7 @@ export function renderFlowchartSVG(graph = {}, { lang = 'ko', heading = null } =
     + `<marker id="fcarrow" markerWidth="11" markerHeight="11" refX="8.5" refY="3.2" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L9.5,3.2 L0,6.4 Z" fill="${FC_EDGE}"/></marker>`
     + `<filter id="fcsh" x="-12%" y="-25%" width="124%" height="150%"><feDropShadow dx="0" dy="1.4" stdDeviation="1.5" flood-color="#8C9BAA" flood-opacity="0.45"/></filter>`
     + `</defs>`;
-  const edgeSvg = (L.edges || []).map(e => fcEdgeSvg(e, L, lang)).join('\n');
+  const edgeSvg = (L.edges || []).map((e, i) => fcEdgeSvg(e, L, lang, i)).join('\n');
   const nodeSvg = (L.nodes || []).map(n => fcNodeSvg(L.pos[n.id], n)).join('\n');
   const legendSvg = fcLegendSvg(lang, L.height - 22, L.width);
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -1266,7 +1747,11 @@ function paneInnerMetrics(p, allocW) {
     return { width: allocW || 560, height: p.treeRows.length * rowH + 10 };
   }
   if (paneIsEmpty(p) && p?.placeholder) return { width: allocW || 900, height: PANE_PLACE_H };
-  return alvLayoutMetrics({ columns: p?.columns || [], sampleRows: p?.sampleRows || [], maxRows: p?.maxRows });
+  // alvLayoutMetrics() answers in rendered pixels (× RENDER_SCALE); a pane
+  // is laid out in the parent's viewBox units, so undo the scale here.
+  // Using the scaled size padded every multi-pane image with empty space.
+  const m = alvLayoutMetrics({ columns: p?.columns || [], sampleRows: p?.sampleRows || [], maxRows: p?.maxRows });
+  return { width: Math.round(m.width / RENDER_SCALE), height: Math.round(m.height / RENDER_SCALE) };
 }
 
 // ── ALV Tree inner SVG renderer ────────────────────────────────
@@ -1313,25 +1798,46 @@ export function multipaneAlvMetrics({ panes = [], layout = 'split-horizontal', s
     const rightRenderH = Math.ceil(rightM.height * rightScale);
     const bodyH  = Math.max(leftM.height, rightRenderH);
     const capH   = 36; // always reserve caption row
-    const rawH   = PANE_PAD_TOP + PANE_TITLE_H + bodyH + capH + PANE_PAD_BOT;
+    const tbH    = sideToolbarH(panes, leftW, rightW);
+    const rawH   = PANE_PAD_TOP + PANE_TITLE_H + tbH + bodyH + capH + PANE_PAD_BOT;
     return { width: Math.round(totalW * RENDER_SCALE), height: Math.round(rawH * RENDER_SCALE) };
   }
 
   // ── split-horizontal (default): vertical stacking ──────────────
-  let totalH = PANE_PAD_TOP;
-  let totalW = 900;
+  const { w, h } = stackedSize(panes);
+  return { width: Math.round(w * RENDER_SCALE), height: Math.round(h * RENDER_SCALE) };
+}
+
+// Stacked layout size in viewBox units (unscaled).
+function stackedSize(panes) {
+  const w = stackedWidth(panes);
+  let h = PANE_PAD_TOP;
   panes.forEach((p, i) => {
-    const m = paneInnerMetrics(p);
-    totalH += PANE_TITLE_H + m.height;
-    if (i < panes.length - 1) totalH += PANE_GAP + PANE_INTER_H;
-    if (m.width > totalW) totalW = m.width;
+    h += PANE_TITLE_H + barHeight(barButtons(p), w - 20) + paneInnerMetrics(p).height;
+    if (i < panes.length - 1) h += PANE_GAP + PANE_INTER_H;
   });
-  totalH += PANE_PAD_BOT;
-  return { width: Math.round(totalW * RENDER_SCALE), height: Math.round(totalH * RENDER_SCALE) };
+  return { w, h: h + PANE_PAD_BOT };
+}
+
+// Canvas width of a stacked multi-pane ALV: the widest grid, or the widest
+// toolbar when a pane's buttons need more room than its grid.
+function stackedWidth(panes) {
+  let w = 900;
+  for (const p of panes) {
+    w = Math.max(w, paneInnerMetrics(p).width);
+    const bar = barButtons(p);
+    if (bar.length) w = Math.max(w, Math.min(SCREEN_MAX_W, barNeedW(bar) + 20));
+  }
+  return w;
+}
+// Toolbar row of a side-by-side pair: one height for both, so the grids align.
+function sideToolbarH(panes, leftW, rightW) {
+  return Math.max(barHeight(barButtons(panes[0]), leftW), barHeight(barButtons(panes[1]), rightW));
 }
 
 // ── Side-by-side renderer (split-vertical) ─────────────────────
-function renderSideBySideAlvSVG({ panes = [], splitRatio = [40, 60], interaction = '', lang = 'ko' } = {}) {
+function renderSideBySideAlvSVG({ panes = [], splitRatio = [40, 60], interaction = '', lang = 'ko', flowIndex } = {}) {
+  const ps = paneStyle();
   const [leftPane, rightPane] = panes;
   const totalW = SIDE_CANVAS_W;
   const leftW  = Math.round(totalW * splitRatio[0] / 100);
@@ -1345,17 +1851,22 @@ function renderSideBySideAlvSVG({ panes = [], splitRatio = [40, 60], interaction
   const rightRenderH = Math.ceil(rightBodyM.height * rightScale);
   const bodyH  = Math.max(leftBodyM.height, rightRenderH);
   const capH   = 36;
-  const totalH = PANE_PAD_TOP + PANE_TITLE_H + bodyH + capH + PANE_PAD_BOT;
+  const tbH    = sideToolbarH(panes, leftW, rightW);
+  const totalH = PANE_PAD_TOP + PANE_TITLE_H + tbH + bodyH + capH + PANE_PAD_BOT;
 
   const titleY = PANE_PAD_TOP;
-  const bodyY  = titleY + PANE_TITLE_H;
+  const bodyY  = titleY + PANE_TITLE_H + tbH;
   const parts  = [];
+  if (tbH) {
+    parts.push(buttonBarSvg(0, titleY + PANE_TITLE_H, leftW, barButtons(leftPane), { variant: 'alv', lang, flowIndex }));
+    parts.push(buttonBarSvg(rightX, titleY + PANE_TITLE_H, rightW, barButtons(rightPane), { variant: 'alv', lang, flowIndex }));
+  }
 
   // Left title bar
-  parts.push(`<rect x="0" y="${titleY}" width="${leftW}" height="${PANE_TITLE_H - 2}" fill="#E7E6E6" stroke="#888"/>`);
-  parts.push(`<text x="10" y="${titleY + PANE_TITLE_H - 9}" font-weight="700" fill="#333">${xml(leftPane.title || 'Pane 1')}</text>`);
+  parts.push(anchored(anchorKey('pane', leftPane.title), `<rect x="0" y="${titleY}" width="${leftW}" height="${PANE_TITLE_H - 2}" fill="${ps.title}" stroke="${ps.titleLine}"/>`
+    + `<text x="10" y="${titleY + PANE_TITLE_H - 9}" font-weight="700" fill="${ps.ink}">${xml(leftPane.title || 'Pane 1')}</text>`));
   // Left body frame
-  parts.push(`<rect x="0" y="${bodyY}" width="${leftW}" height="${bodyH}" fill="#FFF" stroke="#C8D4E2"/>`);
+  parts.push(`<rect x="0" y="${bodyY}" width="${leftW}" height="${bodyH}" fill="${ps.body}" stroke="${ps.bodyLine}"/>`);
   if (leftPane.treeRows) {
     const treeSvg = renderAlvTreeInnerSVG({ treeRows: leftPane.treeRows, paneW: leftW });
     parts.push(`<g transform="translate(0, ${bodyY + 4})">${treeSvg}</g>`);
@@ -1367,14 +1878,16 @@ function renderSideBySideAlvSVG({ panes = [], splitRatio = [40, 60], interaction
   }
 
   // Vertical divider
-  parts.push(`<rect x="${leftW}" y="${titleY}" width="${SIDE_DIVIDER_W}" height="${PANE_TITLE_H - 2 + bodyH}" fill="#5A85AE"/>`);
+  parts.push(`<rect x="${leftW}" y="${titleY}" width="${SIDE_DIVIDER_W}" height="${PANE_TITLE_H - 2 + tbH + bodyH}" fill="${ps.divider}"/>`);
 
   // Right title bar
-  parts.push(`<rect x="${rightX}" y="${titleY}" width="${rightW}" height="${PANE_TITLE_H - 2}" fill="#E7E6E6" stroke="#888"/>`);
-  parts.push(`<text x="${rightX + 10}" y="${titleY + PANE_TITLE_H - 9}" font-weight="700" fill="#333">${xml(rightPane.title || 'Pane 2')}</text>`);
+  parts.push(anchored(anchorKey('pane', rightPane.title), `<rect x="${rightX}" y="${titleY}" width="${rightW}" height="${PANE_TITLE_H - 2}" fill="${ps.title}" stroke="${ps.titleLine}"/>`
+    + `<text x="${rightX + 10}" y="${titleY + PANE_TITLE_H - 9}" font-weight="700" fill="${ps.ink}">${xml(rightPane.title || 'Pane 2')}</text>`));
   // Right body frame
-  parts.push(`<rect x="${rightX}" y="${bodyY}" width="${rightW}" height="${bodyH}" fill="#FFF" stroke="#C8D4E2"/>`);
-  if (paneIsEmpty(rightPane) && rightPane.placeholder) {
+  parts.push(`<rect x="${rightX}" y="${bodyY}" width="${rightW}" height="${bodyH}" fill="${ps.body}" stroke="${ps.bodyLine}"/>`);
+  if (rightPane.treeRows) {
+    parts.push(`<g transform="translate(${rightX}, ${bodyY + 4})">${renderAlvTreeInnerSVG({ treeRows: rightPane.treeRows, paneW: rightW })}</g>`);
+  } else if (paneIsEmpty(rightPane) && rightPane.placeholder) {
     parts.push(`<text x="${rightX + rightW / 2}" y="${bodyY + bodyH / 2 + 4}" text-anchor="middle" fill="#888" font-style="italic">${xml(rightPane.placeholder)}</text>`);
   } else {
     const innerSvg = renderAlvLayoutSVG({ columns: rightPane.columns || [], sampleRows: rightPane.sampleRows || [], maxRows: rightPane.maxRows, lang });
@@ -1389,39 +1902,62 @@ function renderSideBySideAlvSVG({ panes = [], splitRatio = [40, 60], interaction
 
   // Interaction caption
   const caption = interaction ? `← ${xml(interaction)} →` : `← ${xml(legendFor(lang).pane_caption)} →`;
-  parts.push(`<text x="${totalW / 2}" y="${bodyY + bodyH + 22}" text-anchor="middle" font-size="12" fill="#1F5AA0" font-weight="600">${caption}</text>`);
+  parts.push(`<text x="${totalW / 2}" y="${bodyY + bodyH + 22}" text-anchor="middle" font-size="12" fill="${ps.link}" font-weight="600">${caption}</text>`);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(totalW * RENDER_SCALE)}" height="${Math.round(totalH * RENDER_SCALE)}" viewBox="0 0 ${totalW} ${totalH}" font-family="Arial,sans-serif" font-size="12">
-<rect width="${totalW}" height="${totalH}" fill="#FFF"/>
+<rect width="${totalW}" height="${totalH}" fill="${ps.page}"/>
 ${parts.join('\n')}
 </svg>`;
 }
 
-export function renderMultipaneAlvSVG({ layout = 'split-horizontal', interaction = '', panes = [], splitRatio = [40, 60], lang = 'ko' } = {}) {
+export function renderMultipaneAlvSVG({ theme, ...rest } = {}) {
+  const restore = useTheme(theme);
+  try { return multipaneAlvSvg(rest); } finally { restore(); }
+}
+/** Pane chrome colours: title bar, body frame and divider. */
+function paneStyle() {
+  const P = TH || SIGNATURE;
+  return P.flat
+    ? { title: P.gridHeadTop, titleLine: P.gridLine, ink: P.ink, body: P.page, bodyLine: P.gridLine, divider: P.frameLine, link: P.link, page: P.page }
+    : { title: '#E7E6E6', titleLine: '#888', ink: '#333', body: '#FFF', bodyLine: '#C8D4E2', divider: '#5A85AE', link: '#1F5AA0', page: '#FFF' };
+}
+
+function multipaneAlvSvg({ layout = 'split-horizontal', interaction = '', panes = [], splitRatio = [40, 60], lang = 'ko', flowIndex } = {}) {
+  const ps = paneStyle();
   if (!panes.length) {
     return renderAlvLayoutSVG({ columns: [], sampleRows: [], lang });
   }
 
   // ── split-vertical: delegate to side-by-side renderer ──────────
   if (layout === 'split-vertical' && panes.length === 2) {
-    return renderSideBySideAlvSVG({ panes, splitRatio, interaction, lang });
+    return renderSideBySideAlvSVG({ panes, splitRatio, interaction, lang, flowIndex });
   }
 
   // ── split-horizontal (default): vertical stacking ──────────────
-  const { width: totalW, height: totalH } = multipaneAlvMetrics({ panes, layout: 'split-horizontal' });
+  const { w: totalW, h: totalH } = stackedSize(panes);
 
   let cursorY = PANE_PAD_TOP;
   const parts = [];
   panes.forEach((p, i) => {
     // Title bar (light grey + bold) — same palette as v8 grey headers.
-    parts.push(`<rect x="0" y="${cursorY}" width="${totalW}" height="${PANE_TITLE_H - 2}" fill="#E7E6E6" stroke="#888"/>`);
-    parts.push(`<text x="14" y="${cursorY + PANE_TITLE_H - 9}" font-weight="700" fill="#333">${xml(p.title || `Pane ${i + 1}`)}</text>`);
+    parts.push(anchored(anchorKey('pane', p.title), `<rect x="0" y="${cursorY}" width="${totalW}" height="${PANE_TITLE_H - 2}" fill="${ps.title}" stroke="${ps.titleLine}"/>`
+      + `<text x="14" y="${cursorY + PANE_TITLE_H - 9}" font-weight="700" fill="${ps.ink}">${xml(p.title || `Pane ${i + 1}`)}</text>`));
     cursorY += PANE_TITLE_H;
+
+    // The pane's own ALV toolbar, between its title and its grid.
+    const bar = barButtons(p);
+    if (bar.length) {
+      parts.push(buttonBarSvg(10, cursorY, totalW - 20, bar, { variant: 'alv', lang, flowIndex }));
+      cursorY += barHeight(bar, totalW - 20);
+    }
 
     // Pane body — actual grid OR placeholder box.
     const m = paneInnerMetrics(p);
-    if (paneIsEmpty(p) && p.placeholder) {
+    if (p.treeRows) {
+      parts.push(`<rect x="10" y="${cursorY}" width="${totalW - 20}" height="${m.height}" fill="${ps.body}" stroke="${ps.bodyLine}"/>`);
+      parts.push(`<g transform="translate(10, ${cursorY + 4})">${renderAlvTreeInnerSVG({ treeRows: p.treeRows, paneW: totalW - 20 })}</g>`);
+    } else if (paneIsEmpty(p) && p.placeholder) {
       parts.push(`<rect x="10" y="${cursorY}" width="${totalW - 20}" height="${m.height}" fill="#FAFAFA" stroke="#C8D4E2" stroke-dasharray="4,3"/>`);
       parts.push(`<text x="${totalW / 2}" y="${cursorY + m.height / 2 + 4}" text-anchor="middle" fill="#888" font-style="italic">${xml(p.placeholder)}</text>`);
     } else {
@@ -1436,14 +1972,14 @@ export function renderMultipaneAlvSVG({ layout = 'split-horizontal', interaction
       const caption = interaction
         ? `↓ ${xml(interaction)}`
         : `↓`;
-      parts.push(`<text x="${totalW / 2}" y="${cursorY + 18}" text-anchor="middle" font-size="12" fill="#1F5AA0" font-weight="600">${caption}</text>`);
+      parts.push(`<text x="${totalW / 2}" y="${cursorY + 18}" text-anchor="middle" font-size="12" fill="${ps.link}" font-weight="600">${caption}</text>`);
       cursorY += PANE_INTER_H;
     }
   });
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(totalW * RENDER_SCALE)}" height="${Math.round(totalH * RENDER_SCALE)}" viewBox="0 0 ${totalW} ${totalH}" font-family="Arial,sans-serif" font-size="12">
-<rect width="${totalW}" height="${totalH}" fill="#FFF"/>
+<rect width="${totalW}" height="${totalH}" fill="${ps.page}"/>
 ${parts.join('\n')}
 </svg>`;
 }
@@ -1451,6 +1987,488 @@ ${parts.join('\n')}
 // ──────────────────────────────────────────────────────────────
 // Rasterizer — headless Edge/Chrome/Chromium
 // ──────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────
+// ALV screen buttons (v14) — GUI status (PAI) bar + ALV grid toolbar
+// ──────────────────────────────────────────────────────────────
+// A report's output screen is more than its grid: the GUI status puts
+// function codes on the application toolbar (handled in PAI), and the ALV
+// TOOLBAR event adds buttons to the grid itself (handled in USER_COMMAND).
+// Both are drawn here, above the grid, so the image shows what a user can
+// press. Schema (all optional; without them the grid renders as before):
+//
+//   alv.screen   = { title?, status?, buttons: [Button] }   // GUI status → PAI
+//   alv.toolbar  = [Button | '|']                           // ALV grid toolbar
+//   alv.panes[i].toolbar = [Button | '|']                   // per pane, multi-grid
+//   alv.standardToolbar / panes[i].standardToolbar = true   // generic ALV icons first
+//   Button = { code, label?, icon?, flow?: false }          // no label → icon-only
+//
+// A button whose `code` has an entry in image-spec.buttonFlows carries a
+// numbered badge; the same number heads that button's own flow image. A flow
+// may also claim other buttons through `codes[]` (batch / cancel variants of
+// the same business stage) — they carry the same badge.
+// ──────────────────────────────────────────────────────────────
+
+const BTN_TEXT = {
+  ko: { pai: 'PAI', alv: 'ALV', note: '번호가 붙은 버튼은 버튼별 처리 흐름이 따로 있습니다', flowAlv: 'ALV 버튼', flowPai: 'PAI 기능' },
+  en: { pai: 'PAI', alv: 'ALV', note: 'Numbered buttons have their own process flow', flowAlv: 'ALV button', flowPai: 'PAI function' },
+  ja: { pai: 'PAI', alv: 'ALV', note: '番号付きのボタンには個別の処理フローがあります', flowAlv: 'ALVボタン', flowPai: 'PAI機能' },
+};
+const btnText = (lang) => BTN_TEXT[lang] || BTN_TEXT.ko;
+
+// Glyphs that every Windows / macOS / Linux headless browser font carries.
+const BTN_ICONS = {
+  create: '+', add: '+', new: '+', insert: '+', delete: '✕', remove: '✕',
+  cancel: '⊘', reject: '⊘', refresh: '↻', exit: '⇤', back: '←', execute: '▶',
+  run: '▶', undo: '↶', save: '✓', check: '✓', confirm: '✓', print: '⎙',
+  export: '⇩', download: '⇩', upload: '⇧', filter: '▽', sort: '⇅', sum: 'Σ',
+  detail: '☰', display: '☰', mail: '✉', edit: '✎', change: '✎', copy: '⧉',
+  okay: '✓', system_save: '✓', simulate: '◔', transport: '⇄', delivery: '⇨',
+  payment: '¤', disconnect: '⊗', operator: '±', delete_row: '✕', insert_row: '+',
+};
+// SAP icon names as the GUI status / ALV toolbar define them (ICON_REFRESH,
+// ICON_TRANSPORT, …) map onto the keywords above, so a writer can copy the
+// icon from GetGuiStatus (TEXT_NAME) instead of guessing a keyword.
+const SAP_ICON_ALIAS = {
+  red_light: 'reject', green_light: 'check', led_green: 'check', led_red: 'reject',
+  create: 'create', select_all: 'check', deselect_all: 'cancel', display_text: 'display',
+};
+const STD_ALV_BUTTONS = ['detail', 'sort', 'filter', 'sum', 'export'].map(icon => ({ icon, std: true }));
+
+const TB_ROW_H = 32, TB_BTN_H = 22, TB_PAD_X = 10, TB_GAP = 6, TB_CAPTION_W = 44, TB_SEP_W = 8;
+const SCREEN_TITLE_H = 28, SCREEN_NOTE_H = 26, SCREEN_MAX_W = 1600, GRID_TITLE_H = 22;
+
+function btnIcon(b) {
+  let key = String(b.icon || '').toLowerCase();
+  if (key.startsWith('icon_')) {
+    key = key.slice(5);
+    key = SAP_ICON_ALIAS[key] || key;
+    // An SAP icon without a drawable glyph draws no icon rather than its name.
+    return BTN_ICONS[key] || '';
+  }
+  if (BTN_ICONS[key]) return BTN_ICONS[key];
+  return key && [...String(b.icon)].length <= 2 ? String(b.icon) : '';
+}
+function btnWidth(b) {
+  if (b.sep) return TB_SEP_W;
+  const icon = btnIcon(b);
+  if (!b.label) return 26;
+  return Math.ceil(approxTextWidthPx(b.label)) + 20 + (icon ? 16 : 0);
+}
+function normalizeButtons(list) {
+  return (Array.isArray(list) ? list : [])
+    .map(b => (b === '|' || b?.type === 'separator' ? { sep: true }
+      : typeof b === 'string' ? { code: b, label: b }
+      : b && typeof b === 'object' ? b : null))
+    .filter(Boolean);
+}
+function barButtons(owner) {
+  const custom = normalizeButtons(owner?.toolbar);
+  if (!custom.length && !owner?.standardToolbar) return [];
+  return [...(owner?.standardToolbar ? [...STD_ALV_BUTTONS, { sep: true }] : []), ...custom];
+}
+/** One-row width a bar would need; used to widen the canvas before wrapping. */
+function barNeedW(items) {
+  return TB_PAD_X * 2 + TB_CAPTION_W + items.reduce((s, b) => s + btnWidth(b) + TB_GAP, 0);
+}
+/** `label` shortened with an ellipsis to fit `px`. */
+function fitLabel(label, px) {
+  const text = String(label);
+  if (approxTextWidthPx(text) <= px) return text;
+  const chars = [...text];
+  while (chars.length > 1 && approxTextWidthPx(`${chars.join('')}…`) > px) chars.pop();
+  return `${chars.join('')}…`;
+}
+function layoutButtonBar(items, width) {
+  const rows = [[]];
+  let x = TB_PAD_X + TB_CAPTION_W;
+  // A button never outgrows its bar — a narrow side-by-side pane otherwise
+  // pushed a long label into the neighbouring pane. Its label is ellipsized.
+  const maxW = Math.max(26, width - TB_PAD_X * 2 - TB_CAPTION_W);
+  for (const b of items) {
+    const w = Math.min(btnWidth(b), maxW);
+    if (x + w > width - TB_PAD_X && rows[rows.length - 1].length) {
+      rows.push([]);
+      x = TB_PAD_X + TB_CAPTION_W;
+    }
+    rows[rows.length - 1].push({ b, x, w });
+    x += w + TB_GAP;
+  }
+  return { rows, height: items.length ? rows.length * TB_ROW_H : 0 };
+}
+function barHeight(items, width) { return items.length ? layoutButtonBar(items, width).height : 0; }
+
+/** A button bar at (x0, y0), `width` wide. variant 'pai' = grey, 'alv' = blue. */
+/** Lookup key of a button's flow: a PAI and an ALV button may share a code. */
+const flowKey = (source, code) => `${source === 'pai' ? 'pai' : 'alv'}:${code}`;
+const isRenderableFlow = (f) => Boolean(f?.code && f.flow && Array.isArray(f.flow.nodes) && f.flow.nodes.length);
+
+/**
+ * Every button a flow belongs to: its own `code` first, then `codes[]`. A
+ * string in `codes` is a button on the flow's own bar; `{ code, source }`
+ * links a button on the other bar (a PAI flow that an ALV button also runs).
+ * One stage flow can so badge its batch and cancel variants too.
+ */
+export function flowButtonKeys(f) {
+  if (!f?.code) return [];
+  const extra = (Array.isArray(f.codes) ? f.codes : [])
+    .map(c => (typeof c === 'string' ? { code: c, source: f.source } : c && typeof c === 'object' ? c : null))
+    .filter(c => c?.code);
+  return [{ code: f.code, source: f.source }, ...extra]
+    .map(c => ({ code: c.code, source: c.source === 'pai' ? 'pai' : 'alv', key: flowKey(c.source, c.code) }));
+}
+
+/**
+ * `buttonFlows` → Map(flowKey → number). The number is the entry's position
+ * in the array (1-based), so badges, file names and the Markdown headings a
+ * writer numbers by position all agree even when an entry is unusable; an
+ * unusable entry simply has no badge (and buttonSchemaWarnings says why).
+ * Codes linked through `codes[]` carry the same number.
+ */
+export function buildFlowIndex(buttonFlows) {
+  const index = new Map();
+  (Array.isArray(buttonFlows) ? buttonFlows : []).forEach((f, i) => {
+    if (!isRenderableFlow(f)) return;
+    for (const { key } of flowButtonKeys(f)) if (!index.has(key)) index.set(key, i + 1);
+  });
+  return index;
+}
+
+function buttonBarSvg(x0, y0, width, items, { variant, lang, flowIndex, dock = 'top' }) {
+  if (!items.length) return '';
+  const T = btnText(lang);
+  const { rows, height } = layoutButtonBar(items, width);
+  // A modal dialog box carries its application toolbar at its bottom edge,
+  // buttons flush right: shift every row to end at the right padding.
+  if (dock === 'bottom') {
+    for (const row of rows) {
+      const last = row[row.length - 1];
+      const shift = last ? width - TB_PAD_X - (last.x + last.w) : 0;
+      if (shift > 0) for (const cell of row) cell.x += shift;
+    }
+  }
+  const pai = variant === 'pai';
+  const P = TH || SIGNATURE;
+  const sig = P.flat;
+  const edgeY = dock === 'bottom' ? y0 : y0 + height;
+  const parts = [
+    sig
+      // Signature: the GUI status is the flat application toolbar; the ALV toolbar sits on the screen background.
+      ? `<rect x="${x0}" y="${y0}" width="${width}" height="${height}" fill="${pai ? P.toolbar : P.page}"/><line x1="${x0}" y1="${edgeY}" x2="${x0 + width}" y2="${edgeY}" stroke="${pai ? P.toolbarLine : P.cellLine}"/>`
+      : `<rect x="${x0}" y="${y0}" width="${width}" height="${height}" fill="${pai ? '#EEF2F6' : '#F7F9FB'}" stroke="#C8D4E2"/>`,
+    `<rect x="${x0 + 6}" y="${y0 + (TB_ROW_H - 16) / 2}" width="${TB_CAPTION_W - 12}" height="16" rx="3" fill="${sig ? P.muted : pai ? '#56657A' : '#2E6FB0'}"${sig ? ' fill-opacity="0.55"' : ''}/>`,
+    `<text x="${x0 + TB_CAPTION_W / 2}" y="${y0 + TB_ROW_H / 2 + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="#FFF">${xml(pai ? T.pai : T.alv)}</text>`,
+  ];
+  rows.forEach((row, r) => {
+    const by = y0 + r * TB_ROW_H + (TB_ROW_H - TB_BTN_H) / 2;
+    for (const { b, x, w } of row) {
+      const bx = x0 + x;
+      if (b.sep) {
+        parts.push(`<line x1="${bx + w / 2}" y1="${by + 2}" x2="${bx + w / 2}" y2="${by + TB_BTN_H - 2}" stroke="${sig ? P.gridLine : '#AAB6C3'}"/>`);
+        continue;
+      }
+      const style = sig
+        // Signature: application-toolbar buttons are flat; ALV toolbar buttons are small framed buttons.
+        ? (pai ? { fill: 'none', stroke: 'none', ink: P.ink } : { fill: P.pushTop, stroke: P.gridLine, ink: b.std ? P.muted : P.ink })
+        : b.std ? { fill: '#FFFFFF', stroke: '#C8D4E2', ink: '#6B7C8D' }
+        : pai ? { fill: '#FFFFFF', stroke: '#9AA7B5', ink: '#2B3A4A' }
+        : { fill: '#EAF2FB', stroke: '#2E6FB0', ink: '#1F4E79' };
+      const start = parts.length;
+      parts.push(`<rect x="${bx}" y="${by}" width="${w}" height="${TB_BTN_H}" rx="${sig ? 2 : 4}" fill="${style.fill}" stroke="${style.stroke}"/>`);
+      const icon = btnIcon(b);
+      const cy = by + TB_BTN_H / 2 + 4;
+      if (!b.label) {
+        parts.push(`<text x="${bx + w / 2}" y="${cy}" text-anchor="middle" font-size="12" font-weight="700" fill="${style.ink}">${xml(icon || '•')}</text>`);
+      } else {
+        let tx = bx + 10;
+        if (icon) {
+          parts.push(`<text x="${tx + 5}" y="${cy}" text-anchor="middle" font-size="12" font-weight="700" fill="${style.ink}">${xml(icon)}</text>`);
+          tx += 16;
+        }
+        parts.push(`<text x="${tx}" y="${cy}" font-size="11.5" fill="${style.ink}">${xml(fitLabel(b.label, bx + w - 10 - tx))}</text>`);
+      }
+      const n = b.code && !b.std ? flowIndex?.get(flowKey(variant, b.code)) : undefined;
+      if (n) parts.push(badgeSvg(bx, by, w, n));
+      const key = anchorKey(pai ? 'pai' : 'alv', b.code || b.label || (b.std ? `std-${b.icon}` : ''));
+      parts.push(anchored(key, parts.splice(start).join('')));
+    }
+  });
+  return parts.join('');
+}
+
+// ──────────────────────────────────────────────────────────────
+// Dynpro elements above the grid (v15) — alv.screen.fields
+// ──────────────────────────────────────────────────────────────
+// A screen often carries its own input fields, checkboxes, output text and
+// push buttons between the GUI status and the ALV container (condition
+// fields + an Apply button, say). They are drawn in source order and wrap
+// like a button bar. A push button sends a PAI function code, so it carries
+// a flow badge exactly like a status button.
+//
+//   Field = { type: 'input', label?, value?, width? } | { type: 'checkbox', label, checked? }
+//         | { type: 'output', value } | { type: 'pushbutton', code, label?, icon?, flow? }
+const FLD_ROW_H = 30, FLD_GAP = 14, FLD_BOX_H = 20;
+
+function normalizeFields(list) {
+  return (Array.isArray(list) ? list : []).filter(f => f && typeof f === 'object');
+}
+function fieldWidth(f) {
+  const type = f.type || 'input';
+  if (type === 'pushbutton') return btnWidth(f);
+  if (type === 'checkbox') return 20 + Math.ceil(approxTextWidthPx(f.label || ''));
+  if (type === 'output') return Math.ceil(approxTextWidthPx(String(f.value ?? ''))) + 8;
+  const box = Math.max(56, Math.ceil(approxTextWidthPx(String(f.value ?? ''))) + 18, Number(f.width) || 0);
+  return (f.label ? Math.ceil(approxTextWidthPx(f.label)) + 8 : 0) + box;
+}
+function fieldsNeedW(items) {
+  return TB_PAD_X * 2 + items.reduce((s, f) => s + fieldWidth(f) + FLD_GAP, 0);
+}
+function layoutFields(items, width) {
+  const rows = [[]];
+  let x = TB_PAD_X;
+  for (const f of items) {
+    const w = Math.min(fieldWidth(f), width - TB_PAD_X * 2);
+    if (x + w > width - TB_PAD_X && rows[rows.length - 1].length) { rows.push([]); x = TB_PAD_X; }
+    rows[rows.length - 1].push({ f, x, w });
+    x += w + FLD_GAP;
+  }
+  return rows;
+}
+function fieldsHeight(items, width) {
+  return items.length ? layoutFields(items, width).length * FLD_ROW_H + 8 : 0;
+}
+/** Orange number badge at a button's top-right corner. */
+function badgeSvg(bx, by, w, n) {
+  return `<circle cx="${bx + w - 1}" cy="${by + 1}" r="8" fill="#D9730D" stroke="#FFF" stroke-width="1.2"/>`
+    + `<text x="${bx + w - 1}" y="${by + 4.5}" text-anchor="middle" font-size="10" font-weight="700" fill="#FFF">${n}</text>`;
+}
+function screenFieldsSvg(x0, y0, width, items, { flowIndex }) {
+  if (!items.length) return '';
+  const P = TH || SIGNATURE;
+  const sig = P.flat;
+  const ink = sig ? P.ink : '#2B3A4A';
+  const rows = layoutFields(items, width);
+  const parts = [sig
+    ? `<rect x="${x0}" y="${y0}" width="${width}" height="${rows.length * FLD_ROW_H + 8}" fill="${P.page}"/>`
+    : `<rect x="${x0}" y="${y0}" width="${width}" height="${rows.length * FLD_ROW_H + 8}" fill="#FAFBFC" stroke="#DCE3EA"/>`];
+  rows.forEach((row, r) => {
+    const by = y0 + 4 + r * FLD_ROW_H + (FLD_ROW_H - FLD_BOX_H) / 2;
+    const ty = by + FLD_BOX_H / 2 + 4;
+    for (const { f, x, w } of row) {
+      const bx = x0 + x;
+      const type = f.type || 'input';
+      const start = parts.length;
+      if (type === 'pushbutton') {
+        const pbInk = sig ? P.ink : '#5C4A0A';
+        if (sig) {
+          const id = gradId('fldpb');
+          parts.push(`<defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${P.pushTop}"/><stop offset="1" stop-color="${P.pushBot}"/></linearGradient></defs>`
+            + `<rect x="${bx}" y="${by}" width="${w}" height="${FLD_BOX_H}" rx="2" fill="url(#${id})" stroke="${P.pushLine}"/>`);
+        } else {
+          parts.push(`<rect x="${bx}" y="${by}" width="${w}" height="${FLD_BOX_H}" rx="4" fill="#FFF7D6" stroke="#B89B2E"/>`);
+        }
+        const icon = btnIcon(f);
+        let tx = bx + 10;
+        if (icon) { parts.push(`<text x="${tx + 5}" y="${ty}" text-anchor="middle" font-size="12" font-weight="700" fill="${pbInk}">${xml(icon)}</text>`); tx += 16; }
+        parts.push(`<text x="${tx}" y="${ty}" font-size="11.5" fill="${pbInk}">${xml(fitLabel(f.label || f.code || '', bx + w - 10 - tx))}</text>`);
+        const n = f.code ? flowIndex?.get(flowKey('pai', f.code)) : undefined;
+        if (n) parts.push(badgeSvg(bx, by, w, n));
+      } else if (type === 'checkbox') {
+        parts.push(`<rect x="${bx}" y="${by + 3}" width="14" height="14" rx="${sig ? 0 : 2}" fill="#FFF" stroke="${sig ? P.inputLine : '#7A8896'}"/>`);
+        if (f.checked) parts.push(`<text x="${bx + 7}" y="${by + 15}" text-anchor="middle" font-size="12" font-weight="700" fill="${sig ? P.ink : '#1F4E79'}">✓</text>`);
+        parts.push(`<text x="${bx + 20}" y="${ty}" font-size="11.5" fill="${ink}">${xml(f.label || '')}</text>`);
+      } else if (type === 'output') {
+        parts.push(`<text x="${bx}" y="${ty}" font-size="11.5" font-weight="700" fill="${sig ? P.ink : '#1F4E79'}">${xml(String(f.value ?? ''))}</text>`);
+      } else {
+        let bxBox = bx;
+        if (f.label) {
+          parts.push(`<text x="${bx}" y="${ty}" font-size="11.5" fill="${ink}">${xml(f.label)}</text>`);
+          bxBox += Math.ceil(approxTextWidthPx(f.label)) + 8;
+        }
+        const bw = bx + w - bxBox;
+        parts.push(`<rect x="${bxBox}" y="${by}" width="${bw}" height="${FLD_BOX_H}" fill="#FFFFFF" stroke="${sig ? P.inputLine : '#9AA7B5'}"/>`);
+        parts.push(`<text x="${bxBox + 6}" y="${ty}" font-size="11.5" font-family="Consolas,monospace" fill="${ink}">${xml(fitLabel(String(f.value ?? ''), bw - 10))}</text>`);
+      }
+      parts.push(anchored(anchorKey('fld', f.name || f.code || f.label), parts.splice(start).join('')));
+    }
+  });
+  return parts.join('');
+}
+
+/** Whether any button drawn for this ALV carries a flow badge. */
+function hasFlowBadge(alv, flowIndex) {
+  if (!flowIndex?.size) return false;
+  const alvButtons = [
+    ...normalizeButtons(alv?.toolbar),
+    ...(Array.isArray(alv?.panes) ? alv.panes.flatMap(p => normalizeButtons(p?.toolbar)) : []),
+  ];
+  const paiButtons = [
+    ...normalizeButtons(alv?.screen?.buttons),
+    ...normalizeFields(alv?.screen?.fields).filter(f => f.type === 'pushbutton'),
+  ];
+  return paiButtons.some(b => b.code && flowIndex.has(flowKey('pai', b.code)))
+    || alvButtons.some(b => b.code && flowIndex.has(flowKey('alv', b.code)));
+}
+
+/**
+ * The output screen: optional GUI-status title + PAI bar, optional ALV
+ * toolbar (single grid; multi-pane grids draw their own per pane), then the
+ * grid itself. With no buttons and no screen it returns the grid unchanged,
+ * so older image-specs render exactly as before.
+ */
+export function renderAlvScreenSVG(alv = {}, { lang = 'ko', flowIndex = new Map(), theme } = {}) {
+  const restore = useTheme(theme ?? alv.theme);
+  try { return alvScreenSvg(alv, { lang, flowIndex }); } finally { restore(); }
+}
+
+function alvScreenSvg(alv, { lang, flowIndex }) {
+  const P = TH || SIGNATURE;
+  const sig = P.flat;
+  const isMultipane = Array.isArray(alv.panes) && alv.panes.length > 0;
+  const screen = alv.screen && typeof alv.screen === 'object' ? alv.screen : null;
+  // A popup with only fields and buttons (a confirmation, an input dialog)
+  // has no grid: draw its title, bar and fields without an empty table.
+  const noGrid = !isMultipane && screen && !(Array.isArray(alv.columns) && alv.columns.length);
+  // Modal dialog box (CALL SCREEN … STARTING AT, status type P): its application
+  // toolbar sits at the bottom edge, buttons flush right, inside a window frame.
+  const modal = Boolean(screen && (screen.modal === true || screen.type === 'dialog'));
+  const inner = isMultipane
+    ? renderMultipaneAlvSVG({ ...alv, lang, flowIndex })
+    : noGrid ? '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="8" viewBox="0 0 480 8"></svg>'
+    : renderAlvLayoutSVG({ ...alv, lang });
+  const pai = normalizeButtons(screen?.buttons);
+  const fields = normalizeFields(screen?.fields);
+  const grid = isMultipane ? [] : barButtons(alv);
+  const note = hasFlowBadge(alv, flowIndex);
+  // SET_GRID_TITLE / layout grid_title: a bar on top of a single grid.
+  const gridTitle = !isMultipane && !noGrid && alv.gridTitle ? String(alv.gridTitle) : "";
+  if (!screen && !grid.length && !note && !gridTitle) return inner;
+
+  const vb = inner.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+  const innerW = Number(vb[1]), innerH = Number(vb[2]);
+  // Bars and fields wrap within SCREEN_MAX_W; the grid itself is never cut.
+  const W = Math.max(innerW, Math.min(SCREEN_MAX_W, Math.max(pai.length ? barNeedW(pai) : 0,
+    fields.length ? fieldsNeedW(fields) : 0, grid.length ? barNeedW(grid) + 20 : 0,
+    gridTitle ? Math.ceil(approxTextWidthPx(gridTitle)) + 40 : 0)));
+  const titleH = screen ? SCREEN_TITLE_H : 0;
+  const paiH = barHeight(pai, W);
+  const fieldsH = fieldsHeight(fields, W);
+  const gridH = barHeight(grid, W - 20);
+  const noteH = note ? SCREEN_NOTE_H : 0;
+  const gtH = gridTitle ? GRID_TITLE_H + 10 : 0;
+  const H = titleH + paiH + fieldsH + (gridH ? gridH + 10 : 0) + gtH + innerH + noteH;
+  const parts = [];
+  let y = 0;
+  if (screen) {
+    parts.push(anchored('title', sig ? sigTitleBar(gradId('scrtitle'), 0, 0, W, titleH, screen.title || '')
+      : `<rect x="0" y="0" width="${W}" height="${titleH}" fill="#1F4E79"/>`
+      + `<text x="12" y="${titleH / 2 + 5}" font-size="13" font-weight="700" fill="#FFF">${xml(screen.title || '')}</text>`));
+    if (screen.status) {
+      const sw = approxTextWidthPx(screen.status) + 16;
+      parts.push(sig
+        ? `<rect x="${W - sw - 10}" y="6" width="${sw}" height="16" rx="3" fill="#FFFFFF" fill-opacity="0.45" stroke="${P.frameLine}"/>`
+          + `<text x="${W - sw / 2 - 10}" y="18" text-anchor="middle" font-size="10.5" fill="${P.titleInk}">${xml(screen.status)}</text>`
+        : `<rect x="${W - sw - 10}" y="6" width="${sw}" height="16" rx="3" fill="#FFFFFF" fill-opacity="0.18" stroke="#9FC3E7"/>`
+          + `<text x="${W - sw / 2 - 10}" y="18" text-anchor="middle" font-size="10.5" fill="#FFF">${xml(screen.status)}</text>`);
+    }
+    y += titleH;
+  }
+  if (paiH && !modal) { parts.push(buttonBarSvg(0, y, W, pai, { variant: 'pai', lang, flowIndex })); y += paiH; }
+  if (fieldsH) { parts.push(screenFieldsSvg(0, y, W, fields, { flowIndex })); y += fieldsH; }
+  if (gridH) { parts.push(buttonBarSvg(10, y + 10, W - 20, grid, { variant: 'alv', lang, flowIndex })); y += gridH + 10; }
+  if (gtH) {
+    const gw = W - 20;
+    parts.push(anchored("gridtitle", `<rect x="10" y="${y + 10}" width="${gw}" height="${GRID_TITLE_H}" rx="${sig ? 0 : 3}" fill="${sig ? P.gridHeadTop : '#EAF0F6'}" stroke="${sig ? P.gridLine : '#C8D4E2'}"/>`
+      + `<text x="20" y="${y + 10 + GRID_TITLE_H / 2 + 4}" font-size="12" font-weight="700" fill="${sig ? P.ink : '#1F4E79'}">${xml(fitLabel(gridTitle, gw - 20))}</text>`));
+    y += gtH;
+  }
+  parts.push(`<svg x="0" y="${y}" width="${innerW}" height="${innerH}" viewBox="0 0 ${innerW} ${innerH}">${extractInnerSvg(inner)}</svg>`);
+  y += innerH;
+  if (paiH && modal) { parts.push(buttonBarSvg(0, y, W, pai, { variant: 'pai', lang, flowIndex, dock: 'bottom' })); y += paiH; }
+  if (modal) parts.push(`<rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" fill="none" stroke="${sig ? P.frameLine : '#9AA7B5'}"/>`);
+  if (noteH) {
+    parts.push(`<circle cx="18" cy="${y + noteH / 2}" r="7" fill="#D9730D"/><text x="18" y="${y + noteH / 2 + 3.5}" text-anchor="middle" font-size="9.5" font-weight="700" fill="#FFF">n</text>`);
+    parts.push(`<text x="32" y="${y + noteH / 2 + 4}" font-size="11" fill="#555">${xml(btnText(lang).note)}</text>`);
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${Math.round(W * RENDER_SCALE)}" height="${Math.round(H * RENDER_SCALE)}" viewBox="0 0 ${W} ${H}" font-family="Arial,sans-serif" font-size="12">
+<rect width="${W}" height="${H}" fill="${sig ? P.page : '#FFF'}"/>
+${parts.join('\n')}
+</svg>`;
+}
+
+/** Pixel size an SVG string declares — keeps the rasterizer viewport exact. */
+function svgPixelSize(svg) {
+  const m = svg.match(/<svg[^>]*\swidth="(\d+)"[^>]*\sheight="(\d+)"/);
+  return m ? { width: Number(m[1]), height: Number(m[2]) } : { width: 900, height: 400 };
+}
+
+/**
+ * Consistency checks between the ALV buttons and image-spec.buttonFlows —
+ * printed by render-md-images so a writer sees a missing flow before the
+ * spec ships. Navigation-only buttons opt out with `flow: false`.
+ */
+export function buttonSchemaWarnings(spec = {}) {
+  const warns = [];
+  const alv = spec.alv || {};
+  // A string button ("BACK") is shorthand for a label-only, navigation-only
+  // button: it cannot carry `flow: false`, so it is never asked for a flow.
+  const tag = (list, source, bar) => (Array.isArray(list) ? list : [])
+    .map(raw => ({ raw, b: normalizeButtons([raw])[0] }))
+    .filter(({ b }) => b && !b.sep && !b.std)
+    .map(({ raw, b }) => ({ ...b, source, bar, shorthand: typeof raw === 'string' }));
+  // Every screen's buttons: the main output screen (alv) and each further
+  // screen in `screens` (popups and other dynpros). Push buttons among the
+  // screen fields send PAI function codes, like the GUI status buttons.
+  const screenButtons = (s, id) => [
+    ...tag(s?.screen?.buttons, 'pai', `pai@${id}`),
+    ...tag(normalizeFields(s?.screen?.fields).filter(f => f.type === 'pushbutton'), 'pai', `fields@${id}`),
+    ...tag(s?.toolbar, 'alv', `grid@${id}`),
+    ...(Array.isArray(s?.panes) ? s.panes.flatMap((p, i) => tag(p?.toolbar, 'alv', `pane${i}@${id}`)) : []),
+  ];
+  const buttons = [
+    ...screenButtons(alv, 'main'),
+    ...(Array.isArray(spec.screens) ? spec.screens.flatMap((s, i) => screenButtons(s, s?.dynnr || `screen${i}`)) : []),
+  ];
+  const where = (source) => (source === 'pai' ? 'PAI' : 'ALV');
+
+  // A code repeated within one bar is a mistake; the same code on two grids
+  // (each with its own REFRESH) is normal and shares one flow.
+  const seenButtons = new Set();
+  const seenInBar = new Set();
+  for (const b of buttons) {
+    if (!b.code) continue;
+    const barKey = `${b.bar}:${b.code}`;
+    if (seenInBar.has(barKey)) warns.push(`${where(b.source)} button "${b.code}" appears twice in the same toolbar`);
+    seenInBar.add(barKey);
+    seenButtons.add(flowKey(b.source, b.code));
+  }
+
+  const flows = Array.isArray(spec.buttonFlows) ? spec.buttonFlows : [];
+  const seenFlows = new Set();
+  flows.forEach((f, i) => {
+    const n = i + 1;
+    if (!f?.code) { warns.push(`buttonFlows #${n} has no code — it cannot be matched to a button`); return; }
+    if (f.codes !== undefined && !Array.isArray(f.codes)) warns.push(`buttonFlows #${n} "${f.code}" has a "codes" that is not an array — it is ignored`);
+    else if (Array.isArray(f.codes) && flowButtonKeys(f).length !== f.codes.length + 1) warns.push(`buttonFlows #${n} "${f.code}" has a "codes" entry without a code — use "CODE" or { "code", "source" }`);
+    flowButtonKeys(f).forEach(({ code, source, key }, j) => {
+      const what = j === 0 ? `"${code}"` : `links "${code}", which`;
+      if (seenFlows.has(key)) warns.push(`buttonFlows #${n} ${what} repeats an earlier ${where(source)} flow — only the first is used`);
+      seenFlows.add(key);
+      if (!seenButtons.has(key)) warns.push(`buttonFlows #${n} ${what} (source "${source}") has no matching button in ${source === 'pai' ? 'screen.buttons / screen.fields' : 'toolbar / panes[].toolbar'} of alv or screens[]`);
+    });
+    if (!isRenderableFlow(f)) warns.push(`buttonFlows #${n} "${f.code}" has no drawable flow — "flow" must be { nodes: [..at least one..], edges }`);
+  });
+
+  const index = buildFlowIndex(flows);
+  for (const b of buttons) {
+    if (!b.code || b.flow === false || b.shorthand) continue;
+    if (!index.has(flowKey(b.source, b.code))) {
+      warns.push(`${where(b.source)} button "${b.code}" has no usable buttonFlows entry — add its business flow, list it in the "codes" of the flow it shares, or set "flow": false if it only navigates (BACK / EXIT / REFRESH)`);
+    }
+  }
+  return warns;
+}
 
 function findBrowser() {
   const candidates = platform() === 'win32'
@@ -1664,8 +2682,18 @@ export async function rasterizeSvgToPng(svg, { width, height } = {}) {
  * come out in the spec's language. When absent it defaults to 'ko' inside
  * the renderers, preserving backward-compatible behaviour.
  */
-export async function renderScreenImages({ selection, alv, processFlow, lang = 'ko' } = {}) {
-  const out = { selection: null, alv: null, processFlow: null };
+export async function renderScreenImages({ selection, alv, screens, processFlow, buttonFlows, lang = 'ko', theme } = {}, { renderButtonFlows = true, renderScreens = true } = {}) {
+  const out = { selection: null, alv: null, processFlow: null, screens: [], buttonFlows: [] };
+  // Buttons with their own flow keep their array position as their number;
+  // the ALV image badges each button with it. The xlsx path passes
+  // renderButtonFlows:false — it has no slot for them, so it keeps the badges
+  // but skips a browser launch per flow.
+  const flowIndex = buildFlowIndex(buttonFlows);
+  const flows = renderButtonFlows
+    ? (Array.isArray(buttonFlows) ? buttonFlows : [])
+      .map((f, i) => ({ ...f, number: i + 1 }))
+      .filter(f => isRenderableFlow(f) && flowIndex.get(flowKey(f.source, f.code)) === f.number)
+    : [];
   // PARALLEL RENDERING — selection + ALV + processFlow rasterize concurrently.
   // Each rasterizeSvgToPng() spawns its own headless browser process, so
   // Promise.all() cuts wall-clock time roughly in half. Each task is
@@ -1676,7 +2704,7 @@ export async function renderScreenImages({ selection, alv, processFlow, lang = '
   if (selection) {
     tasks.push((async () => {
       try {
-        const svg = renderSelectionScreenSVG({ ...selection, lang });
+        const svg = renderSelectionScreenSVG({ ...selection, lang, theme });
         // Use the shared metrics helper so we stay in lockstep with the
         // renderer's actual layout — avoids the bug where a longer label
         // widened the SVG but the viewport stayed at 900 and cropped it.
@@ -1686,25 +2714,45 @@ export async function renderScreenImages({ selection, alv, processFlow, lang = '
       } catch { /* keep selection null → wireframe fallback */ }
     })());
   }
+  // One output screen → PNG. Shared by the main screen (`alv`) and every
+  // further screen in `screens` (popups, detail dynpros).
+  const renderOutputScreen = async (spec) => {
+    // v10: when `panes` is supplied we route to the multipane composer
+    // (Split-ALV / Tabstrip / Sequence). Otherwise the legacy single-grid
+    // path renders unchanged. The shape detection happens here, not at
+    // the driver level, so existing per-spec drivers keep working as-is.
+    // v14: renderAlvScreenSVG adds the GUI-status (PAI) bar and ALV
+    // toolbars when the spec has them, and returns the plain grid
+    // otherwise — so the viewport comes from the SVG's own size.
+    const isMultipane = Array.isArray(spec.panes) && spec.panes.length > 0;
+    // `standardToolbar` written at the top of a multi-pane ALV means the
+    // panes that have a toolbar — a writer's natural reading of the flag.
+    if (isMultipane && spec.standardToolbar) {
+      spec = { ...spec, panes: spec.panes.map(p => (p?.toolbar?.length && p.standardToolbar === undefined ? { ...p, standardToolbar: true } : p)) };
+    }
+    const svg = renderAlvScreenSVG(spec, { lang, flowIndex, theme });
+    const { width, height } = svg.includes('<svg x="0"')
+      ? svgPixelSize(svg)
+      : isMultipane ? multipaneAlvMetrics({ ...spec }) : alvLayoutMetrics(spec);
+    const png = await rasterizeSvgToPng(svg, { width, height });
+    return png ? { pngBuffer: png, width, height } : null;
+  };
   if (alv) {
     tasks.push((async () => {
-      try {
-        // v10: when `panes` is supplied we route to the multipane composer
-        // (Split-ALV / Tabstrip / Sequence). Otherwise the legacy single-grid
-        // path renders unchanged. The shape detection happens here, not at
-        // the driver level, so existing per-spec drivers keep working as-is.
-        const isMultipane = Array.isArray(alv.panes) && alv.panes.length > 0;
-        const svg = isMultipane
-          ? renderMultipaneAlvSVG({ ...alv, lang })
-          : renderAlvLayoutSVG({ ...alv, lang });
-        const { width, height } = isMultipane
-          ? multipaneAlvMetrics({ ...alv })
-          : alvLayoutMetrics(alv);
-        const png = await rasterizeSvgToPng(svg, { width, height });
-        if (png) out.alv = { pngBuffer: png, width, height };
-      } catch { /* keep alv null → wireframe fallback */ }
+      try { out.alv = await renderOutputScreen(alv); } catch { /* keep alv null → wireframe fallback */ }
     })());
   }
+  // v15: further screens a button opens (popups 0200/0300…, detail dynpros).
+  const extraScreens = renderScreens && Array.isArray(screens) ? screens.filter(s => s && typeof s === 'object') : [];
+  const screenResults = new Array(extraScreens.length).fill(null);
+  extraScreens.forEach((s, i) => {
+    tasks.push((async () => {
+      try {
+        const r = await renderOutputScreen(s);
+        if (r) screenResults[i] = { dynnr: String(s.dynnr || `S${i + 1}`), title: s.screen?.title || '', ...r };
+      } catch { /* this screen stays out; its Markdown table stands alone */ }
+    })());
+  });
   // processFlow accepts TWO shapes:
   //   · string[]          → legacy linear horizontal flow (back-compat)
   //   · { nodes, edges }  → v12 branching flowchart (Mermaid-style TD), the
@@ -1728,5 +2776,28 @@ export async function renderScreenImages({ selection, alv, processFlow, lang = '
     })());
   }
   await Promise.all(tasks);
+  out.screens = screenResults.filter(Boolean);
+
+  // One flow image per business button, three browsers at a time — every
+  // rasterize is a headless-browser launch, and a program can have a dozen.
+  const T = btnText(lang);
+  const results = new Array(flows.length).fill(null);
+  let next = 0;
+  const worker = async () => {
+    while (next < flows.length) {
+      const i = next++;
+      const f = flows[i];
+      try {
+        const tag = f.source === 'pai' ? T.flowPai : T.flowAlv;
+        const heading = `${f.number}. [${tag}] ${f.code}${f.label ? ` · ${f.label}` : ''}`;
+        const svg = renderFlowchartSVG(f.flow, { lang, heading });
+        const { width, height } = flowchartMetrics(f.flow);
+        const png = await rasterizeSvgToPng(svg, { width, height });
+        if (png) results[i] = { index: f.number, code: f.code, codes: flowButtonKeys(f).slice(1).map(c => c.code), source: f.source || 'alv', label: f.label || '', pngBuffer: png, width, height };
+      } catch { /* this button's flow stays null → its Markdown step list stands alone */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(3, flows.length) }, worker));
+  out.buttonFlows = results.filter(Boolean);
   return out;
 }

@@ -1,8 +1,7 @@
 ---
-name: sc4sap:create-object
+name: create-object
 description: ABAP object creation workflow — confirm transport+package, auto-create and activate
-level: 3
-model: sonnet
+model: inherit
 ---
 
 # SC4SAP Create Object
@@ -99,7 +98,7 @@ Remote-Enabled (RFC) flag is a separate concern — stored in TFDIR.FMODE, not i
 <Workflow_Steps>
 **MANDATORY**: Follow the step sequence defined in [`workflow-steps.md`](workflow-steps.md).
 
-Per-step model allocation (skill main thread runs on Sonnet per frontmatter; creation delegates to `sap-executor`; the report is rendered on main):
+Per-step model allocation (the main thread follows the session model — `model: inherit`; creation delegates to `sap-executor`; the report is rendered on main):
 
 | Step | Owner | Model | Role |
 |------|-------|-------|------|
@@ -146,4 +145,4 @@ If the user-provided name violates any rule, suggest a compliant alternative bas
 - **ECC DDIC fallback:** only `CreateProgram` + `UpdateProgram` (target `$TMP`). `CreateTable` / `CreateDataElement` / `CreateDomain` must NOT be attempted when `SAP_VERSION = ECC`.
 </MCP_Tools_Used>
 
-Task: {{ARGUMENTS}}
+Task: $ARGUMENTS
