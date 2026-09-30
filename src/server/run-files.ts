@@ -18,7 +18,7 @@ import { join, resolve } from "node:path";
 /** Relative to the workspace, which is every session's cwd. */
 export const OUTPUT_ROOT = ".sc4sap/out";
 
-/** Only these leave the server. Working files (`_tr/`, `_img/`) do not. */
+/** Only these leave the server. Working files (`_tr/`, `_img/`) do not, but for two exceptions below. */
 const HANDED_OVER: Readonly<Record<string, string>> = {
   ".md": "text/markdown",
   ".html": "text/html",
@@ -31,6 +31,14 @@ const HANDED_OVER: Readonly<Record<string, string>> = {
  * inside the document it shows and saves; HTML has them inlined already.
  */
 const ASSET_DIR = "_assets";
+
+/**
+ * The pictures' data — `_img/image-spec.json` from an Economy run,
+ * `_img/<PROGRAM>-<date>.image-spec.json` from the plugin's skill. A few
+ * hundred bytes the page draws the process flow from itself, sharper than the
+ * plugin's PNG of it. The rest of `_img/` stays behind.
+ */
+const IMAGE_SPEC = /(^|\/)_img\/[^/]*image-spec\.json$/;
 
 /** Ceiling per file. A spec workbook is ~100 KB; this is a runaway guard. */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -87,8 +95,9 @@ export function takeRunFiles(workspace: string, sessionId: string): RunFile[] {
       const parts = path.split("/");
       const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
       const asset = ext === ".png" && parts.includes(ASSET_DIR);
-      if (!asset && parts.some((part) => part.startsWith("_"))) continue;
-      const mediaType = asset ? "image/png" : HANDED_OVER[ext];
+      const imageSpec = IMAGE_SPEC.test(path);
+      if (!asset && !imageSpec && parts.some((part) => part.startsWith("_"))) continue;
+      const mediaType = asset ? "image/png" : imageSpec ? "application/json" : HANDED_OVER[ext];
       if (!mediaType) continue;
       const full = join(dir, path);
       const stat = statSync(full);

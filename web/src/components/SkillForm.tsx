@@ -51,6 +51,8 @@ import type { PermissionResponse, RunFile } from "@/lib/types";
 import { specPrompt, type SpecSurvey } from "@/lib/spec-prompt";
 import { SpecSurveyModal, type SpecAnswers } from "@/components/SpecSurveyModal";
 import { HtmlPreview } from "@/components/HtmlPreview";
+import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
+import { styledSpec } from "@/lib/spec-theme";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
 import type { Locale } from "@/lib/i18n/locale";
@@ -199,7 +201,24 @@ function runTitle(
  */
 const runKey = (slug: string): string => `sc4sap.skillRun.${slug}`;
 
-type StoredRun = { sessionId: string; answer: string };
+type StoredRun = {
+  sessionId: string;
+  answer: string;
+  /** A documents run: the files it was asked for, and what was typed in. */
+  wanted?: SpecSurvey["formats"];
+  values?: Record<string, string>;
+};
+
+/**
+ * A documents run's files, per skill, for as long as this tab is open.
+ *
+ * The backend hands them over once and deletes them, so leaving the page used
+ * to lose them: going to another skill and back found the result gone. They
+ * are held here, in memory — never written to storage, never sent anywhere —
+ * so a return within the tab finds them, and a reload or a closed tab still
+ * leaves nothing behind. One run per skill; a new run or Done replaces it.
+ */
+const heldDocs = new Map<string, { sessionId: string; files: RunFile[] }>();
 
 function readStoredRun(slug: string): StoredRun | null {
   try {
@@ -300,13 +319,20 @@ function textOf(file: RunFile): string {
 function withImages(markdown: string, files: readonly RunFile[]): string {
   let text = markdown;
   for (const file of files) {
-    if (file.mediaType !== "image/png") continue;
-    const uri = `data:image/png;base64,${file.data}`;
+    if (file.mediaType !== "image/png" && file.mediaType !== "image/svg+xml") continue;
+    const uri = `data:${file.mediaType};base64,${file.data}`;
     for (const ref of [file.path, `./${file.path}`]) {
       text = text.split(`](${ref})`).join(`](${uri})`);
     }
   }
   return text;
+}
+
+/** Base64 of a string's UTF-8 bytes — `btoa` alone refuses Hangul. */
+function base64Utf8(text: string): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 /** 12.3 KB — one decimal under a hundred, none above. */
@@ -480,10 +506,22 @@ export function SkillForm({
     // it, a remembered run from an earlier sitting must not come back over
     // the top of the one just started.
     if (autorun || autorunFired.current) return;
-    // Nothing of a documents run is remembered, so there is nothing to pick up.
-    if (documents) return;
     const stored = readStoredRun(slug);
     if (!stored) return;
+
+    // A documents run: what it was asked for, the form as it was, and its
+    // files if this tab already collected them — so they are not asked for
+    // again from a backend that no longer has them.
+    if (documents) {
+      if (stored.wanted) setWanted(stored.wanted);
+      const typed = stored.values;
+      if (typed) setValues((current) => ({ ...current, ...typed }));
+      const held = heldDocs.get(slug);
+      if (held?.sessionId === stored.sessionId) {
+        collected.current = stored.sessionId;
+        setDocs(held.files);
+      }
+    }
 
     // Ask whether the session is still there before attaching to it. The
     // backend restarts; a remembered run whose session is gone and whose
@@ -649,11 +687,45 @@ export function SkillForm({
     : null;
   const htmlFile = docs?.find((file) => file.name.toLowerCase().endsWith(".html")) ?? null;
   const xlsxFile = docs?.find((file) => file.name.toLowerCase().endsWith(".xlsx")) ?? null;
-  const specText = useMemo(
-    () => (mdFile && docs ? withImages(textOf(mdFile), docs) : null),
-    [mdFile, docs],
+  // The flow's data and the plugin's own picture of it, when the run left both:
+  // the page draws the flow again from the data (`spec-flow.ts`).
+  const flow = useMemo(() => {
+    const data = docs?.find((file) => file.name.endsWith("image-spec.json"));
+    const png = docs?.find((file) => file.mediaType === "image/png" && file.name === "flow.png");
+    if (!data || !png) return null;
+    try {
+      return { spec: JSON.parse(textOf(data)) as ImageSpec, flowPng: png };
+    } catch {
+      return null;
+    }
+  }, [docs]);
+  // The Markdown's flow as the drawn one, as SVG. Not a PNG: a 2x PNG is
+  // twice its size in pixels, and a Markdown viewer shows it at that size;
+  // an SVG says how big it is and stays sharp at any scale.
+  const specText = useMemo(() => {
+    if (!mdFile || !docs) return null;
+    const drawn = flow ? flowSvg(flow.spec) : null;
+    const files =
+      flow && drawn
+        ? docs.map((file) =>
+            file === flow.flowPng
+              ? { ...file, mediaType: "image/svg+xml", data: base64Utf8(drawn.svg) }
+              : file,
+          )
+        : docs;
+    return withImages(textOf(mdFile), files);
+  }, [mdFile, docs, flow]);
+  // Restyled, and with the drawn flow, for the preview and the download both.
+  const htmlText = useMemo(
+    () =>
+      htmlFile
+        ? styledSpec(
+            textOf(htmlFile),
+            flow ? { spec: flow.spec, flowPngBase64: flow.flowPng.data } : null,
+          )
+        : null,
+    [htmlFile, flow],
   );
-  const htmlText = useMemo(() => (htmlFile ? textOf(htmlFile) : null), [htmlFile]);
 
   // Anything the run said that was not the answer — "Stopped.", a disconnect.
   const notices = rows.filter((row) => row.kind === "notice");
@@ -758,16 +830,27 @@ export function SkillForm({
    * exactly the moment there would be nothing stored yet.
    */
   useEffect(() => {
-    if (!sessionId || documents) return;
+    if (!sessionId) return;
+    // Only the typed text of a documents run's form: a screenshot field holds
+    // files, which have no place in storage.
+    const typed = documents
+      ? Object.fromEntries(
+          Object.entries(values).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : undefined;
     try {
       sessionStorage.setItem(
         runKey(slug),
-        JSON.stringify({ sessionId, answer: streamed } satisfies StoredRun),
+        JSON.stringify({
+          sessionId,
+          answer: streamed,
+          ...(documents ? { wanted, values: typed } : {}),
+        } satisfies StoredRun),
       );
     } catch {
       // Storage refused. The run still works; only the return trip is poorer.
     }
-  }, [slug, sessionId, streamed, documents]);
+  }, [slug, sessionId, streamed, documents, wanted, values]);
 
   /**
    * Collect the run's files when it settles — once, since the backend deletes
@@ -779,12 +862,15 @@ export function SkillForm({
     collected.current = sessionId;
     void api
       .takeFiles(sessionId)
-      .then((files) => setDocs(files))
+      .then((files) => {
+        heldDocs.set(slug, { sessionId, files });
+        setDocs(files);
+      })
       .catch((err: unknown) => {
         setDocs([]);
         setError((err as Error).message);
       });
-  }, [documents, sessionId, stream.status]);
+  }, [documents, sessionId, stream.status, slug]);
 
   /**
    * A documents run ends with the page: Done, Run again, a reload, a closed
@@ -833,6 +919,7 @@ export function SkillForm({
     setSessionId(null);
     setRestored(null);
     setDocs(null);
+    heldDocs.delete(slug);
     setError(null);
     try {
       sessionStorage.removeItem(runKey(slug));
@@ -882,6 +969,7 @@ export function SkillForm({
     setStarting(true);
     setError(null);
     setDocs(null);
+    heldDocs.delete(slug);
     try {
       if (survey) {
         setWanted(survey.formats);
@@ -1324,10 +1412,13 @@ export function SkillForm({
                     </>
                   )}
                 </span>
+                {/* A switch, not a button that renames itself: the label says
+                    what "on" means, and the thumb says whether it is. */}
                 <button
                   type="button"
-                  className={`ghost skill-doc-everything${everything ? " is-on" : ""}`}
-                  aria-pressed={everything}
+                  role="switch"
+                  className="skill-doc-switch"
+                  aria-checked={!everything}
                   title={everything ? t.showingEverythingReport : t.showingReportOnly}
                   onClick={() => {
                     const next = !everything;
@@ -1335,7 +1426,10 @@ export function SkillForm({
                     writeShowEverything(next);
                   }}
                 >
-                  {everything ? t.everything : t.finalOnly}
+                  <span className="skill-doc-switch-label">{t.finalOnly}</span>
+                  <span className="switch-track" aria-hidden="true">
+                    <span className="switch-thumb" />
+                  </span>
                 </button>
                 {/* Not while the run is going. A half-written report saved to
                     disk is indistinguishable from a whole one afterwards, and

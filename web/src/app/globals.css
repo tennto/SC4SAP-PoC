@@ -1934,6 +1934,21 @@ button.primary:hover:not(:disabled) {
   margin: 14px 0;
 }
 
+/* A spec's pictures — screens and the process flow — at most the column's
+   width, in a white frame so a screen mockup reads as a picture on the dark
+   theme too. Without a cap they came in at their own size: a nine-step flow
+   was 1874px wide. */
+.markdown img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 6px 0;
+  padding: 12px;
+  background: #ffffff;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+}
+
 .markdown a {
   color: var(--ink);
   text-underline-offset: 2px;
@@ -4246,8 +4261,9 @@ button.primary:hover:not(:disabled) {
 /* The HTML the reader will send on, drawn as it will be seen. A fixed
    height with its own scroll: a spec runs to many screens, and letting the
    frame grow to all of them would push the workbook out of sight. */
-/* The box the document is seen through. Its size never changes; the frame
-   inside is laid out at 1/zoom of it and scaled back up (`HtmlPreview`). */
+/* The box the document is seen through. Its size never changes; the zoom is
+   set inside the document (`HtmlPreview`), not by scaling the frame, which
+   drew the text as a resampled bitmap. */
 .html-preview-viewport {
   position: relative;
   height: min(72vh, 760px);
@@ -4257,11 +4273,12 @@ button.primary:hover:not(:disabled) {
 
 .html-preview-frame {
   position: absolute;
-  inset: 0 auto auto 0;
+  inset: 0;
   display: block;
+  width: 100%;
+  height: 100%;
   border: 0;
   background: #ffffff;
-  transform-origin: 0 0;
 }
 
 .html-preview-tools {
@@ -7373,19 +7390,70 @@ a.ghost.auth-submit .google-mark {
   border-color: var(--line);
 }
 
-.skill-doc-everything {
+/* "Final result only" and its switch, as one control: the label is part of
+   the hit area, so a click on the words works as well as one on the thumb. */
+.skill-doc-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
-  margin-right: 8px;
-  padding: 4px 10px;
-  font-size: 11px;
-  color: var(--ink-38);
-  border-color: transparent;
+  margin-right: 10px;
+  padding: 4px 4px 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink-55);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease);
 }
 
-.skill-doc-everything:hover:not(:disabled),
-.skill-doc-everything.is-on {
+.skill-doc-switch:hover,
+.skill-doc-switch[aria-checked="true"] {
   color: var(--ink);
-  border-color: var(--line);
+}
+
+.skill-doc-switch:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.switch-track {
+  position: relative;
+  flex: none;
+  width: 30px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background var(--t-base) var(--ease);
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--panel);
+  transition: transform var(--t-base) var(--ease);
+}
+
+[aria-checked="true"] > .switch-track {
+  background: var(--ink);
+}
+
+[aria-checked="true"] > .switch-track > .switch-thumb {
+  transform: translateX(12px);
+  background: var(--on-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-thumb {
+    transition: none;
+  }
 }
 
 .approval-pick {
