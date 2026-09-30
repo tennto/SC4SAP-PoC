@@ -138,7 +138,8 @@ export type SessionEvent =
   | { type: "permission_request"; request: PendingApproval }
   | { type: "permission_resolved"; reqId: string; decision: PermissionDecision }
   | { type: "auto_approve"; enabled: boolean }
-  | { type: "status"; status: SessionStatus }
+  /** `at`: when the status changed, epoch ms (older backends leave it out). */
+  | { type: "status"; status: SessionStatus; at?: number }
   | { type: "turn_start" }
   | { type: "turn_end" }
   | { type: "text_delta"; index: number; text: string }

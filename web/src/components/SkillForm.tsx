@@ -220,6 +220,91 @@ type StoredRun = {
  */
 const heldDocs = new Map<string, { sessionId: string; files: RunFile[] }>();
 
+/** A collection already on its way, by session — see `collectDocs`. */
+const collecting = new Map<string, Promise<RunFile[]>>();
+
+/**
+ * A documents run's files: held, or taken from the backend and held.
+ *
+ * The one way in. The backend deletes the files as it hands them over, so a
+ * second request for the same run gets nothing back — and the page and the
+ * keeper below may both ask as the run settles. Both get the one answer.
+ */
+function collectDocs(slug: string, sessionId: string): Promise<RunFile[]> {
+  const held = heldDocs.get(slug);
+  if (held?.sessionId === sessionId) return Promise.resolve(held.files);
+  let taking = collecting.get(sessionId);
+  if (!taking) {
+    taking = api
+      .takeFiles(sessionId)
+      .then((files) => {
+        heldDocs.set(slug, { sessionId, files });
+        return files;
+      })
+      .finally(() => collecting.delete(sessionId));
+    collecting.set(sessionId, taking);
+  }
+  return taking;
+}
+
+/** The keeper watching each skill's documents run, if one is. */
+const keepers = new Map<string, { sessionId: string; stop: () => void }>();
+
+const KEEP_POLL_MS = 3000;
+
+/**
+ * Collects a documents run's files when it finishes, whether or not its page
+ * is still open.
+ *
+ * Collecting used to belong to the page alone, so a run left for another
+ * screen finished with no one to take its files, and they went with the
+ * session. This outlives the page: it asks the backend every few seconds and,
+ * once the turn is over, takes the files into `heldDocs` and records what the
+ * run cost. A page that comes back finds them there. It stops when it has
+ * them, when the session is gone, or when Done or a new run replaces it.
+ */
+function keepDocuments(slug: string, sessionId: string): void {
+  const current = keepers.get(slug);
+  if (current?.sessionId === sessionId) return;
+  current?.stop();
+
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = (): void => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+    if (keepers.get(slug)?.sessionId === sessionId) keepers.delete(slug);
+  };
+  const tick = async (): Promise<void> => {
+    if (stopped) return;
+    try {
+      const live = await api.getSession(sessionId);
+      if (stopped) return;
+      // `turns` counts finished turns: idle with one behind it is a run done,
+      // not a session that has not started yet.
+      if (live.status === "idle" && live.turns > 0) {
+        await collectDocs(slug, sessionId);
+        await api
+          .recordRun(sessionId, { turns: live.turns, totalCostUsd: live.totalCostUsd })
+          .catch(() => {});
+        stop();
+        return;
+      }
+      if (live.status === "closed" || live.status === "error") {
+        stop();
+        return;
+      }
+    } catch {
+      // The session is gone; there is nothing left to collect.
+      stop();
+      return;
+    }
+    timer = setTimeout(() => void tick(), KEEP_POLL_MS);
+  };
+  keepers.set(slug, { sessionId, stop });
+  timer = setTimeout(() => void tick(), KEEP_POLL_MS);
+}
+
 function readStoredRun(slug: string): StoredRun | null {
   try {
     const raw = sessionStorage.getItem(runKey(slug));
@@ -509,19 +594,29 @@ export function SkillForm({
     const stored = readStoredRun(slug);
     if (!stored) return;
 
-    // A documents run: what it was asked for, the form as it was, and its
-    // files if this tab already collected them — so they are not asked for
-    // again from a backend that no longer has them.
-    if (documents) {
+    const forget = (): void => {
+      try {
+        sessionStorage.removeItem(runKey(slug));
+      } catch {
+        // Storage refused; the run will be asked about again next visit.
+      }
+    };
+    /**
+     * A documents run as it was: what it was asked for, the form, and its
+     * files. Only when the files are there to show — the run's summary alone,
+     * with the document it summarises gone, is half a result, and a reload
+     * that left one read as the page failing to clear.
+     */
+    const bringBack = (files: RunFile[]): void => {
       if (stored.wanted) setWanted(stored.wanted);
       const typed = stored.values;
       if (typed) setValues((current) => ({ ...current, ...typed }));
-      const held = heldDocs.get(slug);
-      if (held?.sessionId === stored.sessionId) {
-        collected.current = stored.sessionId;
-        setDocs(held.files);
-      }
-    }
+      collected.current = stored.sessionId;
+      setDocs(files);
+    };
+    const held = documents && heldDocs.get(slug)?.sessionId === stored.sessionId
+      ? heldDocs.get(slug)!.files
+      : null;
 
     // Ask whether the session is still there before attaching to it. The
     // backend restarts; a remembered run whose session is gone and whose
@@ -531,11 +626,45 @@ export function SkillForm({
     let cancelled = false;
     void api
       .getSession(stored.sessionId)
-      .then(() => {
-        if (!cancelled) setSessionId(stored.sessionId);
+      .then(async (live) => {
+        if (cancelled) return;
+        if (documents && !held) {
+          const finished = live.status === "idle" && live.turns > 0;
+          if (finished) {
+            // Done, and not held in this tab: its files were collected before
+            // a reload emptied the memory, or were never taken. Only the
+            // second can still be had.
+            const files = await collectDocs(slug, stored.sessionId).catch(() => []);
+            if (cancelled) return;
+            if (files.length === 0) {
+              // Nothing left to show, and nothing for the session to do.
+              heldDocs.delete(slug);
+              void api.closeSession(stored.sessionId).catch(() => {});
+              forget();
+              return;
+            }
+            bringBack(files);
+          } else {
+            // Still going: re-attach, and watch it in case the page is left
+            // again before it settles.
+            if (stored.wanted) setWanted(stored.wanted);
+            const typed = stored.values;
+            if (typed) setValues((current) => ({ ...current, ...typed }));
+            keepDocuments(slug, stored.sessionId);
+          }
+        } else if (held) {
+          bringBack(held);
+        }
+        setSessionId(stored.sessionId);
       })
       .catch(() => {
         if (cancelled) return;
+        if (documents && !held) {
+          // The session is gone and its files with it: nothing to show.
+          forget();
+          return;
+        }
+        if (held) bringBack(held);
         if (stored.answer) {
           setSessionId(stored.sessionId);
           setRestored(stored.answer);
@@ -843,14 +972,17 @@ export function SkillForm({
         runKey(slug),
         JSON.stringify({
           sessionId,
-          answer: streamed,
+          // The stored copy when this page is showing one: a run brought back
+          // from storage has streamed nothing, and writing that empty stream
+          // over its text lost it on the next return.
+          answer: streamed || restored || "",
           ...(documents ? { wanted, values: typed } : {}),
         } satisfies StoredRun),
       );
     } catch {
       // Storage refused. The run still works; only the return trip is poorer.
     }
-  }, [slug, sessionId, streamed, documents, wanted, values]);
+  }, [slug, sessionId, streamed, restored, documents, wanted, values]);
 
   /**
    * Collect the run's files when it settles — once, since the backend deletes
@@ -860,12 +992,8 @@ export function SkillForm({
     if (!documents || !sessionId || stream.status !== "idle") return;
     if (collected.current === sessionId) return;
     collected.current = sessionId;
-    void api
-      .takeFiles(sessionId)
-      .then((files) => {
-        heldDocs.set(slug, { sessionId, files });
-        setDocs(files);
-      })
+    void collectDocs(slug, sessionId)
+      .then((files) => setDocs(files))
       .catch((err: unknown) => {
         setDocs([]);
         setError((err as Error).message);
@@ -873,10 +1001,14 @@ export function SkillForm({
   }, [documents, sessionId, stream.status, slug]);
 
   /**
-   * A documents run ends with the page: Done, Run again, a reload, a closed
-   * tab or leaving the screen all close its backend session, which drops the
-   * stream it would replay and any file not yet collected. `keepalive` lets
-   * the request outlive the page that sent it.
+   * A documents run ends with the tab: a reload or a closed tab closes its
+   * backend session, which drops the stream it would replay and any file not
+   * yet collected. `keepalive` lets the request outlive the page that sent it.
+   *
+   * Not on leaving this screen for another one in the app. That used to close
+   * it too, so going to another skill and back found nothing to re-attach
+   * to — and a run still going was stopped. The session is left open for the
+   * return; Done and Run again close it (the effect below).
    */
   useEffect(() => {
     if (!documents || !sessionId) return;
@@ -886,10 +1018,21 @@ export function SkillForm({
       );
     };
     window.addEventListener("pagehide", end);
-    return () => {
-      window.removeEventListener("pagehide", end);
-      end();
-    };
+    return () => window.removeEventListener("pagehide", end);
+  }, [documents, sessionId]);
+
+  /**
+   * Done and Run again put a documents run's session down: when this page
+   * moves off a session — to none, or to a new run's — the old one is closed.
+   * An unmount is not a move, so leaving the screen keeps it.
+   */
+  const heldSession = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = heldSession.current;
+    heldSession.current = sessionId;
+    if (documents && previous && previous !== sessionId) {
+      void api.closeSession(previous).catch(() => {});
+    }
   }, [documents, sessionId]);
 
   // The backend has taken the prompt, so its own status carries the screen.
@@ -920,6 +1063,7 @@ export function SkillForm({
     setRestored(null);
     setDocs(null);
     heldDocs.delete(slug);
+    keepers.get(slug)?.stop();
     setError(null);
     try {
       sessionStorage.removeItem(runKey(slug));
@@ -970,6 +1114,7 @@ export function SkillForm({
     setError(null);
     setDocs(null);
     heldDocs.delete(slug);
+    keepers.get(slug)?.stop();
     try {
       if (survey) {
         setWanted(survey.formats);
@@ -985,6 +1130,7 @@ export function SkillForm({
         });
         setSessionId(session.id);
         await api.sendMessage(session.id, specPrompt(survey, `.sc4sap/out/${session.id}`));
+        keepDocuments(slug, session.id);
         requestAnimationFrame(() =>
           result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
         );

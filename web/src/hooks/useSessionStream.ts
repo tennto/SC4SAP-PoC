@@ -103,12 +103,19 @@ function moveTo(
   state: State,
   kind: ActivityKind,
   detail?: string,
+  /**
+   * When the wait really began, if the event says: a status replayed to a
+   * client re-attaching mid-turn carries the time the turn went busy, and
+   * counting from the replay instead restarted the clock at 0s on every
+   * return to the page.
+   */
+  startedAt?: number,
 ): State {
   const current = state.activity;
   if (current && current.kind === kind && current.detail === detail) return state;
   return {
     ...state,
-    activity: { kind, detail, since: current?.since ?? Date.now() },
+    activity: { kind, detail, since: current?.since ?? startedAt ?? Date.now() },
   };
 }
 
@@ -264,7 +271,7 @@ function reduce(state: State, action: Action): State {
        * turn and it was the one with no label at all, so it gets the generic
        * one until something more specific arrives.
        */
-      return moveTo({ ...state, status: event.status }, "working");
+      return moveTo({ ...state, status: event.status }, "working", undefined, event.at);
     }
 
     case "turn_start":

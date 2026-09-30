@@ -472,7 +472,8 @@ export type SessionEvent =
   | { type: "permission_resolved"; reqId: string; decision: PermissionDecision }
   /** The session's auto-approve switch changed, so every watcher agrees on it. */
   | { type: "auto_approve"; enabled: boolean }
-  | { type: "status"; status: SessionStatus }
+  /** `at`: when the status changed, epoch ms — kept in the replay buffer, so a client that re-attaches mid-turn can count the wait from its real start. */
+  | { type: "status"; status: SessionStatus; at?: number }
   | { type: "turn_start" }
   | { type: "turn_end" }
   | { type: "text_delta"; index: number; text: string }
@@ -2087,7 +2088,7 @@ export class SessionManager {
   #setStatus(live: LiveSession, status: SessionStatus): void {
     if (live.record.status === status) return;
     live.record.status = status;
-    this.#emit(live, { type: "status", status });
+    this.#emit(live, { type: "status", status, at: Date.now() });
   }
 
   #emit(
