@@ -143,6 +143,16 @@ h2:hover>button.fold,button.fold:focus-visible,.sec.collapsed>h2>button.fold{opa
 .sec.collapsed>.sec-body{grid-template-rows:0fr;opacity:0}
 @media (prefers-reduced-motion:reduce){.sec-body,button.fold,.toc a,.toolbar button{transition:none}}
 
+/* Picture viewer: pinch, drag, wheel and double-tap zoom. */
+figure img,figure svg.spec-flow{cursor:zoom-in}
+.zoombox{position:fixed;inset:0;z-index:30;background:rgba(12,12,12,.9);touch-action:none;overflow:hidden;cursor:grab;animation:zoombox-in .18s ease-out}
+.zoombox.is-dragging{cursor:grabbing}
+.zoombox img{position:absolute;left:0;top:0;max-width:none;max-height:none;transform-origin:0 0;background:#fff;border-radius:4px;user-select:none;-webkit-user-drag:none;image-rendering:auto}
+.zoombox-close{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:12px;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:20px;line-height:36px;cursor:pointer}
+.zoombox-hint{position:absolute;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.12);color:rgba(255,255,255,.8);font-size:12px;white-space:nowrap;pointer-events:none}
+@keyframes zoombox-in{from{opacity:0}}
+@media (prefers-reduced-motion:reduce){.zoombox{animation:none}}
+
 @media print{
   .sec.collapsed>.sec-body{grid-template-rows:1fr;opacity:1}
   .sec-body>.sec-inner{overflow:visible}
@@ -332,6 +342,152 @@ const SCRIPT = `<script id="sc4sap-spec-theme-script">
       });
     }
   });
+
+  // Pictures: a viewer that zooms. The plugin's lightbox fitted a picture to
+  // the screen and stopped there, so on a phone a wide ALV mockup came up a
+  // few pixels tall with no way in. This one opens fitted and then zooms by
+  // pinch, wheel or double-tap, and pans by drag. It takes the click before
+  // the plugin's listener does. The drawn flow opens in it too.
+  var ko = (document.documentElement.lang || '').slice(0, 2);
+  var HINT = ko === 'ko' ? '두 손가락 또는 두 번 탭해 확대' : ko === 'ja' ? 'ピンチまたはダブルタップで拡大' : 'Pinch or double-tap to zoom';
+  var CLOSE = labels.close || 'Close';
+  function openViewer(src, alt) {
+    var box = document.createElement('div');
+    box.className = 'zoombox';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', alt || CLOSE);
+    var img = document.createElement('img');
+    img.alt = alt || '';
+    img.draggable = false;
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'zoombox-close';
+    close.setAttribute('aria-label', CLOSE);
+    close.textContent = '\\u00d7';
+    var hint = document.createElement('span');
+    hint.className = 'zoombox-hint';
+    hint.textContent = HINT;
+    box.appendChild(img);
+    box.appendChild(close);
+    box.appendChild(hint);
+
+    var s = 1, x = 0, y = 0, fit = 1, max = 4;
+    function apply() { img.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')'; }
+    function center() {
+      var w = box.clientWidth, h = box.clientHeight;
+      x = (w - img.naturalWidth * s) / 2;
+      y = (h - img.naturalHeight * s) / 2;
+    }
+    // Zoom to \`next\`, keeping the point (px, py) of the screen where it is.
+    function zoomAt(next, px, py) {
+      next = Math.min(max, Math.max(fit, next));
+      x = px - (px - x) * (next / s);
+      y = py - (py - y) * (next / s);
+      s = next;
+      if (s === fit) center();
+      apply();
+    }
+    img.onload = function () {
+      var w = box.clientWidth - 24, h = box.clientHeight - 24;
+      fit = Math.min(1, w / img.naturalWidth, h / img.naturalHeight);
+      // Up to 4x its own pixels, and never less than 3x the fitted size.
+      max = Math.max(4, fit * 3);
+      s = fit;
+      center();
+      apply();
+    };
+    img.src = src;
+
+    var pointers = {};
+    var last = null, pinch = null, moved = false, lastTap = 0;
+    function count() { return Object.keys(pointers).length; }
+    box.addEventListener('pointerdown', function (e) {
+      if (e.target === close) return;
+      box.setPointerCapture(e.pointerId);
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      moved = false;
+      if (count() === 2) {
+        var p = Object.keys(pointers).map(function (k) { return pointers[k]; });
+        pinch = { d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y), s: s };
+      } else {
+        last = { x: e.clientX, y: e.clientY };
+        box.classList.add('is-dragging');
+      }
+    });
+    box.addEventListener('pointermove', function (e) {
+      if (!pointers[e.pointerId]) return;
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (count() === 2 && pinch) {
+        var p = Object.keys(pointers).map(function (k) { return pointers[k]; });
+        var d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+        zoomAt(pinch.s * d / pinch.d, (p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2);
+        moved = true;
+      } else if (last) {
+        var dx = e.clientX - last.x, dy = e.clientY - last.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+        if (s > fit) { x += dx; y += dy; apply(); }
+        last = { x: e.clientX, y: e.clientY };
+      }
+    });
+    function up(e) {
+      if (!pointers[e.pointerId]) return;
+      delete pointers[e.pointerId];
+      if (count() < 2) pinch = null;
+      if (count() === 0) {
+        box.classList.remove('is-dragging');
+        last = null;
+        if (!moved) {
+          var now = Date.now();
+          if (now - lastTap < 300) {
+            // Double tap: in to 2.5x the fit (at least its own size), or back out.
+            zoomAt(s > fit * 1.05 ? fit : Math.max(1, fit * 2.5), e.clientX, e.clientY);
+            lastTap = 0;
+          } else {
+            lastTap = now;
+            // A single tap outside the picture closes, once it is clear it was not the first of two.
+            var inside = e.target === img;
+            setTimeout(function () { if (lastTap === now && !inside && s <= fit * 1.05) shut(); }, 300);
+          }
+        }
+      } else {
+        var k = Object.keys(pointers)[0];
+        last = { x: pointers[k].x, y: pointers[k].y };
+      }
+    }
+    box.addEventListener('pointerup', up);
+    box.addEventListener('pointercancel', up);
+    box.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      zoomAt(s * Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+    }, { passive: false });
+    function onKey(e) { if (e.key === 'Escape') shut(); }
+    function shut() { box.remove(); removeEventListener('keydown', onKey); }
+    close.addEventListener('click', shut);
+    addEventListener('keydown', onKey);
+    document.body.appendChild(box);
+    close.focus();
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!(t instanceof Element) || !main.contains(t) || t.closest('a')) return;
+    if (t.tagName === 'IMG' && t.closest('figure')) {
+      e.stopPropagation();
+      openViewer(t.currentSrc || t.src, t.alt);
+      return;
+    }
+    var svg = t.closest('svg.spec-flow');
+    if (svg) {
+      e.stopPropagation();
+      // Drawn at twice its size so it stays sharp when zoomed; the page's
+      // colours go in as the fallbacks it carries.
+      var copy = svg.cloneNode(true);
+      var w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+      copy.setAttribute('width', String(w * 2));
+      copy.setAttribute('height', String(h * 2));
+      var cap = svg.closest('figure') && svg.closest('figure').querySelector('figcaption');
+      openViewer('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(copy)), cap ? cap.textContent : '');
+    }
+  }, true);
 })();
 </script>`;
 
