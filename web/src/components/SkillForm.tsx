@@ -53,6 +53,7 @@ import { SpecSurveyModal, type SpecAnswers } from "@/components/SpecSurveyModal"
 import { HtmlPreview } from "@/components/HtmlPreview";
 import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { styledSpec } from "@/lib/spec-theme";
+import { codeReviewPrompt } from "@/lib/code-review-prompt";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
 import type { Locale } from "@/lib/i18n/locale";
@@ -82,7 +83,17 @@ const SEPARATOR = "\n\n";
 type Value = string | boolean;
 
 /** How a run may spend — what the cost dialog collects. See `Skill.cost`. */
-type Spend = { maxBudgetUsd: number; economy: boolean; model: string };
+type Spend = {
+  maxBudgetUsd: number;
+  economy: boolean;
+  model: string;
+  /** Every plugin sub-agent's model, where the skill offers that choice. */
+  subagentModel?: "haiku" | "sonnet" | "opus";
+};
+
+/** The sub-agent alias for one of `MODELS`. */
+const subagentAlias = (model: string): "haiku" | "sonnet" | "opus" =>
+  /haiku/i.test(model) ? "haiku" : /opus/i.test(model) ? "opus" : "sonnet";
 
 /**
  * The models the dialog offers. The same three the backend accepts; listed
@@ -95,9 +106,9 @@ const MODELS: {
   /** The dictionary key for the line under the picker. */
   note: keyof Messages["skillForm"];
 }[] = [
-  { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "haikuNote" },
-  { id: "claude-sonnet-5", label: "Sonnet 5", note: "sonnetNote" },
-  { id: "claude-opus-5", label: "Opus 5", note: "opusNote" },
+  { id: "claude-haiku-4-5", label: "Haiku", note: "haikuNote" },
+  { id: "claude-sonnet-5", label: "Sonnet", note: "sonnetNote" },
+  { id: "claude-opus-5", label: "Opus", note: "opusNote" },
 ];
 
 function initial(fields: readonly SkillField[]): Record<string, Value> {
@@ -162,7 +173,14 @@ function composePrompt(
   const parts = [command];
   if (lines.length > 0) parts.push(lines.join("\n"));
   if (context) parts.push(context);
-  if (locale !== "en") parts.push(`Write the report in ${REPORT_LANGUAGE[locale]}.`);
+  // A Language field on the form wins over the screen's language: it is what
+  // the reader asked for, and the screen is only a guess at it.
+  const asked = values["Language"];
+  if (typeof asked === "string" && asked.trim() !== "") {
+    parts.push(`Write the report in ${asked.trim()}.`);
+  } else if (locale !== "en") {
+    parts.push(`Write the report in ${REPORT_LANGUAGE[locale]}.`);
+  }
   return parts.join("\n\n");
 }
 
@@ -270,9 +288,20 @@ function keepDocuments(slug: string, sessionId: string): void {
 
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // Subscribed for as long as it watches: the backend abandons a busy turn
+  // that nobody has been subscribed to for 15 seconds (`ORPHAN_GRACE_MS`),
+  // so a run left for another screen was stopped unless the reader came back
+  // in time. Nothing is read from it; it only says someone is waiting.
+  let listening: EventSource | null = null;
+  try {
+    listening = new EventSource(api.streamUrl(sessionId));
+  } catch {
+    // No EventSource: the run is watched but not kept, as before.
+  }
   const stop = (): void => {
     stopped = true;
     if (timer) clearTimeout(timer);
+    listening?.close();
     if (keepers.get(slug)?.sessionId === sessionId) keepers.delete(slug);
   };
   const tick = async (): Promise<void> => {
@@ -485,6 +514,10 @@ export function SkillForm({
     defaultModel?: string;
     /** The main thread's model when the skill pins one — see `Skill.cost`. */
     pinnedModel?: string;
+    /** False: no ceiling, and no field for one — see `Skill.cost`. */
+    budget?: boolean;
+    /** The model picked is every sub-agent's — see `Skill.cost`. */
+    subagentPicker?: boolean;
   } | null;
   /**
    * The skill answers in rounds and asks back — see `Skill.followUp`. With
@@ -523,6 +556,9 @@ export function SkillForm({
   const [values, setValues] = useState<Record<string, Value>>(() =>
     initial(fields),
   );
+  /** An app-built Economy run on a skill with a Mode field. See `Skill.economyMode`. */
+  const economyReview =
+    findSkill(slug)?.economyMode === "code-review" && values["Mode"] !== "Standard";
   /** The backend session this run is attached to, once it has one. */
   const [sessionId, setSessionId] = useState<string | null>(null);
   /** Opening the session and sending — before the stream can say anything. */
@@ -1095,6 +1131,12 @@ export function SkillForm({
       else setAskingSurvey(true);
       return;
     }
+    // An app-built Economy run is its own spending decision, as on
+    // Program → Spec: no dialog.
+    if (economyReview) {
+      void run(context, null);
+      return;
+    }
     if (cost && !spend) {
       pendingContext.current = context;
       setAskingCost(true);
@@ -1143,6 +1185,36 @@ export function SkillForm({
       // prompt forbids filesystem search, and a logged run spent four minutes
       // doing it anyway because `Bash` was in reach. See `Skill.tools`.
       const effort = findSkill(slug)?.effort;
+      if (economyReview) {
+        // One agent on Sonnet, the reviewer's rule files in front of its
+        // prompt (`reviewRules`), no sub-agents and no skill to load.
+        const session = await api.createSession(undefined, undefined, {
+          model: "claude-sonnet-5",
+          profile: tools,
+          reviewRules: true,
+          ...(effort ? { effort } : {}),
+        });
+        setSessionId(session.id);
+        const text = (label: string): string => {
+          const value = values[label];
+          return typeof value === "string" ? value.trim() : "";
+        };
+        await api.sendMessage(
+          session.id,
+          codeReviewPrompt({
+            objectType: text("Object type") || "Program",
+            objectName: text("Object name").toUpperCase(),
+            pkg: text("Package").toUpperCase() || undefined,
+            focus: text("Review focus") || "All",
+            language:
+              text("Language") || (locale === "en" ? "English" : REPORT_LANGUAGE[locale]),
+          }),
+        );
+        requestAnimationFrame(() =>
+          result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+        );
+        return;
+      }
       const session = await api.createSession(undefined, undefined, {
         ...(how ?? {}),
         profile: tools,
@@ -1151,7 +1223,13 @@ export function SkillForm({
       setSessionId(session.id);
       await api.sendMessage(
         session.id,
-        composePrompt(command, fields, values, context, locale),
+        composePrompt(
+          command,
+          findSkill(slug)?.economyMode ? fields.filter((field) => field.label !== "Mode") : fields,
+          values,
+          context,
+          locale,
+        ),
         null,
         images.map(toAttachment),
       );
@@ -1720,10 +1798,14 @@ export function SkillForm({
           heading={t.runQuestion(shownSkill.title)}
           description={shownSkill.costNote ?? cost.note}
           submitLabel={t.run}
-          disabled={!Number.isFinite(Number(costForm.budget)) || Number(costForm.budget) < 0}
+          disabled={
+            cost.budget !== false &&
+            (!Number.isFinite(Number(costForm.budget)) || Number(costForm.budget) < 0)
+          }
           onSubmit={() => {
             const chosen: Spend = {
-              maxBudgetUsd: Math.max(0, Number(costForm.budget) || 0),
+              maxBudgetUsd: cost.budget === false ? 0 : Math.max(0, Number(costForm.budget) || 0),
+              ...(cost.subagentPicker ? { subagentModel: subagentAlias(costForm.model) } : {}),
               // A skill that pins its main thread opens on that pin, so the
               // session never switches models mid-run and rewrites its cache;
               // the choice then only decides the sub-agents.
@@ -1754,7 +1836,10 @@ export function SkillForm({
                 // Haiku is not offered where the skill pins its main thread:
                 // it would reach neither half — the pin keeps the main thread
                 // and economy stops the sub-agents at Sonnet.
-                .filter((entry) => !cost.pinnedModel || !/haiku/i.test(entry.id))
+                .filter(
+                  (entry) =>
+                    !cost.pinnedModel || cost.subagentPicker || !/haiku/i.test(entry.id),
+                )
                 .map((entry) => ({ value: entry.id, label: entry.label }))}
               onChange={(next) => setCostForm((current) => ({ ...current, model: next }))}
             />
@@ -1764,6 +1849,7 @@ export function SkillForm({
             </span>
           </div>
 
+          {cost.budget !== false && (
           <label className="field">
             <span className="field-label">{t.budget}</span>
             <input
@@ -1781,6 +1867,7 @@ export function SkillForm({
             />
             <span className="field-hint">{t.budgetHint}</span>
           </label>
+          )}
         </EditModal>
       )}
 

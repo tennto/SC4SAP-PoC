@@ -105,6 +105,10 @@ export const api = {
       maxBudgetUsd?: number;
       economy?: boolean;
       model?: string;
+      /** Every plugin sub-agent on this model; wins over `economy`. */
+      subagentModel?: "haiku" | "sonnet" | "opus";
+      /** An economy code review: one agent, the rule files in its first prompt. */
+      reviewRules?: boolean;
       /**
        * What the run may reach for: `analyse` or `build`. Each skill declares
        * its own. Chat leaves it out and gets `ask`, which carries neither
@@ -128,6 +132,8 @@ export const api = {
           ...(spend?.profile ? { profile: spend.profile } : {}),
           ...(spend?.effort ? { effort: spend.effort } : {}),
           ...(spend?.model ? { model: spend.model } : {}),
+          ...(spend?.subagentModel ? { subagentModel: spend.subagentModel } : {}),
+          ...(spend?.reviewRules ? { reviewRules: true } : {}),
         }),
       })
     ).session,

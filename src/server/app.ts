@@ -32,8 +32,10 @@ import type { EffortLevel } from "@anthropic-ai/claude-agent-sdk";
 const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
 import {
   SessionManager,
+  SUBAGENT_MODELS,
   type PermissionResponse,
   type SequencedEvent,
+  type SubagentModel,
 } from "./session-manager.ts";
 import { claudeApiHealth } from "./claude-api.ts";
 import {
@@ -61,9 +63,9 @@ type IdParams = { id: string };
  * and fail on its first turn. The web app's cost dialog offers these.
  */
 export const MODELS = [
-  { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "Half the price of Sonnet. Enough to read a table or a program." },
-  { id: "claude-sonnet-5", label: "Sonnet 5", note: "Fast, and enough to narrow most causes." },
-  { id: "claude-opus-5", label: "Opus 5", note: "Deeper cross-file reasoning, about two and a half times the price of Sonnet." },
+  { id: "claude-haiku-4-5", label: "Haiku", note: "Half the price of Sonnet. Enough to read a table or a program." },
+  { id: "claude-sonnet-5", label: "Sonnet", note: "Fast, and enough to narrow most causes." },
+  { id: "claude-opus-5", label: "Opus", note: "Deeper cross-file reasoning, about two and a half times the price of Sonnet." },
 ] as const;
 
 /**
@@ -281,6 +283,10 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           maxBudgetUsd?: number;
           /** Sub-agents on Sonnet whatever the skill asked for. */
           economy?: boolean;
+          /** Every plugin sub-agent on this model: haiku, sonnet or opus. */
+          subagentModel?: string;
+          /** An economy code review — see `SessionShape.reviewRules`. */
+          reviewRules?: boolean;
           /**
            * What the session may reach for: `ask`, `analyse` or `build`.
            * Absent means `ask` — the chat screen, which keeps 26,431 tokens
@@ -330,6 +336,19 @@ export function buildApp(manager: SessionManager): FastifyInstance {
         .code(400)
         .send({ error: `body.effort must be one of: ${EFFORT_LEVELS.join(", ")}` });
     }
+    const subagentModel = request.body?.subagentModel;
+    if (
+      subagentModel !== undefined &&
+      !SUBAGENT_MODELS.includes(subagentModel as SubagentModel)
+    ) {
+      return reply
+        .code(400)
+        .send({ error: `body.subagentModel must be one of: ${SUBAGENT_MODELS.join(", ")}` });
+    }
+    const reviewRules = request.body?.reviewRules;
+    if (reviewRules !== undefined && typeof reviewRules !== "boolean") {
+      return reply.code(400).send({ error: "body.reviewRules must be a boolean" });
+    }
     const model = request.body?.model;
     if (model !== undefined && !MODELS.some((entry) => entry.id === model)) {
       return reply.code(400).send({ error: "body.model is not one this backend offers" });
@@ -341,6 +360,8 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       priorCostUsd,
       maxBudgetUsd: maxBudgetUsd ? maxBudgetUsd : undefined,
       economy,
+      subagentModel: subagentModel as SubagentModel | undefined,
+      reviewRules,
       profile: profile as ToolProfile | undefined,
       effort: effort as EffortLevel | undefined,
       model,
