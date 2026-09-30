@@ -119,7 +119,26 @@ export type Skill = {
      * made Analyze Code cost more, not less.
      */
     pinnedModel?: string;
+    /**
+     * Offer the budget field. Absent or true shows it; false runs without a
+     * ceiling and does not ask.
+     */
+    budget?: boolean;
+    /**
+     * The dialog's model is what every plugin sub-agent runs on — Haiku,
+     * Sonnet or Opus — rather than only Opus-or-not. Set where the skill's
+     * cost is its sub-agent, as a code review's is its reviewer.
+     */
+    subagentPicker?: boolean;
   };
+  /**
+   * The form has a Mode field, Economy or Standard, and Economy is built by
+   * this app rather than being the plugin's skill. `code-review`: one agent
+   * reads the source and applies the reviewer's rule files, which the
+   * backend puts in front of its prompt — see `code-review-prompt.ts`.
+   * Economy runs without the cost dialog; Standard is the plugin's skill.
+   */
+  economyMode?: "code-review";
   /**
    * The skill answers in rounds and asks back.
    *
@@ -237,10 +256,28 @@ export const SKILLS: Skill[] = [
       { label: "Package", kind: "text", placeholder: "ZMM_CBO", hint: "Optional. Narrows the search and gives the review the surrounding objects." },
       { label: "Object name", kind: "text", placeholder: "ZMM_PO_REPORT" },
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
+      {
+        label: "Mode",
+        kind: "select",
+        // Economy first and default, as on Program → Spec.
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy:
+            "One agent reads the source and applies the reviewer's rule files. Estimated cost: about $0.18–0.25. Estimated time: 1–2 min.",
+          Standard:
+            "The plugin's skill with its code reviewer agent. Estimated cost: about $0.35–0.70. Estimated time: about 2 min. Asks for the reviewer's model first.",
+        },
+      },
+      // Asked, not guessed from the screen: a Korean reader on an English
+      // screen got an English review, and the other way round.
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"] },
     ],
+    economyMode: "code-review",
     cost: {
-      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the main run, which the skill keeps on Sonnet, only formats them. The choice here is the reviewer's model: Sonnet by default, or Opus for the reviewer the plugin asks for. The first measured run cost about $2 and took six minutes, most of it the reviewer on Opus.",
-      defaultBudgetUsd: 3,
+      note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the main run, on Sonnet, only formats them. The choice here is the reviewer's model: Haiku for the cheapest pass, Sonnet by default, or Opus for the reviewer the plugin asks for. There is no spending ceiling.",
+      defaultBudgetUsd: 0,
+      budget: false,
+      subagentPicker: true,
       // The reviewer on Sonnet: $0.50 of a $0.69 run was the reviewer on Opus
       // (2026-09-27), and Opus stays one choice away.
       defaultModel: "claude-sonnet-5",
@@ -392,9 +429,9 @@ export const SKILLS: Skill[] = [
         // plugin's full skill measured ~₩1,600 on ZMMR00020 (2026-09-28).
         options: ["Economy", "Standard"],
         optionHints: {
-          Economy: "One agent. About ₩200–400 and 1–3 min. Starts right away.",
+          Economy: "One agent. Estimated cost: about $0.15–0.30. Estimated time: 1–3 min.",
           Standard:
-            "The plugin's full skill, with an analyst agent. About ₩1,000–1,600 and 5–10 min. Asks about detail and audience first.",
+            "The plugin's full skill, with an analyst agent. Estimated cost: about $0.70–1.15. Estimated time: 5–10 min. Asks about detail and audience first.",
         },
       },
       {

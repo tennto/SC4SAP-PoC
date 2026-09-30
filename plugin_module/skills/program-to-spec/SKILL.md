@@ -1,8 +1,7 @@
 ---
-name: sc4sap:program-to-spec
+name: program-to-spec
 description: Reverse-engineer an ABAP program into a Functional/Technical Specification artifact (Markdown, HTML, and/or Excel — any combination). Socratic scope narrowing from "everything" to "only what the user needs".
-level: 2
-model: sonnet
+model: inherit
 ---
 
 # SC4SAP Program → Specification
@@ -106,7 +105,7 @@ The Markdown L2 skeleton and the Excel sheet-naming convention live in a compani
 </Spec_Templates>
 
 <Agent_Composition>
-Per-step model allocation. Skill frontmatter pins the main thread to Sonnet; each `Agent(...)` carries its own model (frontmatter or explicit override).
+Per-step model allocation. The main thread follows the session model (`model: inherit`); each `Agent(...)` carries its own model (frontmatter or explicit override).
 
 - **Main orchestrator (Sonnet 4.6)** — Steps 0, 1, 1.5, 2, 5: Socratic interview orchestration, object classification routing, CBO context preload, Step 5 review loop. State tracking across depth / format / language dimensions needs Sonnet headroom.
 - **Analysis (`sap-analyst` × 1, Opus 4.7, frontmatter)** — Step 3 primary dispatch: extracts business purpose, inputs, outputs, data sources (including CBO-annotated Z-references when `cbo-context.md` exists), main-logic narrative, authorization checks, error cases. One dispatch covers all narrative dimensions to keep context continuous.
@@ -116,7 +115,7 @@ Per-step model allocation. Skill frontmatter pins the main thread to Sonnet; eac
   - **Markdown / HTML output** — writer renders the `.md`; HTML is produced from that same `.md` by `scripts/spec/md-to-html.mjs` (no second writer pass).
   - **Excel output** — writer's deliverable is TWO JSON files consumed by `scripts/spec/build-spec.mjs`:
     1. **TR (translation) map** — `English source string → target-language replacement` mapping; schema + slot semantics in `spec-templates.md` § Excel — Template-clone.
-    2. **image-spec.json** — `{selection, alv, processFlow, lang}` per-program image data; exact key names + sample values in `spec-templates.md` § Image Replacement. Drives the Sheet 3 Selection/ALV mockups + Sheet 4 horizontal Process Flow PNG.
+    2. **image-spec.json** — `{selection, alv, processFlow, lang}` per-program image data; exact key names + sample values in `spec-templates.md` § Image Replacement, and `selection` MUST follow `selection-schema.md` (blocks / pushbuttons / radio groups transcribed 1:1 from source). Drives the Sheet 3 Selection/ALV mockups + Sheet 4 horizontal Process Flow PNG.
     Writer does NOT generate workbook styles, drivers, geometry, or PNGs directly — `asset/template_base.xlsx` supplies geometry, `build-spec.mjs` does clone + render + swap in one shot. Depth-driven model override still applies (Sonnet for L3/L4 because the warning-row and processing-step narrative is longer).
     **Two hard requirements on both JSON files** (full rules in `spec-templates.md`): (1) **business-first content** — Sheet 4 Step text + `processFlow[]` describe the business process for a functional reader, with the ABAP event/FORM kept as a secondary annotation (never an event-only list); (2) **single-language output** — every prose string is in the target `lang`; only SAP identifiers / ABAP literals stay as-is. `build-spec.mjs` prints a `⚠ LANGUAGE MIX` gate for ko/ja — finalize only when it reports `language check OK`.
 - **Audit verification (`sap-critic` × 1, Opus 4.7, frontmatter, conditional L4 only)** — Step 3 gate: verifies every claim in the rendered spec cross-references a concrete line range in source. Skip for L1 / L2 / L3.
@@ -149,7 +148,8 @@ Next options:
 - `ReadClass`, `ReadFunctionModule`, `ReadInterface`, `ReadView`
 - `Read BehaviorDefinition`, `Read BehaviorImplementation`, `Read ServiceDefinition`, `Read ServiceBinding`
 - `GetLocalDefinitions`, `GetLocalMacros`, `GetLocalTestClass`, `GetLocalTypes`
-- `GetScreensList`, `GetGuiStatusList`, `GetTextElement`
+- `GetScreensList`, `GetGuiStatusList`, `GetGuiStatus`, `GetTextElement` (`language: "E"`)
+- `GetSqlQuery` — T100 message texts only, BASIS ≥ 7.50 (see Data_Extraction_Safety)
 - `GetMetadataExtension`
 - `GetAbapAST`, `GetAbapSemanticAnalysis`
 - `GetWhereUsed`, `GetEnhancements`, `GetEnhancementSpot`
@@ -162,7 +162,7 @@ Next options:
 </Related_Skills>
 
 <Data_Extraction_Safety>
-Spec generation only reads **source code + DDIC metadata + where-used** — never `GetTableContents` / `GetSqlQuery`. No row data is extracted. The blocklist hook is respected if the user asks for sample data (refuse and document the request in the `Risk` sheet instead).
+Spec generation only reads **source code + DDIC metadata + where-used** — never `GetTableContents` / `GetSqlQuery`. No row data is extracted. **One exception:** `GetSqlQuery` on **T100** (message texts — repository text, not business data) with the explicit fields `ARBGB, MSGNR, TEXT`, filtered to `SPRSL = 'E'` and the message classes / numbers the source actually uses, so the spec can print `CODE (English text)` (`workflow-steps.md` § Message references). The normal approval prompt still applies. On BASIS < 7.50 `GetSqlQuery` is unavailable; fall back to the source text as that section describes — never `GetTableContents` on T100. The blocklist hook is respected if the user asks for sample data (refuse and document the request in the `Risk` sheet instead).
 </Data_Extraction_Safety>
 
 <Inputs_And_Screens_Rendering>
@@ -177,7 +177,7 @@ Spec generation only reads **source code + DDIC metadata + where-used** — neve
 
 **Markdown output — unchanged:** continue emitting ASCII wireframes inside fenced code blocks (Step 3.5 in `workflow-steps.md`). ASCII wireframes never go in xlsx cells.
 
-**HTML output:** converted from the finished `.md` by `node scripts/spec/md-to-html.mjs <spec.md> <spec.html>` — PNGs inlined as data URIs, Mermaid fallbacks drawn by the Mermaid CDN script when opened online (plain source text offline). Same content as the `.md`, by construction.
+**HTML output:** converted from the finished `.md` by `node scripts/spec/md-to-html.mjs <spec.md> <spec.html>` — PNGs inlined as data URIs, Mermaid fallbacks drawn by the Mermaid CDN script when opened online (plain source text offline). Same content as the `.md`, by construction, laid out as a web page: contents sidebar, cover fact card, cross-linked SAP names, sortable / filterable tables, callouts, and a Functional view. The writer follows [`html-markup.md`](html-markup.md) so the page can find what it needs.
 </Inputs_And_Screens_Rendering>
 
-Task: {{ARGUMENTS}}
+Task: $ARGUMENTS

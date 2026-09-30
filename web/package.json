@@ -1,6 +1,6 @@
 {
   "name": "sc4sap-web-poc-web",
-  "version": "0.4.1",
+  "version": "0.4.6",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -17,7 +17,8 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "server-only": "^0.0.1",
-    "shiki": "^4.4.3"
+    "shiki": "^4.4.3",
+    "thinking-orbs": "0.3.2"
   },
   "devDependencies": {
     "@types/node": "^20",

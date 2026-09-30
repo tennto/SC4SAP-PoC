@@ -1,6 +1,6 @@
 # Program → Spec — Templates
 
-Referenced by `SKILL.md`. Use these templates in Step 4 (Render).
+Referenced by `SKILL.md`. Use these templates in Step 4 (Render). Every Markdown spec also follows [`html-markup.md`](html-markup.md): callouts, `tech` spans, and the audience comment that the HTML view reads.
 
 ## Markdown — L2 Standard Spec skeleton
 
@@ -154,14 +154,13 @@ PNG signature is verified before any write; non-PNG input is rejected without to
 ```jsonc
 {
   "lang": "ko",
-  "selection": {
-    "blockLabel": "조회 조건",
-    "fields": [
-      { "name": "P_BUKRS", "label": "회사코드",      "required": true },
-      { "name": "P_WERKS", "label": "플랜트",        "required": true },
-      { "name": "S_MATNR", "label": "자재번호 범위", "range": true, "note": "LOW~HIGH 입력" }
-    ],
-    "optionFields": []
+  "selection": {            // full shape + ABAP→JSON rules: selection-schema.md
+    "blocks": [
+      { "label": "Selection Criteria", "items": [
+        { "name": "P_BUKRS", "label": "Company Code", "required": true },
+        { "type": "range", "name": "S_MATNR", "label": "Material" }
+      ]}
+    ]
   },
   "alv": {
     "columns": [
@@ -182,9 +181,8 @@ PNG signature is verified before any write; non-PNG input is rejected without to
 ```
 
 **Field semantics**
-- `selection.fields[].name` — identifier shown in parentheses next to the label
-- `selection.fields[].required` — `true` adds the red `*` mark + legend entry
-- `selection.fields[].range` — `true` renders SELECT-OPTIONS style (LOW input ~ HIGH input + dropdown)
+- `alv.screen` / `alv.toolbar` / `panes[].toolbar` / `buttonFlows` — output-screen buttons (PAI + ALV) and one flow per business button: **MUST follow [`alv-buttons-schema.md`](alv-buttons-schema.md)** whenever the output screen has buttons.
+- `selection` — **MUST follow [`selection-schema.md`](selection-schema.md)**: one `blocks[]` entry per `BEGIN OF BLOCK`, typed items (`param` / `range` / `checkbox` / `radioGroup` / `pushbutton` / `comment`), `toolbar` for FUNCTXT buttons. Never merge fields or turn radios into checkboxes. The legacy `fields` / `optionFields` shape cannot draw buttons or radios.
 - `alv.columns[].name` — **REQUIRED**; used as the lookup key for each `sampleRows[i][name]`. Schema mistake here is the most common cause of empty ALV PNGs.
 - `alv.columns[].header` — display text (falls back to `name` if absent)
 - `alv.columns[].align` — `'end'` (right-aligned, monospace for numerics) / `'left'` / default centre

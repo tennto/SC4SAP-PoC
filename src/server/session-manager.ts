@@ -319,6 +319,29 @@ export function economyDispatch(
   return effective && /opus/i.test(effective) ? { ...input, model: "sonnet" } : input;
 }
 
+/** A model every plugin sub-agent of a run can be put on. */
+export type SubagentModel = "haiku" | "sonnet" | "opus";
+export const SUBAGENT_MODELS: readonly SubagentModel[] = ["haiku", "sonnet", "opus"];
+
+/**
+ * A dispatch as this session sends it: on the run's chosen sub-agent model
+ * when it chose one, otherwise with Opus brought down to Sonnet on an
+ * economy session (`economyDispatch`).
+ */
+export function dispatchFor(
+  input: Record<string, unknown>,
+  pluginPath: string,
+  record: { economy: boolean; subagentModel: SubagentModel | null },
+): Record<string, unknown> {
+  if (record.subagentModel) {
+    const type = input.subagent_type;
+    return typeof type === "string" && type.startsWith("sc4sap:")
+      ? { ...input, model: record.subagentModel }
+      : input;
+  }
+  return economyDispatch(input, pluginPath);
+}
+
 /** The plugin's code reviewer, whose rule files this host hands over itself. */
 const REVIEWER_AGENT = "sc4sap:sap-code-reviewer";
 
@@ -472,7 +495,8 @@ export type SessionEvent =
   | { type: "permission_resolved"; reqId: string; decision: PermissionDecision }
   /** The session's auto-approve switch changed, so every watcher agrees on it. */
   | { type: "auto_approve"; enabled: boolean }
-  | { type: "status"; status: SessionStatus }
+  /** `at`: when the status changed, epoch ms — kept in the replay buffer, so a client that re-attaches mid-turn can count the wait from its real start. */
+  | { type: "status"; status: SessionStatus; at?: number }
   | { type: "turn_start" }
   | { type: "turn_end" }
   | { type: "text_delta"; index: number; text: string }
@@ -529,6 +553,12 @@ export type SessionRecord = {
    * down — see `economyDispatch`.
    */
   economy: boolean;
+  /**
+   * The model every plugin sub-agent runs on, where the run chose one —
+   * Haiku, Sonnet or Opus, whatever the agent's own file names. Wins over
+   * `economy`. See `dispatchFor`.
+   */
+  subagentModel: SubagentModel | null;
 };
 
 type Subscriber = (event: SequencedEvent) => void;
@@ -736,6 +766,8 @@ type LiveSession = {
    * Narrows the rule files handed to the reviewer — see `reviewerBrief`.
    */
   reviewFocus?: string;
+  /** An economy review whose first prompt still needs its rule files. */
+  rulesPending?: boolean;
   /**
    * Set while this session sits in the warm pool: the key it was opened
    * under and the countdown to shutting it down unclaimed. Cleared the
@@ -749,6 +781,13 @@ type SessionShape = {
   userId?: string;
   maxBudgetUsd?: number;
   economy?: boolean;
+  /** See `SessionRecord.subagentModel`. */
+  subagentModel?: SubagentModel;
+  /**
+   * An economy code review: one agent, no sub-agents and no skills, with the
+   * review's rule files put in front of its first prompt. See `send`.
+   */
+  reviewRules?: boolean;
   model?: string;
   approval?: ApprovalLevel;
   /**
@@ -1012,6 +1051,8 @@ export class SessionManager {
       options.userId ?? "anonymous",
       options.model ?? this.#config.model,
       options.economy === true,
+      options.subagentModel ?? "",
+      options.reviewRules === true,
       options.approval ?? "all",
       options.maxBudgetUsd ?? "",
       // A warm session opened for questions cannot serve a skill run: the
@@ -1048,10 +1089,11 @@ export class SessionManager {
     const id = randomUUID();
     const pump = new InputPump();
     const economy = options.economy === true;
+    const subagentModel = options.subagentModel ?? null;
     // An economy session takes `Agent` off the auto-allow list, so that a
     // dispatch reaches `canUseTool` — the one place its input can be edited
     // on the way through. Every other session keeps it waved through.
-    const allowedTools = economy
+    const allowedTools = economy || subagentModel
       ? this.#policy.allowedTools.filter((tool) => tool !== "Agent")
       : this.#policy.allowedTools;
 
@@ -1061,6 +1103,9 @@ export class SessionManager {
     const disallowedTools = [
       ...this.#policy.disallowedTools,
       ...disallowedForProfile(options.profile ?? "ask"),
+      // An economy review is one agent reading the source itself: the
+      // reviewer dispatch and the plugin skill are what it is instead of.
+      ...(options.reviewRules ? [AGENT_TOOL, "Skill"] : []),
     ];
 
     const session = query({
@@ -1148,7 +1193,10 @@ export class SessionManager {
                   // unchanged on an economy session — and this hook is the
                   // one place the SDK does stop for every tool.
                   const economyLive = this.#sessions.get(id);
-                  if (input.tool_name === AGENT_TOOL && economyLive?.record.economy) {
+                  if (
+                    input.tool_name === AGENT_TOOL &&
+                    (economyLive?.record.economy || economyLive?.record.subagentModel)
+                  ) {
                     const original = (input.tool_input ?? {}) as Record<string, unknown>;
                     const toolInput =
                       withPluginRoot(
@@ -1157,12 +1205,18 @@ export class SessionManager {
                         economyLive.reviewFocus,
                       ) ?? original;
                     this.toolLog.decide(toolUseID ?? input.tool_use_id, "auto");
-                    const updated = economyDispatch(toolInput, this.#config.pluginPath);
+                    const updated = dispatchFor(
+                      toolInput,
+                      this.#config.pluginPath,
+                      economyLive.record,
+                    );
                     return {
                       hookSpecificOutput: {
                         hookEventName: "PreToolUse" as const,
                         permissionDecision: "allow" as const,
-                        permissionDecisionReason: "Economy: sub-agents run on Sonnet.",
+                        permissionDecisionReason: economyLive.record.subagentModel
+                          ? "Sub-agents run on " + economyLive.record.subagentModel + "."
+                          : "Economy: sub-agents run on Sonnet.",
                         ...(updated !== original ? { updatedInput: updated } : {}),
                       },
                     };
@@ -1329,9 +1383,11 @@ export class SessionManager {
         autoApproveSapReads: false,
         maxBudgetUsd: options.maxBudgetUsd ?? null,
         economy,
+        subagentModel,
         model: options.model ?? this.#config.model,
         approval: options.approval ?? "all",
       },
+      ...(options.reviewRules ? { rulesPending: true } : {}),
       pump,
       session,
       subscribers: new Set(),
@@ -1418,7 +1474,20 @@ export class SessionManager {
         ...(meta.length > 0 ? { attachments: meta } : {}),
       } as SDKMessage,
     });
-    const prompt = context ? `${context}\n${text}` : text;
+    let prompt = context ? `${context}\n${text}` : text;
+    // An economy review's rule files go in front of its first prompt, not on
+    // the stream: the reader's own words are what the transcript shows. The
+    // same files, in the same order, as the Standard reviewer is handed, so
+    // both modes judge by the same rules; first in the prompt so a review of
+    // another object reads them from the cache.
+    if (live.rulesPending) {
+      live.rulesPending = false;
+      const focus = /^Review focus: (.+)$/m.exec(text)?.[1]?.trim();
+      const root = this.#config.pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
+      const files = (focus && focus !== "All" && RULES_BY_FOCUS[focus]) || REVIEWER_RULES;
+      const rules = reviewerRules(root, files).trim();
+      if (rules) prompt = `${rules}\n\n---\n\n${prompt}`;
+    }
     live.pump.push(
       attachments.length > 0 ? toContentBlocks(prompt, attachments) : prompt,
     );
@@ -1581,9 +1650,9 @@ export class SessionManager {
     // model brought down to Sonnet. Only here because `Agent` was taken off
     // the auto-allow list for this session — see `create`. `updatedInput`
     // is the SDK's own door for this; nothing else about the call changes.
-    if (toolName === AGENT_TOOL && live.record.economy) {
+    if (toolName === AGENT_TOOL && (live.record.economy || live.record.subagentModel)) {
       this.toolLog.decide(context.toolUseID, "auto");
-      const updatedInput = economyDispatch(input, this.#config.pluginPath);
+      const updatedInput = dispatchFor(input, this.#config.pluginPath, live.record);
       return Promise.resolve({ behavior: "allow", updatedInput });
     }
 
@@ -2087,7 +2156,7 @@ export class SessionManager {
   #setStatus(live: LiveSession, status: SessionStatus): void {
     if (live.record.status === status) return;
     live.record.status = status;
-    this.#emit(live, { type: "status", status });
+    this.#emit(live, { type: "status", status, at: Date.now() });
   }
 
   #emit(

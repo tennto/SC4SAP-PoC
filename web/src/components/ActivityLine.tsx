@@ -3,7 +3,7 @@
 /**
  * The line that says what the agent is doing, and what it has done so far.
  *
- * Two rows. The first is the dots, the current state and the turn's clock —
+ * Two rows. The first is the orb, the current state and the turn's clock —
  * "Looking up SAP · GetProgram · 42s". The second is the trail: every tool
  * the turn has called, folded by kind and counted — "Looking up SAP ×4 ·
  * Reading files ×2 · Sub-agent ×1". The first answers "is it alive"; the
@@ -16,27 +16,76 @@
  * their own dots — the skill page with no words beside them at all, on the
  * screen whose waits run to minutes.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ThinkingOrb, type OrbState } from "thinking-orbs";
 import type { TranscriptItem } from "@/lib/types";
-import type { Activity } from "@/lib/activity";
+import type { Activity, ActivityKind } from "@/lib/activity";
 import { describeActivity } from "@/lib/activity";
 import { useLocale } from "@/lib/i18n/client";
 
+/** Which of the library's orbs says what the agent is doing. */
+const ORB: Record<ActivityKind, OrbState> = {
+  starting: "breathing",
+  waiting: "breathing",
+  working: "working",
+  thinking: "working",
+  tool: "searching",
+  writing: "composing",
+  retrying: "solving",
+};
+
+/** A shape stays at least this long, so a turn flicking between states does not flicker. */
+const DWELL_MS = 1500;
+/** How long one shape takes to hand over to the next; matches `.orb-layer` in globals.css. */
+const FADE_MS = 320;
+
 /**
- * Three dots in a row, each lifting and brightening a beat after the last.
+ * The working mark: a dotted orb at the size of a line of text, its shape
+ * following what the agent is doing.
  *
- * The wave is the whole design: one dot at its height while its neighbour is
- * on the way up and the third is at rest, on an easing that never stops
- * moving, so it reads as a pulse travelling along the row rather than as
- * three things blinking near each other. Ink only, and small — it sits at
- * the head of a line of text for the length of a turn.
+ * The library swaps a shape on the frame its state changes. Here the outgoing
+ * one stays drawn and fades while the next fades in over it, and a shape is
+ * held for `DWELL_MS` before the next may replace it — a turn goes from tool
+ * to thinking to tool inside a second, and every one of those as a cut would
+ * read as the mark glitching. Ink only; it follows the app's theme by itself.
  */
-function Dots() {
+function Orb({ kind }: { kind: ActivityKind }) {
+  const wanted = ORB[kind];
+  // Every shape still on screen, newest last; all but the last are leaving.
+  const [layers, setLayers] = useState<{ state: OrbState; key: number }[]>(() => [
+    { state: wanted, key: 0 },
+  ]);
+  const shownAt = useRef(Date.now());
+  const next = useRef(1);
+  const shown = layers[layers.length - 1]!.state;
+
+  useEffect(() => {
+    if (wanted === shown) return;
+    const wait = Math.max(0, shownAt.current + DWELL_MS - Date.now());
+    const swap = setTimeout(() => {
+      shownAt.current = Date.now();
+      const key = next.current++;
+      setLayers((current) => [...current.slice(-1), { state: wanted, key }]);
+    }, wait);
+    return () => clearTimeout(swap);
+  }, [wanted, shown]);
+
+  useEffect(() => {
+    if (layers.length < 2) return;
+    const done = setTimeout(() => setLayers((current) => current.slice(-1)), FADE_MS);
+    return () => clearTimeout(done);
+  }, [layers]);
+
   return (
-    <span className="gdots" aria-hidden="true">
-      <span />
-      <span />
-      <span />
+    <span className="orb-stack" aria-hidden="true">
+      {layers.map((layer, i) => (
+        <ThinkingOrb
+          key={layer.key}
+          state={layer.state}
+          size={20}
+          className={`orb-layer${i < layers.length - 1 ? " is-leaving" : ""}`}
+        />
+      ))}
     </span>
   );
 }
@@ -89,7 +138,7 @@ export function ActivityLine({
             words themselves say "in motion" rather than only the thing next
             to them. */}
         <span className="activity-mark" aria-hidden="true">
-          <Dots />
+          <Orb kind={activity?.kind ?? "starting"} />
         </span>
         {said ? (
           <span className="activity-said" aria-live="polite">

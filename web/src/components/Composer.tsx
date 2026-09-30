@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { FileChip } from "@/components/FileChip";
 import { Select } from "@/components/Select";
+import { modelLabel } from "@/lib/model-label";
 import { useLocale } from "@/lib/i18n/client";
 import {
   ACCEPT,
@@ -13,24 +14,6 @@ import {
   type Draft,
 } from "@/lib/attachments";
 
-/**
- * `claude-sonnet-5` reads as `Sonnet 5`, `claude-haiku-4-5-20251001` as
- * `Haiku 4.5`. Used for the chip under the box, which is a picker when the
- * caller passes the list the backend offers and a plain label when it does
- * not — a running session's model is fixed at the moment it was opened.
- */
-export function modelLabel(model: string): string {
-  const parts = model
-    .replace(/^claude-/, "")
-    // Trailing release date — `-20251001`.
-    .replace(/-\d{8}$/, "")
-    .split("-");
-
-  const name = parts[0] ?? model;
-  const version = parts.slice(1).join(".");
-  const display = name.charAt(0).toUpperCase() + name.slice(1);
-  return version ? `${display} ${version}` : display;
-}
 
 type Props = {
   disabled: boolean;

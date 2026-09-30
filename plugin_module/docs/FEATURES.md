@@ -4,8 +4,8 @@
 
 ## Table of Contents
 
-- [25 SAP-Specialized Agents](#25-sap-specialized-agents)
-- [18 Skills](#18-skills)
+- [26 SAP-Specialized Agents](#26-sap-specialized-agents)
+- [14 Skills](#14-skills)
 - [Skills — Examples & Workflow](#skills--examples--workflow)
 - [Multi-Environment Profiles (Dev / QA / Prod)](#-multi-environment-profiles-dev--qa--prod)
 - [MCP ABAP ADT Server Capabilities](#mcp-abap-adt-server--unique-capabilities)
@@ -23,12 +23,13 @@
 - [RFC Backend Selection](#-rfc-backend-selection)
 - [RFC Gateway (Enterprise)](#-rfc-gateway-enterprise-deployment)
 
-## 25 SAP-Specialized Agents
+## 26 SAP-Specialized Agents
 
 | Category | Agents |
 |----------|--------|
 | **Core (10)** | Analyst, Architect, Code Reviewer, Critic, Debugger, Doc Specialist, Executor, Planner, QA Tester, Writer |
 | **Basis (1)** | BC Consultant — system admin, transport management, diagnostics |
+| **Discovery (1)** | CBO Stocker — CBO package inventory, where-used graph, reusable-object catalog |
 | **Modules (14)** | SD, MM, FI, CO, PP, PS, PM, QM, TR, HCM, WM, TM, Ariba, BW |
 
 **Delegation map (Module Consultation Protocol):**
@@ -37,7 +38,7 @@
 - `sap-analyst` / `sap-critic` / `sap-planner` additionally have mandatory **Country Context** block (loads `country/<iso>.md`)
 - **Direct MCP read access** for Core agents — package / DDIC / class / program / where-used / runtime-dump tools carry read-only access; write CRUD stays on `sap-executor` / `sap-planner` / `sap-writer` / `sap-qa-tester` / `sap-debugger`
 
-## 16 Skills
+## 14 Skills
 
 | Skill | Description |
 |-------|-------------|
@@ -48,11 +49,13 @@
 | `sc4sap:create-object` | ABAP object creation (hybrid mode — transport + package confirm, create, activate) |
 | `sc4sap:create-program` | Full ABAP program pipeline — Main+Include, OOP/Procedural, ALV, Dynpro, Text Elements, ABAP Unit |
 | `sc4sap:program-to-spec` | Reverse-engineer an ABAP program into a Functional/Technical Spec (Markdown / Excel) |
+| `sc4sap:program-to-manual` | End-user manual for one program (single HTML) — scenario steps on drawn screens with numbered callouts, check points, messages & actions |
 | `sc4sap:compare-programs` | Side-by-side business comparison of 2–5 ABAP programs that split the same scenario by module / country / persona — consultant-facing Markdown report |
 | `sc4sap:analyze-code` | ABAP code analysis (Clean ABAP / performance / security) |
 | `sc4sap:analyze-cbo-obj` | Customer Business Object (CBO) inventory scanner with cross-module gap analysis |
 | `sc4sap:analyze-symptom` | Step-by-step SAP operational error/symptom analysis (dumps, logs, SAP Note candidates) |
 | `sc4sap:ask-consultant` | Direct user-facing Q&A with a module consultant agent (SD/MM/FI/CO/PP/PS/PM/QM/TR/HCM/WM/TM/BW/Ariba/BC). Read-only — honors the configured SAP environment. |
+| `sc4sap:package-to-process` | Reverse-engineer a CBO package into an end-to-end business process document + BPML (Markdown / HTML / Excel) with Mermaid flowcharts |
 | `sc4sap:trust-session` | INTERNAL-ONLY — session-wide MCP permission bootstrap |
 
 ## Skills — Examples & Workflow
@@ -107,6 +110,9 @@ Flow: `RuntimeListDumps` → `RuntimeAnalyzeDump` → stack trace → SAP Note c
 
 ### `/sc4sap:program-to-spec`
 Reverse-engineer an ABAP program into a spec (Markdown/Excel) with Socratic scope narrowing.
+
+### `/sc4sap:program-to-manual`
+Writes the manual a business user follows: one scenario per task ("send POs", "check missing receipts"), each step on a drawn picture of the screen — selection screen, output ALV, popups and follow-up screens — with numbered callouts, plus check points taken from the source validations, a field reference, messages with the action to take, a glossary and an automatic revision history. One self-contained HTML file: a web document on screen, one step per A4 landscape page when printed. Author, team, company and the confidentiality notice come from the profile `config.json` → `manual`.
 
 ### `/sc4sap:sap-doctor`
 Plugin + MCP + SAP connectivity diagnostics. First thing to run when something's off.

@@ -17,10 +17,10 @@
  * and End, Enter and Escape, `aria-activedescendant` so a screen reader
  * follows the highlight, and focus returned to the button on close.
  *
- * What it deliberately does not do is reposition itself when it would run off
- * the bottom of the window. Every use is inside a card that is vertically
- * centred with room below it; a flip-up would be machinery for a case this
- * screen does not have.
+ * What it deliberately does not do is measure the window and reposition
+ * itself. A use that sits at the bottom of the screen — the chat composer's
+ * model picker — opens upward by its own CSS (`.composer-model-pick`); every
+ * other use is in a card with room below it.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";

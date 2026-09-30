@@ -51,6 +51,9 @@ import type { PermissionResponse, RunFile } from "@/lib/types";
 import { specPrompt, type SpecSurvey } from "@/lib/spec-prompt";
 import { SpecSurveyModal, type SpecAnswers } from "@/components/SpecSurveyModal";
 import { HtmlPreview } from "@/components/HtmlPreview";
+import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
+import { styledSpec } from "@/lib/spec-theme";
+import { codeReviewPrompt } from "@/lib/code-review-prompt";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
 import type { Locale } from "@/lib/i18n/locale";
@@ -80,7 +83,17 @@ const SEPARATOR = "\n\n";
 type Value = string | boolean;
 
 /** How a run may spend — what the cost dialog collects. See `Skill.cost`. */
-type Spend = { maxBudgetUsd: number; economy: boolean; model: string };
+type Spend = {
+  maxBudgetUsd: number;
+  economy: boolean;
+  model: string;
+  /** Every plugin sub-agent's model, where the skill offers that choice. */
+  subagentModel?: "haiku" | "sonnet" | "opus";
+};
+
+/** The sub-agent alias for one of `MODELS`. */
+const subagentAlias = (model: string): "haiku" | "sonnet" | "opus" =>
+  /haiku/i.test(model) ? "haiku" : /opus/i.test(model) ? "opus" : "sonnet";
 
 /**
  * The models the dialog offers. The same three the backend accepts; listed
@@ -93,9 +106,9 @@ const MODELS: {
   /** The dictionary key for the line under the picker. */
   note: keyof Messages["skillForm"];
 }[] = [
-  { id: "claude-haiku-4-5", label: "Haiku 4.5", note: "haikuNote" },
-  { id: "claude-sonnet-5", label: "Sonnet 5", note: "sonnetNote" },
-  { id: "claude-opus-5", label: "Opus 5", note: "opusNote" },
+  { id: "claude-haiku-4-5", label: "Haiku", note: "haikuNote" },
+  { id: "claude-sonnet-5", label: "Sonnet", note: "sonnetNote" },
+  { id: "claude-opus-5", label: "Opus", note: "opusNote" },
 ];
 
 function initial(fields: readonly SkillField[]): Record<string, Value> {
@@ -160,7 +173,14 @@ function composePrompt(
   const parts = [command];
   if (lines.length > 0) parts.push(lines.join("\n"));
   if (context) parts.push(context);
-  if (locale !== "en") parts.push(`Write the report in ${REPORT_LANGUAGE[locale]}.`);
+  // A Language field on the form wins over the screen's language: it is what
+  // the reader asked for, and the screen is only a guess at it.
+  const asked = values["Language"];
+  if (typeof asked === "string" && asked.trim() !== "") {
+    parts.push(`Write the report in ${asked.trim()}.`);
+  } else if (locale !== "en") {
+    parts.push(`Write the report in ${REPORT_LANGUAGE[locale]}.`);
+  }
   return parts.join("\n\n");
 }
 
@@ -199,7 +219,120 @@ function runTitle(
  */
 const runKey = (slug: string): string => `sc4sap.skillRun.${slug}`;
 
-type StoredRun = { sessionId: string; answer: string };
+type StoredRun = {
+  sessionId: string;
+  answer: string;
+  /** A documents run: the files it was asked for, and what was typed in. */
+  wanted?: SpecSurvey["formats"];
+  values?: Record<string, string>;
+};
+
+/**
+ * A documents run's files, per skill, for as long as this tab is open.
+ *
+ * The backend hands them over once and deletes them, so leaving the page used
+ * to lose them: going to another skill and back found the result gone. They
+ * are held here, in memory — never written to storage, never sent anywhere —
+ * so a return within the tab finds them, and a reload or a closed tab still
+ * leaves nothing behind. One run per skill; a new run or Done replaces it.
+ */
+const heldDocs = new Map<string, { sessionId: string; files: RunFile[] }>();
+
+/** A collection already on its way, by session — see `collectDocs`. */
+const collecting = new Map<string, Promise<RunFile[]>>();
+
+/**
+ * A documents run's files: held, or taken from the backend and held.
+ *
+ * The one way in. The backend deletes the files as it hands them over, so a
+ * second request for the same run gets nothing back — and the page and the
+ * keeper below may both ask as the run settles. Both get the one answer.
+ */
+function collectDocs(slug: string, sessionId: string): Promise<RunFile[]> {
+  const held = heldDocs.get(slug);
+  if (held?.sessionId === sessionId) return Promise.resolve(held.files);
+  let taking = collecting.get(sessionId);
+  if (!taking) {
+    taking = api
+      .takeFiles(sessionId)
+      .then((files) => {
+        heldDocs.set(slug, { sessionId, files });
+        return files;
+      })
+      .finally(() => collecting.delete(sessionId));
+    collecting.set(sessionId, taking);
+  }
+  return taking;
+}
+
+/** The keeper watching each skill's documents run, if one is. */
+const keepers = new Map<string, { sessionId: string; stop: () => void }>();
+
+const KEEP_POLL_MS = 3000;
+
+/**
+ * Collects a documents run's files when it finishes, whether or not its page
+ * is still open.
+ *
+ * Collecting used to belong to the page alone, so a run left for another
+ * screen finished with no one to take its files, and they went with the
+ * session. This outlives the page: it asks the backend every few seconds and,
+ * once the turn is over, takes the files into `heldDocs` and records what the
+ * run cost. A page that comes back finds them there. It stops when it has
+ * them, when the session is gone, or when Done or a new run replaces it.
+ */
+function keepDocuments(slug: string, sessionId: string): void {
+  const current = keepers.get(slug);
+  if (current?.sessionId === sessionId) return;
+  current?.stop();
+
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Subscribed for as long as it watches: the backend abandons a busy turn
+  // that nobody has been subscribed to for 15 seconds (`ORPHAN_GRACE_MS`),
+  // so a run left for another screen was stopped unless the reader came back
+  // in time. Nothing is read from it; it only says someone is waiting.
+  let listening: EventSource | null = null;
+  try {
+    listening = new EventSource(api.streamUrl(sessionId));
+  } catch {
+    // No EventSource: the run is watched but not kept, as before.
+  }
+  const stop = (): void => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+    listening?.close();
+    if (keepers.get(slug)?.sessionId === sessionId) keepers.delete(slug);
+  };
+  const tick = async (): Promise<void> => {
+    if (stopped) return;
+    try {
+      const live = await api.getSession(sessionId);
+      if (stopped) return;
+      // `turns` counts finished turns: idle with one behind it is a run done,
+      // not a session that has not started yet.
+      if (live.status === "idle" && live.turns > 0) {
+        await collectDocs(slug, sessionId);
+        await api
+          .recordRun(sessionId, { turns: live.turns, totalCostUsd: live.totalCostUsd })
+          .catch(() => {});
+        stop();
+        return;
+      }
+      if (live.status === "closed" || live.status === "error") {
+        stop();
+        return;
+      }
+    } catch {
+      // The session is gone; there is nothing left to collect.
+      stop();
+      return;
+    }
+    timer = setTimeout(() => void tick(), KEEP_POLL_MS);
+  };
+  keepers.set(slug, { sessionId, stop });
+  timer = setTimeout(() => void tick(), KEEP_POLL_MS);
+}
 
 function readStoredRun(slug: string): StoredRun | null {
   try {
@@ -300,13 +433,20 @@ function textOf(file: RunFile): string {
 function withImages(markdown: string, files: readonly RunFile[]): string {
   let text = markdown;
   for (const file of files) {
-    if (file.mediaType !== "image/png") continue;
-    const uri = `data:image/png;base64,${file.data}`;
+    if (file.mediaType !== "image/png" && file.mediaType !== "image/svg+xml") continue;
+    const uri = `data:${file.mediaType};base64,${file.data}`;
     for (const ref of [file.path, `./${file.path}`]) {
       text = text.split(`](${ref})`).join(`](${uri})`);
     }
   }
   return text;
+}
+
+/** Base64 of a string's UTF-8 bytes — `btoa` alone refuses Hangul. */
+function base64Utf8(text: string): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 /** 12.3 KB — one decimal under a hundred, none above. */
@@ -374,6 +514,10 @@ export function SkillForm({
     defaultModel?: string;
     /** The main thread's model when the skill pins one — see `Skill.cost`. */
     pinnedModel?: string;
+    /** False: no ceiling, and no field for one — see `Skill.cost`. */
+    budget?: boolean;
+    /** The model picked is every sub-agent's — see `Skill.cost`. */
+    subagentPicker?: boolean;
   } | null;
   /**
    * The skill answers in rounds and asks back — see `Skill.followUp`. With
@@ -412,6 +556,9 @@ export function SkillForm({
   const [values, setValues] = useState<Record<string, Value>>(() =>
     initial(fields),
   );
+  /** An app-built Economy run on a skill with a Mode field. See `Skill.economyMode`. */
+  const economyReview =
+    findSkill(slug)?.economyMode === "code-review" && values["Mode"] !== "Standard";
   /** The backend session this run is attached to, once it has one. */
   const [sessionId, setSessionId] = useState<string | null>(null);
   /** Opening the session and sending — before the stream can say anything. */
@@ -480,10 +627,32 @@ export function SkillForm({
     // it, a remembered run from an earlier sitting must not come back over
     // the top of the one just started.
     if (autorun || autorunFired.current) return;
-    // Nothing of a documents run is remembered, so there is nothing to pick up.
-    if (documents) return;
     const stored = readStoredRun(slug);
     if (!stored) return;
+
+    const forget = (): void => {
+      try {
+        sessionStorage.removeItem(runKey(slug));
+      } catch {
+        // Storage refused; the run will be asked about again next visit.
+      }
+    };
+    /**
+     * A documents run as it was: what it was asked for, the form, and its
+     * files. Only when the files are there to show — the run's summary alone,
+     * with the document it summarises gone, is half a result, and a reload
+     * that left one read as the page failing to clear.
+     */
+    const bringBack = (files: RunFile[]): void => {
+      if (stored.wanted) setWanted(stored.wanted);
+      const typed = stored.values;
+      if (typed) setValues((current) => ({ ...current, ...typed }));
+      collected.current = stored.sessionId;
+      setDocs(files);
+    };
+    const held = documents && heldDocs.get(slug)?.sessionId === stored.sessionId
+      ? heldDocs.get(slug)!.files
+      : null;
 
     // Ask whether the session is still there before attaching to it. The
     // backend restarts; a remembered run whose session is gone and whose
@@ -493,11 +662,45 @@ export function SkillForm({
     let cancelled = false;
     void api
       .getSession(stored.sessionId)
-      .then(() => {
-        if (!cancelled) setSessionId(stored.sessionId);
+      .then(async (live) => {
+        if (cancelled) return;
+        if (documents && !held) {
+          const finished = live.status === "idle" && live.turns > 0;
+          if (finished) {
+            // Done, and not held in this tab: its files were collected before
+            // a reload emptied the memory, or were never taken. Only the
+            // second can still be had.
+            const files = await collectDocs(slug, stored.sessionId).catch(() => []);
+            if (cancelled) return;
+            if (files.length === 0) {
+              // Nothing left to show, and nothing for the session to do.
+              heldDocs.delete(slug);
+              void api.closeSession(stored.sessionId).catch(() => {});
+              forget();
+              return;
+            }
+            bringBack(files);
+          } else {
+            // Still going: re-attach, and watch it in case the page is left
+            // again before it settles.
+            if (stored.wanted) setWanted(stored.wanted);
+            const typed = stored.values;
+            if (typed) setValues((current) => ({ ...current, ...typed }));
+            keepDocuments(slug, stored.sessionId);
+          }
+        } else if (held) {
+          bringBack(held);
+        }
+        setSessionId(stored.sessionId);
       })
       .catch(() => {
         if (cancelled) return;
+        if (documents && !held) {
+          // The session is gone and its files with it: nothing to show.
+          forget();
+          return;
+        }
+        if (held) bringBack(held);
         if (stored.answer) {
           setSessionId(stored.sessionId);
           setRestored(stored.answer);
@@ -649,11 +852,45 @@ export function SkillForm({
     : null;
   const htmlFile = docs?.find((file) => file.name.toLowerCase().endsWith(".html")) ?? null;
   const xlsxFile = docs?.find((file) => file.name.toLowerCase().endsWith(".xlsx")) ?? null;
-  const specText = useMemo(
-    () => (mdFile && docs ? withImages(textOf(mdFile), docs) : null),
-    [mdFile, docs],
+  // The flow's data and the plugin's own picture of it, when the run left both:
+  // the page draws the flow again from the data (`spec-flow.ts`).
+  const flow = useMemo(() => {
+    const data = docs?.find((file) => file.name.endsWith("image-spec.json"));
+    const png = docs?.find((file) => file.mediaType === "image/png" && file.name === "flow.png");
+    if (!data || !png) return null;
+    try {
+      return { spec: JSON.parse(textOf(data)) as ImageSpec, flowPng: png };
+    } catch {
+      return null;
+    }
+  }, [docs]);
+  // The Markdown's flow as the drawn one, as SVG. Not a PNG: a 2x PNG is
+  // twice its size in pixels, and a Markdown viewer shows it at that size;
+  // an SVG says how big it is and stays sharp at any scale.
+  const specText = useMemo(() => {
+    if (!mdFile || !docs) return null;
+    const drawn = flow ? flowSvg(flow.spec) : null;
+    const files =
+      flow && drawn
+        ? docs.map((file) =>
+            file === flow.flowPng
+              ? { ...file, mediaType: "image/svg+xml", data: base64Utf8(drawn.svg) }
+              : file,
+          )
+        : docs;
+    return withImages(textOf(mdFile), files);
+  }, [mdFile, docs, flow]);
+  // Restyled, and with the drawn flow, for the preview and the download both.
+  const htmlText = useMemo(
+    () =>
+      htmlFile
+        ? styledSpec(
+            textOf(htmlFile),
+            flow ? { spec: flow.spec, flowPngBase64: flow.flowPng.data } : null,
+          )
+        : null,
+    [htmlFile, flow],
   );
-  const htmlText = useMemo(() => (htmlFile ? textOf(htmlFile) : null), [htmlFile]);
 
   // Anything the run said that was not the answer — "Stopped.", a disconnect.
   const notices = rows.filter((row) => row.kind === "notice");
@@ -758,16 +995,30 @@ export function SkillForm({
    * exactly the moment there would be nothing stored yet.
    */
   useEffect(() => {
-    if (!sessionId || documents) return;
+    if (!sessionId) return;
+    // Only the typed text of a documents run's form: a screenshot field holds
+    // files, which have no place in storage.
+    const typed = documents
+      ? Object.fromEntries(
+          Object.entries(values).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : undefined;
     try {
       sessionStorage.setItem(
         runKey(slug),
-        JSON.stringify({ sessionId, answer: streamed } satisfies StoredRun),
+        JSON.stringify({
+          sessionId,
+          // The stored copy when this page is showing one: a run brought back
+          // from storage has streamed nothing, and writing that empty stream
+          // over its text lost it on the next return.
+          answer: streamed || restored || "",
+          ...(documents ? { wanted, values: typed } : {}),
+        } satisfies StoredRun),
       );
     } catch {
       // Storage refused. The run still works; only the return trip is poorer.
     }
-  }, [slug, sessionId, streamed, documents]);
+  }, [slug, sessionId, streamed, restored, documents, wanted, values]);
 
   /**
    * Collect the run's files when it settles — once, since the backend deletes
@@ -777,20 +1028,23 @@ export function SkillForm({
     if (!documents || !sessionId || stream.status !== "idle") return;
     if (collected.current === sessionId) return;
     collected.current = sessionId;
-    void api
-      .takeFiles(sessionId)
+    void collectDocs(slug, sessionId)
       .then((files) => setDocs(files))
       .catch((err: unknown) => {
         setDocs([]);
         setError((err as Error).message);
       });
-  }, [documents, sessionId, stream.status]);
+  }, [documents, sessionId, stream.status, slug]);
 
   /**
-   * A documents run ends with the page: Done, Run again, a reload, a closed
-   * tab or leaving the screen all close its backend session, which drops the
-   * stream it would replay and any file not yet collected. `keepalive` lets
-   * the request outlive the page that sent it.
+   * A documents run ends with the tab: a reload or a closed tab closes its
+   * backend session, which drops the stream it would replay and any file not
+   * yet collected. `keepalive` lets the request outlive the page that sent it.
+   *
+   * Not on leaving this screen for another one in the app. That used to close
+   * it too, so going to another skill and back found nothing to re-attach
+   * to — and a run still going was stopped. The session is left open for the
+   * return; Done and Run again close it (the effect below).
    */
   useEffect(() => {
     if (!documents || !sessionId) return;
@@ -800,10 +1054,21 @@ export function SkillForm({
       );
     };
     window.addEventListener("pagehide", end);
-    return () => {
-      window.removeEventListener("pagehide", end);
-      end();
-    };
+    return () => window.removeEventListener("pagehide", end);
+  }, [documents, sessionId]);
+
+  /**
+   * Done and Run again put a documents run's session down: when this page
+   * moves off a session — to none, or to a new run's — the old one is closed.
+   * An unmount is not a move, so leaving the screen keeps it.
+   */
+  const heldSession = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = heldSession.current;
+    heldSession.current = sessionId;
+    if (documents && previous && previous !== sessionId) {
+      void api.closeSession(previous).catch(() => {});
+    }
   }, [documents, sessionId]);
 
   // The backend has taken the prompt, so its own status carries the screen.
@@ -833,6 +1098,8 @@ export function SkillForm({
     setSessionId(null);
     setRestored(null);
     setDocs(null);
+    heldDocs.delete(slug);
+    keepers.get(slug)?.stop();
     setError(null);
     try {
       sessionStorage.removeItem(runKey(slug));
@@ -864,6 +1131,12 @@ export function SkillForm({
       else setAskingSurvey(true);
       return;
     }
+    // An app-built Economy run is its own spending decision, as on
+    // Program → Spec: no dialog.
+    if (economyReview) {
+      void run(context, null);
+      return;
+    }
     if (cost && !spend) {
       pendingContext.current = context;
       setAskingCost(true);
@@ -882,6 +1155,8 @@ export function SkillForm({
     setStarting(true);
     setError(null);
     setDocs(null);
+    heldDocs.delete(slug);
+    keepers.get(slug)?.stop();
     try {
       if (survey) {
         setWanted(survey.formats);
@@ -897,6 +1172,7 @@ export function SkillForm({
         });
         setSessionId(session.id);
         await api.sendMessage(session.id, specPrompt(survey, `.sc4sap/out/${session.id}`));
+        keepDocuments(slug, session.id);
         requestAnimationFrame(() =>
           result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
         );
@@ -909,6 +1185,36 @@ export function SkillForm({
       // prompt forbids filesystem search, and a logged run spent four minutes
       // doing it anyway because `Bash` was in reach. See `Skill.tools`.
       const effort = findSkill(slug)?.effort;
+      if (economyReview) {
+        // One agent on Sonnet, the reviewer's rule files in front of its
+        // prompt (`reviewRules`), no sub-agents and no skill to load.
+        const session = await api.createSession(undefined, undefined, {
+          model: "claude-sonnet-5",
+          profile: tools,
+          reviewRules: true,
+          ...(effort ? { effort } : {}),
+        });
+        setSessionId(session.id);
+        const text = (label: string): string => {
+          const value = values[label];
+          return typeof value === "string" ? value.trim() : "";
+        };
+        await api.sendMessage(
+          session.id,
+          codeReviewPrompt({
+            objectType: text("Object type") || "Program",
+            objectName: text("Object name").toUpperCase(),
+            pkg: text("Package").toUpperCase() || undefined,
+            focus: text("Review focus") || "All",
+            language:
+              text("Language") || (locale === "en" ? "English" : REPORT_LANGUAGE[locale]),
+          }),
+        );
+        requestAnimationFrame(() =>
+          result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+        );
+        return;
+      }
       const session = await api.createSession(undefined, undefined, {
         ...(how ?? {}),
         profile: tools,
@@ -917,7 +1223,13 @@ export function SkillForm({
       setSessionId(session.id);
       await api.sendMessage(
         session.id,
-        composePrompt(command, fields, values, context, locale),
+        composePrompt(
+          command,
+          findSkill(slug)?.economyMode ? fields.filter((field) => field.label !== "Mode") : fields,
+          values,
+          context,
+          locale,
+        ),
         null,
         images.map(toAttachment),
       );
@@ -1324,10 +1636,13 @@ export function SkillForm({
                     </>
                   )}
                 </span>
+                {/* A switch, not a button that renames itself: the label says
+                    what "on" means, and the thumb says whether it is. */}
                 <button
                   type="button"
-                  className={`ghost skill-doc-everything${everything ? " is-on" : ""}`}
-                  aria-pressed={everything}
+                  role="switch"
+                  className="skill-doc-switch"
+                  aria-checked={!everything}
                   title={everything ? t.showingEverythingReport : t.showingReportOnly}
                   onClick={() => {
                     const next = !everything;
@@ -1335,7 +1650,10 @@ export function SkillForm({
                     writeShowEverything(next);
                   }}
                 >
-                  {everything ? t.everything : t.finalOnly}
+                  <span className="skill-doc-switch-label">{t.finalOnly}</span>
+                  <span className="switch-track" aria-hidden="true">
+                    <span className="switch-thumb" />
+                  </span>
                 </button>
                 {/* Not while the run is going. A half-written report saved to
                     disk is indistinguishable from a whole one afterwards, and
@@ -1480,10 +1798,14 @@ export function SkillForm({
           heading={t.runQuestion(shownSkill.title)}
           description={shownSkill.costNote ?? cost.note}
           submitLabel={t.run}
-          disabled={!Number.isFinite(Number(costForm.budget)) || Number(costForm.budget) < 0}
+          disabled={
+            cost.budget !== false &&
+            (!Number.isFinite(Number(costForm.budget)) || Number(costForm.budget) < 0)
+          }
           onSubmit={() => {
             const chosen: Spend = {
-              maxBudgetUsd: Math.max(0, Number(costForm.budget) || 0),
+              maxBudgetUsd: cost.budget === false ? 0 : Math.max(0, Number(costForm.budget) || 0),
+              ...(cost.subagentPicker ? { subagentModel: subagentAlias(costForm.model) } : {}),
               // A skill that pins its main thread opens on that pin, so the
               // session never switches models mid-run and rewrites its cache;
               // the choice then only decides the sub-agents.
@@ -1514,7 +1836,10 @@ export function SkillForm({
                 // Haiku is not offered where the skill pins its main thread:
                 // it would reach neither half — the pin keeps the main thread
                 // and economy stops the sub-agents at Sonnet.
-                .filter((entry) => !cost.pinnedModel || !/haiku/i.test(entry.id))
+                .filter(
+                  (entry) =>
+                    !cost.pinnedModel || cost.subagentPicker || !/haiku/i.test(entry.id),
+                )
                 .map((entry) => ({ value: entry.id, label: entry.label }))}
               onChange={(next) => setCostForm((current) => ({ ...current, model: next }))}
             />
@@ -1524,6 +1849,7 @@ export function SkillForm({
             </span>
           </div>
 
+          {cost.budget !== false && (
           <label className="field">
             <span className="field-label">{t.budget}</span>
             <input
@@ -1541,6 +1867,7 @@ export function SkillForm({
             />
             <span className="field-hint">{t.budgetHint}</span>
           </label>
+          )}
         </EditModal>
       )}
 
