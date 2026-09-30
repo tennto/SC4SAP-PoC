@@ -37,6 +37,7 @@ import { Icon } from "@/components/Icon";
 import { FavoriteSkills } from "@/components/FavoriteSkills";
 import { ActivityPanel } from "@/components/ActivityPanel";
 import { ReconnectButton } from "@/components/ReconnectButton";
+import { modelLabel } from "@/lib/model-label";
 
 export const dynamic = "force-dynamic";
 
@@ -256,7 +257,7 @@ export default async function HomePage({
             detail={
               health
                 ? t.agentDetail(
-                    health.model,
+                    modelLabel(health.model),
                     health.sessions,
                     health.toolPolicy.autoAllowed,
                   )

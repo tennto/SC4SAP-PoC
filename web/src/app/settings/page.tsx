@@ -30,6 +30,7 @@ import { SettingRow } from "@/components/settings/EditModal";
 import { ApprovalSettings } from "@/components/settings/ApprovalSettings";
 import { SystemSettings } from "@/components/settings/SystemSettings";
 import { readMessages } from "@/lib/i18n/server";
+import { modelLabel } from "@/lib/model-label";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await readMessages();
@@ -155,7 +156,7 @@ export default async function SettingsPage() {
               <ApprovalSettings approval={account.approval} />
               <SettingRow
                 label={t.defaultModel}
-                value={model ?? t.backendNotAnswering}
+                value={model ? modelLabel(model) : t.backendNotAnswering}
                 hint={t.defaultModelHint}
               />
             </div>

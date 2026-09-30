@@ -2441,6 +2441,23 @@ button.primary:hover:not(:disabled) {
   border-color: var(--line);
 }
 
+/* The composer sits at the bottom of the screen, so the model list opens
+   upward: opened downward it ran off the window and only the first entry
+   could be reached. It rises from the button rather than dropping onto it. */
+.composer-model-pick .select-list {
+  top: auto;
+  bottom: calc(100% + 6px);
+  min-width: 140px;
+  animation-name: select-list-up;
+}
+
+@keyframes select-list-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+
 .composer-send {
   display: grid;
   place-items: center;
