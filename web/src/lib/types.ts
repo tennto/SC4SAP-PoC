@@ -47,6 +47,8 @@ export type Session = {
   economy: boolean;
   /** The model the session runs on. */
   model: string;
+  /** Opened by the chat screen, or by a skill's page. */
+  kind?: "chat" | "task";
 };
 
 /**
@@ -62,7 +64,15 @@ export type Chat = {
   totalCostUsd: number;
   createdAt: string;
   updatedAt: string;
+  /** Typed on the chat screen, or a skill run saved from its page. */
+  kind: "chat" | "task";
+  projectId: string | null;
+  /** Pinned to the top of the rail; ISO time it was pinned, or null. */
+  pinnedAt: string | null;
 };
+
+/** A named folder of conversations on the chat screen. */
+export type Project = { id: string; name: string; createdAt: string };
 
 /**
  * A file that went with a prompt — what is kept once the bytes have gone to

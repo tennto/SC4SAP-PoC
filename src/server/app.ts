@@ -298,6 +298,8 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           model?: string;
           /** Reasoning effort for the run, where a skill sets one. */
           effort?: string;
+          /** `task` when a skill's page opens it; the chat screen's list reads it. */
+          kind?: string;
         }
       | undefined;
   }>("/sessions", async (request, reply) => {
@@ -365,6 +367,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       profile: profile as ToolProfile | undefined,
       effort: effort as EffortLevel | undefined,
       model,
+      kind: request.body?.kind === "task" ? "task" : "chat",
       userId: userOf(request.headers),
       approval: approvalOf(request.headers),
     });

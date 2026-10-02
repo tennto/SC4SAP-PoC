@@ -254,6 +254,7 @@ export function AppShell({
           onNavigate={() => setDrawerOpen(false)}
         />
 
+
         <div className="rail-foot">
           <AccountMenu collapsed={railCollapsed} account={account} />
         </div>

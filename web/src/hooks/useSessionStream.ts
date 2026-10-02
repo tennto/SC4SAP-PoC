@@ -67,6 +67,12 @@ type State = {
   toolIdByIndex: Record<number, string>;
   /** Bumped per turn so bubble ids stay unique without a clock or a counter. */
   serial: number;
+  /**
+   * How long the session's turns ran, summed from each SDK result's
+   * `duration_ms`. The skill page prints it under a finished run; a replay
+   * after re-attaching rebuilds it from the same messages.
+   */
+  runMs: number;
 };
 
 const EMPTY: State = {
@@ -80,6 +86,7 @@ const EMPTY: State = {
   connected: false,
   toolIdByIndex: {},
   serial: 0,
+  runMs: 0,
 };
 
 type Action =
@@ -406,7 +413,11 @@ function reduce(state: State, action: Action): State {
         return { ...state, items };
       }
 
-      if (message.type === "result") return closeOpenBubbles(state);
+      if (message.type === "result") {
+        const ran = (message as { duration_ms?: unknown }).duration_ms;
+        const closed = closeOpenBubbles(state);
+        return typeof ran === "number" ? { ...closed, runMs: closed.runMs + ran } : closed;
+      }
 
       /*
        * The SDK says out loud when the API refused it and it is going to try
@@ -484,6 +495,8 @@ export type SessionStream = {
   /** Changes on every error, so two identical ones are still two. */
   errorSeq: number;
   connected: boolean;
+  /** The session's turns' running time so far, in ms. */
+  runMs: number;
   /** True while the model is producing output — drives the composer's state. */
   streaming: boolean;
 };
@@ -535,6 +548,7 @@ export function useSessionStream(sessionId: string | null): SessionStream {
     error: state.error,
     errorSeq: state.errorSeq,
     connected: state.connected,
+    runMs: state.runMs,
     streaming,
   };
 }

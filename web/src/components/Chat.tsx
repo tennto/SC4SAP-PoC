@@ -27,11 +27,15 @@ import type {
   ChatMessage,
   Health,
   PermissionResponse,
+  Project,
   Session,
   TranscriptItem,
 } from "@/lib/types";
 import { useSessionStream } from "@/hooks/useSessionStream";
-import { SessionList, type RailItem } from "@/components/SessionList";
+import { SessionList, type ChatView, type RailItem } from "@/components/SessionList";
+import { ChatBrowser } from "@/components/ChatBrowser";
+import { inferKind } from "@/lib/chat-kind";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { Transcript, toRows } from "@/components/Transcript";
 import { Composer } from "@/components/Composer";
 import { ApprovalModal } from "@/components/ApprovalModal";
@@ -40,6 +44,8 @@ import { useLocale } from "@/lib/i18n/client";
 
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
+/** Chats opened on a project's page, by session id → project id. */
+const PROJECT_FOR_KEY = "sc4sap.chat.project-for";
 /**
  * Text the monitor left for the composer: a question about a tool call,
  * written before navigating here. Read once and removed, so a reload does
@@ -97,6 +103,29 @@ export function Chat({
   }, []);
   const [sessions, setSessions] = useState<Session[]>(initialSessions);
   const [chats, setChats] = useState<StoredChat[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  /** The main area: a conversation, View all, or one project's list. */
+  const [view, setView] = useState<ChatView>({ kind: "chat" });
+  /** The conversation waiting on "really delete?". */
+  const [deleting, setDeleting] = useState<RailItem | null>(null);
+  /** The project waiting on "really delete?". */
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  /** Several conversations from View all, waiting on "really delete?". */
+  const [deletingMany, setDeletingMany] = useState<RailItem[] | null>(null);
+  /**
+   * New chats started from a project's page, by session id: the project goes
+   * with the conversation's first save, which is what creates its row.
+   */
+  const projectFor = useRef<Record<string, string>>({});
+  // Kept across a reload: the row is created by the first save, and a reload
+  // between opening the chat and that save lost which project it was for.
+  useEffect(() => {
+    try {
+      projectFor.current = JSON.parse(localStorage.getItem(PROJECT_FOR_KEY) ?? "{}");
+    } catch {
+      // Unreadable: start empty.
+    }
+  }, []);
   /** chat id → the backend session currently running it. */
   const [attachedState, setAttached] = useState<Record<string, string>>({});
   /**
@@ -356,6 +385,7 @@ export function Chat({
 
   const { t: messages } = useLocale();
   const t = messages.chat;
+  const sessionsT = messages.sessions;
 
   /** Something went wrong and the reader has to dismiss it. */
   const fail = useCallback((message: string): void => {
@@ -392,6 +422,15 @@ export function Chat({
         ),
       ]);
     } catch (err) {
+      fail((err as Error).message);
+    }
+  }, []);
+
+  const refreshProjects = useCallback(async () => {
+    try {
+      setProjects(await api.listProjects());
+    } catch (err) {
+      // Same as the history: the screen works without it.
       fail((err as Error).message);
     }
   }, []);
@@ -474,7 +513,8 @@ export function Chat({
     }
     attachedLoaded.current = true;
     void refreshChats();
-  }, [refreshChats]);
+    void refreshProjects();
+  }, [refreshChats, refreshProjects]);
 
   /**
    * Read a chat that was opened without going through the rail.
@@ -682,6 +722,10 @@ export function Chat({
         // the *latest* prompt, and sending that before the chat list has
         // loaded renamed the conversation after every reload.
         title: revived ? undefined : (storedChat?.title ?? live?.title ?? null),
+        // Both only count when this save creates the row. A skill's session
+        // opened from the list here is still that skill's task.
+        kind: live?.kind ?? "chat",
+        projectId: projectFor.current[activeId],
         sdkSessionId: live?.sdkSessionId ?? null,
         turns: live?.turns,
         totalCostUsd: live?.totalCostUsd,
@@ -735,6 +779,7 @@ export function Chat({
   }, [stream.status, refresh, persist, refreshChats]);
 
   const selectChat = async (id: string): Promise<void> => {
+    setView({ kind: "chat" });
     setActiveId(id);
     setHistory(null);
     // A chat that *is* a live backend session rebuilds itself from that
@@ -754,11 +799,20 @@ export function Chat({
     }
   };
 
-  const createSession = async (): Promise<void> => {
+  const createSession = async (projectId?: string): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
       const session = await api.createSession(undefined, undefined, spend());
+      if (projectId) {
+        projectFor.current[session.id] = projectId;
+        try {
+          localStorage.setItem(PROJECT_FOR_KEY, JSON.stringify(projectFor.current));
+        } catch {
+          // Not kept past this tab; the first save still files it.
+        }
+      }
+      setView({ kind: "chat" });
       setSessions((current) => [...current, session]);
       setHistory(null);
       setActiveId(session.id);
@@ -1013,6 +1067,12 @@ export function Chat({
         title: chat.title,
         turns: chat.turns,
         totalCostUsd: chat.totalCostUsd,
+        kind: chat.kind,
+        projectId: chat.projectId,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
+        pinnedAt: chat.pinnedAt,
+        stored: true,
       });
     }
 
@@ -1032,6 +1092,14 @@ export function Chat({
         title: stored?.title ?? session.title ?? null,
         turns: session.turns,
         totalCostUsd: session.totalCostUsd,
+        // A live session no one has saved yet: a skill run still shows the
+        // slash command it began with.
+        kind: stored?.kind ?? session.kind ?? inferKind(session.title),
+        projectId: stored?.projectId ?? projectFor.current[session.id] ?? null,
+        createdAt: stored?.createdAt ?? session.createdAt,
+        updatedAt: stored?.updatedAt ?? session.createdAt,
+        pinnedAt: stored?.pinnedAt ?? null,
+        stored: stored !== undefined,
       });
     }
 
@@ -1079,15 +1147,98 @@ export function Chat({
 
   const composerDisabled = status === "closed" || status === "error";
 
+  /** Rename or file a stored conversation; the row changes first. */
+  const updateChat = async (
+    id: string,
+    change: { title?: string; projectId?: string | null; pinned?: boolean },
+  ): Promise<void> => {
+    const { pinned, ...rest } = change;
+    setChats((current) =>
+      current.map((chat) =>
+        chat.id === id
+          ? {
+              ...chat,
+              ...rest,
+              ...(pinned === undefined
+                ? {}
+                : { pinnedAt: pinned ? new Date().toISOString() : null }),
+            }
+          : chat,
+      ),
+    );
+    try {
+      await api.updateChat(id, change);
+    } catch (err) {
+      fail((err as Error).message);
+    }
+    void refreshChats();
+  };
+
+  const createProject = async (name: string): Promise<void> => {
+    try {
+      const project = await api.createProject(name);
+      setProjects((current) => [...current, project]);
+      setView({ kind: "project", id: project.id });
+    } catch (err) {
+      fail((err as Error).message);
+    }
+  };
+
+  const renameProject = async (id: string, name: string): Promise<void> => {
+    setProjects((current) =>
+      current.map((project) => (project.id === id ? { ...project, name } : project)),
+    );
+    try {
+      await api.renameProject(id, name);
+    } catch (err) {
+      fail((err as Error).message);
+      void refreshProjects();
+    }
+  };
+
+  const deleteProject = async (project: Project): Promise<void> => {
+    setDeletingProject(null);
+    setProjects((current) => current.filter((other) => other.id !== project.id));
+    setChats((current) =>
+      current.map((chat) =>
+        chat.projectId === project.id ? { ...chat, projectId: null } : chat,
+      ),
+    );
+    setView({ kind: "all" });
+    try {
+      await api.deleteProject(project.id);
+    } catch (err) {
+      fail((err as Error).message);
+    }
+    void refreshProjects();
+    void refreshChats();
+  };
+
+  const shownProject =
+    view.kind === "project"
+      ? (projects.find((project) => project.id === view.id) ?? null)
+      : null;
+  const rowActions = {
+    onRename: (id: string, title: string) => void updateChat(id, { title }),
+    onMove: (id: string, projectId: string | null) => void updateChat(id, { projectId }),
+    onPin: (id: string, pinned: boolean) => void updateChat(id, { pinned }),
+    onDelete: (item: RailItem) => setDeleting(item),
+  };
+
   return (
     <div className="chat">
       <SessionList
         items={railItems}
+        projects={projects}
         activeId={activeId}
+        view={view}
         busy={busy}
         onSelect={(id) => void selectChat(id)}
         onCreate={() => void createSession()}
-        onClose={(id) => void closeSession(id)}
+        onOpenAll={() => setView({ kind: "all" })}
+        onOpenProject={(id) => setView({ kind: "project", id })}
+        onCreateProject={(name) => void createProject(name)}
+        {...rowActions}
       />
 
       <main className="main">
@@ -1114,6 +1265,20 @@ export function Chat({
             collapses and the tail's flex-grow runs to zero on the same curve,
             which is what carries the composer from the middle of the screen to
             the bottom of it in one move. */}
+        {view.kind === "all" || shownProject ? (
+          <ChatBrowser
+            items={railItems}
+            projects={projects}
+            project={shownProject}
+            busy={busy}
+            onSelect={(id) => void selectChat(id)}
+            onCreate={() => void createSession(shownProject?.id)}
+            onRenameProject={(id, name) => void renameProject(id, name)}
+            onDeleteProject={setDeletingProject}
+            onDeleteMany={(picked) => picked.length > 0 && setDeletingMany(picked)}
+            {...rowActions}
+          />
+        ) : (
         <div className={`stage${hero ? " is-hero" : ""}`}>
           <div className="stage-body">
             {!hero && (
@@ -1185,7 +1350,55 @@ export function Chat({
 
           <div className="stage-tail" aria-hidden />
         </div>
+        )}
       </main>
+
+      {deleting && (
+        <ConfirmModal
+          kind={sessionsT.deleteKind}
+          heading={sessionsT.deleteHeading(deleting.title ?? sessionsT.newConversation)}
+          description={sessionsT.deleteBody}
+          confirmLabel={sessionsT.deleteConfirm}
+          confirmIcon="trash"
+          cancelLabel={sessionsT.cancel}
+          onConfirm={() => {
+            const id = deleting.id;
+            setDeleting(null);
+            void closeSession(id);
+          }}
+          onCancel={() => setDeleting(null)}
+        />
+      )}
+
+      {deletingMany && (
+        <ConfirmModal
+          kind={sessionsT.deleteKind}
+          heading={sessionsT.deleteManyHeading(deletingMany.length)}
+          description={sessionsT.deleteManyBody}
+          confirmLabel={sessionsT.deleteConfirm}
+          confirmIcon="trash"
+          cancelLabel={sessionsT.cancel}
+          onConfirm={() => {
+            const ids = deletingMany.map((item) => item.id);
+            setDeletingMany(null);
+            for (const id of ids) void closeSession(id);
+          }}
+          onCancel={() => setDeletingMany(null)}
+        />
+      )}
+
+      {deletingProject && (
+        <ConfirmModal
+          kind={sessionsT.deleteKind}
+          heading={sessionsT.deleteProjectHeading(deletingProject.name)}
+          description={sessionsT.deleteProjectBody}
+          confirmLabel={sessionsT.deleteConfirm}
+          confirmIcon="trash"
+          cancelLabel={sessionsT.cancel}
+          onConfirm={() => void deleteProject(deletingProject)}
+          onCancel={() => setDeletingProject(null)}
+        />
+      )}
 
       {approval && (
         <ApprovalModal

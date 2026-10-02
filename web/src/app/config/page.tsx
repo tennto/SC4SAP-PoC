@@ -28,12 +28,15 @@ export default async function ConfigurationPage() {
     <div className="page config">
       <header className="page-head rise">
         <div className="skill-head">
-          <span className="skill-icon">
-            <Icon name="sliders-horizontal" />
-          </span>
           <div>
             <p className="eyebrow">{t.eyebrow}</p>
-            <h1>{t.title}</h1>
+            {/* The skill's glyph beside its name, unboxed and grey — a boxed
+                tile pinned to the first of three lines sat off the title's
+                axis. */}
+            <h1 className="skill-title">
+              <Icon name="sliders-horizontal" className="skill-title-icon" />
+              {t.title}
+            </h1>
             <p className="page-lede">{t.lede}</p>
           </div>
         </div>

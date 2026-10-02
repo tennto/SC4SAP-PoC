@@ -1,24 +1,32 @@
 /**
- * Flat light theme: white surfaces, hairline borders, #383838 as the only
- * accent. Depth comes from borders and tints of the ink, never from shadow —
- * the claymorphism pass is gone.
+ * Cool-grey light theme: white surfaces on a faintly blue-grey ground, a rail
+ * one step darker than the page, and #2f3540 as the only accent. Depth comes
+ * from that step and from soft shadows on cards rather than from colour —
+ * chosen 2026-10-02 over three coloured directions as "today's tone, slightly
+ * varied": the flat #383838-on-white palette read like a printed A4 sheet.
  *
- * Every non-white value is either white, or #383838 at some opacity. Status is
- * carried by weight and fill rather than by hue, so the palette stays at one
- * colour: a working session is filled ink, an idle one is outlined, a dead one
- * is faded.
+ * Every non-white value is either a surface step, or #2f3540 at some opacity.
+ * Status is carried by weight and fill rather than by hue, so the palette
+ * stays at one colour: a working session is filled ink, an idle one is
+ * outlined, a dead one is faded.
  *
  * Typography and motion are borrowed from sc4sap.dev (see the tokens below);
  * its ivory-and-amber palette deliberately is not.
  */
 
 :root {
-  --bg: #f7f7f7;
+  --bg: #f5f6f8;
   --panel: #ffffff;
-  --panel-2: #f2f2f2;
-  --panel-3: #ebebeb;
+  --panel-2: #f0f2f5;
+  --panel-3: #e7eaee;
+  /* The app rail, one step under the page: the menu and the work are told
+     apart by ground, not by a line alone. */
+  --rail-bg: #eceef2;
+  /* A card lifted off the ground. Faint enough that a page of them still
+     reads as one surface, enough that a card is no longer only a hairline. */
+  --card-shadow: 0 1px 2px rgba(30, 36, 48, 0.04), 0 4px 14px rgba(30, 36, 48, 0.04);
 
-  --ink: #383838;
+  --ink: #2f3540;
   /* Text and glyphs sitting *on* filled ink — a primary button, the active nav
      icon, the reader's own speech chip.
 
@@ -35,32 +43,32 @@
   /* Hovering a filled control moves the fill one step *away* from the page,
      which is darker on a light ground and lighter on a dark one. Hardcoding
      the darker value made every primary button invert on hover in dark mode. */
-  --ink-hover: #2b2b2b;
+  --ink-hover: #232831;
   /* A pressed or hovered patch drawn on top of filled ink — same logic as
      `--on-ink`, at the weight of a tint rather than of text. */
   --on-ink-wash: rgba(255, 255, 255, 0.15);
   /* What a modal dims the app with. Grey at 35% reads as a veil over white
      and as nothing at all over near-black, so the dark theme takes black and
      more of it. */
-  --scrim: rgba(56, 56, 56, 0.35);
+  --scrim: rgba(47, 53, 64, 0.35);
   /* Shadow channels, as bare numbers for `rgba()`. A grey shadow is invisible
      on a dark ground; black is the only colour that reads as depth there. */
-  --shadow-rgb: 56, 56, 56;
+  --shadow-rgb: 30, 36, 48;
   /* The names are the dark theme's opacities; the light theme runs higher.
      At 0.55 and 0.38 these measured 3.0:1 and 2.0:1 on #f7f7f7 — hints,
      panel notes and the rail's group headings were barely there. 0.7 clears
      4.5:1 on every light surface, which is body-text contrast; 0.55 clears
      3:1, which is what a hint or a disabled label needs to be read at all.
      The dark theme already sat at 5.4:1 and 3.2:1 and is left alone. */
-  --ink-80: rgba(56, 56, 56, 0.8);
-  --ink-55: rgba(56, 56, 56, 0.7);
-  --ink-38: rgba(56, 56, 56, 0.55);
-  --line: rgba(56, 56, 56, 0.2);
-  --line-soft: rgba(56, 56, 56, 0.1);
+  --ink-80: rgba(47, 53, 64, 0.8);
+  --ink-55: rgba(47, 53, 64, 0.7);
+  --ink-38: rgba(47, 53, 64, 0.55);
+  --line: rgba(47, 53, 64, 0.2);
+  --line-soft: rgba(47, 53, 64, 0.1);
   /* The edge of something you type into. A hairline was enough for a card,
      whose inside is a different shade from the page; an input is white on a
      white panel, and at `--line` its box all but disappeared. */
-  --line-strong: rgba(56, 56, 56, 0.34);
+  --line-strong: rgba(47, 53, 64, 0.34);
 
   /* ---- Status ----
      The one deliberate exception to the single-ink palette above. Connection
@@ -137,6 +145,11 @@
      from collapsing on a small window, where 900 was already the whole of it;
      the ceiling is where a line stops being comfortable to track back from. */
   --measure: clamp(900px, 68vw, 1240px);
+  /* The prompt box, and the bar that labels it. Narrower than the reading
+     column: at the column's 1240px a one-line question sat in a box most of a
+     monitor wide, with the send button a long way from the words. About 70
+     characters of prompt per line, like the chat products people already use. */
+  --composer-measure: clamp(600px, 52vw, 860px);
 
   /* The agent's answers, and only those — a second face is what separates the
      long half of the transcript from the reader's own short turns. Noto Sans
@@ -164,8 +177,8 @@
    is the whole of it — no rule anywhere else names a colour, which is what
    makes this eleven lines instead of a second stylesheet.
 
-   The ink is not white. #ededed on a near-black ground is the same contrast
-   relationship #383838 has on white, where pure white would be brighter than
+   The ink is not white. #e6e9ee on a near-black ground is the same contrast
+   relationship #2f3540 has on white, where pure white would be brighter than
    the light theme ever gets and would bloom on a dark field.
 
    The status three are lifted, not reused: #15803d on #171717 is under 3:1 and
@@ -183,26 +196,28 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --bg: #121212;
-    --panel: #1a1a1a;
-    --panel-2: #232323;
-    --panel-3: #2c2c2c;
+    --bg: #111317;
+    --panel: #171a1f;
+    --panel-2: #1d2127;
+    --panel-3: #252a31;
+    --rail-bg: #0c0e11;
+    --card-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
 
-    --ink: #ededed;
+    --ink: #e6e9ee;
     /* The ground, not black: something on filled ink should read as a hole
        punched in it, showing the surface behind everything else. */
-    --on-ink: #121212;
-    --on-ink-soft: rgba(18, 18, 18, 0.72);
-    --ink-hover: #d8d8d8;
-    --on-ink-wash: rgba(18, 18, 18, 0.15);
+    --on-ink: #111317;
+    --on-ink-soft: rgba(17, 19, 23, 0.72);
+    --ink-hover: #cfd4db;
+    --on-ink-wash: rgba(17, 19, 23, 0.15);
     --scrim: rgba(0, 0, 0, 0.62);
     --shadow-rgb: 0, 0, 0;
-    --ink-80: rgba(237, 237, 237, 0.8);
-    --ink-55: rgba(237, 237, 237, 0.55);
-    --ink-38: rgba(237, 237, 237, 0.38);
-    --line: rgba(237, 237, 237, 0.16);
-    --line-soft: rgba(237, 237, 237, 0.09);
-    --line-strong: rgba(237, 237, 237, 0.28);
+    --ink-80: rgba(230, 233, 238, 0.8);
+    --ink-55: rgba(230, 233, 238, 0.55);
+    --ink-38: rgba(230, 233, 238, 0.38);
+    --line: rgba(230, 233, 238, 0.16);
+    --line-soft: rgba(230, 233, 238, 0.09);
+    --line-strong: rgba(230, 233, 238, 0.28);
 
     --ok: #4ade80;
     --excel: #5cc98a;
@@ -216,24 +231,26 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #121212;
-  --panel: #1a1a1a;
-  --panel-2: #232323;
-  --panel-3: #2c2c2c;
+  --bg: #111317;
+  --panel: #171a1f;
+  --panel-2: #1d2127;
+  --panel-3: #252a31;
+  --rail-bg: #0c0e11;
+  --card-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
 
-  --ink: #ededed;
-  --on-ink: #121212;
-  --on-ink-soft: rgba(18, 18, 18, 0.72);
-  --ink-hover: #d8d8d8;
-  --on-ink-wash: rgba(18, 18, 18, 0.15);
+  --ink: #e6e9ee;
+  --on-ink: #111317;
+  --on-ink-soft: rgba(17, 19, 23, 0.72);
+  --ink-hover: #cfd4db;
+  --on-ink-wash: rgba(17, 19, 23, 0.15);
   --scrim: rgba(0, 0, 0, 0.62);
   --shadow-rgb: 0, 0, 0;
-  --ink-80: rgba(237, 237, 237, 0.8);
-  --ink-55: rgba(237, 237, 237, 0.55);
-  --ink-38: rgba(237, 237, 237, 0.38);
-  --line: rgba(237, 237, 237, 0.16);
-  --line-soft: rgba(237, 237, 237, 0.09);
-  --line-strong: rgba(237, 237, 237, 0.28);
+  --ink-80: rgba(230, 233, 238, 0.8);
+  --ink-55: rgba(230, 233, 238, 0.55);
+  --ink-38: rgba(230, 233, 238, 0.38);
+  --line: rgba(230, 233, 238, 0.16);
+  --line-soft: rgba(230, 233, 238, 0.09);
+  --line-strong: rgba(230, 233, 238, 0.28);
 
   --ok: #4ade80;
   --excel: #5cc98a;
@@ -433,8 +450,8 @@ button.primary:hover:not(:disabled) {
 /* ---------- rail ---------- */
 
 .rail {
-  background: var(--panel);
-  border-right: 1px solid var(--line);
+  background: var(--rail-bg);
+  border-right: 1px solid var(--line-soft);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -449,8 +466,7 @@ button.primary:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 13px 12px;
-  border-bottom: 1px solid var(--line);
+  padding: 12px 10px 8px 10px;
 }
 
 .rail-toggle {
@@ -471,8 +487,8 @@ button.primary:hover:not(:disabled) {
 }
 
 .rail-toggle:hover:not(:disabled) {
-  background: var(--panel-2);
-  border-color: var(--line);
+  background: var(--panel-3);
+  border-color: transparent;
 }
 
 /* The wordmark doubles as the home link, the way a site logo does. */
@@ -484,16 +500,18 @@ button.primary:hover:not(:disabled) {
      the rail instead of being cropped. */
   min-width: 0;
   overflow: hidden;
-  padding: 4px 8px;
-  border-radius: 6px;
+  gap: 9px;
+  padding: 4px 6px;
+  border-radius: 8px;
   text-decoration: none;
   transition: background-color var(--t-base) var(--ease);
 }
 
+
 /* No opacity fade on hover: dimming a black wordmark reads as the image being
    low quality rather than as a hover state. A background tint instead. */
 .rail-brand:hover {
-  background: var(--panel-2);
+  background: var(--panel-3);
 }
 
 .rail-brand:focus-visible {
@@ -520,8 +538,9 @@ button.primary:hover:not(:disabled) {
 
 .rail-foot {
   padding: 8px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--line-soft);
 }
+
 
 /* ---------- account control ---------- */
 
@@ -791,20 +810,14 @@ button.primary:hover:not(:disabled) {
   overflow: hidden;
   /* 11px, up from 9: at 9px a Korean group name was a smudge, and the
      heading is what splits a dozen identical rows into groups. */
+  /* One small label, not a banner: the uppercase heading and the sentence
+     under it were the heaviest type in the rail, above the entries they were
+     only there to group. The sentence is the heading's tooltip now. */
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.01em;
   color: var(--ink-55);
-}
-
-.nav-heading-hint {
-  margin-top: 2px;
-  font-size: 10.5px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--ink-38);
+  cursor: default;
 }
 
 /* Holds the link and its star. The star is absolute inside it so it cannot
@@ -905,7 +918,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .nav-item:hover {
-  background: var(--panel-2);
+  background: var(--panel-3);
   color: var(--ink);
 }
 
@@ -914,9 +927,14 @@ button.primary:hover:not(:disabled) {
   outline-offset: -2px;
 }
 
+/* Where you are is a white pill lifted off the rail's ground — depth, not a
+   black block. */
 .nav-item.active {
-  background: var(--panel-2);
-  border-color: var(--line);
+  background: var(--panel);
+  border-color: transparent;
+  box-shadow:
+    0 1px 2px rgba(var(--shadow-rgb), 0.06),
+    0 0 0 1px rgba(var(--shadow-rgb), 0.04);
   color: var(--ink);
   font-weight: 600;
 }
@@ -927,13 +945,15 @@ button.primary:hover:not(:disabled) {
   flex: none;
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--panel);
-  color: var(--ink-80);
-  font-size: 15px;
+  width: 24px;
+  height: 24px;
+  /* No frame. Twenty bordered squares down the rail were most of what made
+     it look heavy; the glyph alone identifies the entry. */
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 16px;
   transition:
     background-color var(--t-base) var(--ease),
     border-color var(--t-base) var(--ease),
@@ -941,14 +961,27 @@ button.primary:hover:not(:disabled) {
 }
 
 .nav-item:hover .nav-icon {
-  border-color: var(--ink-38);
   color: var(--ink);
 }
 
 .nav-item.active .nav-icon {
+  color: var(--ink);
+}
+
+/* The folded rail's label for the icon under the pointer — see SkillNav. */
+.nav-tip {
+  position: fixed;
+  z-index: 70;
+  transform: translateY(-50%);
+  padding: 5px 9px;
+  border-radius: 7px;
   background: var(--ink);
-  border-color: var(--ink);
   color: var(--on-ink);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.18);
 }
 
 .nav-label {
@@ -976,8 +1009,7 @@ button.primary:hover:not(:disabled) {
    transition and only vanishes at the end, and on the way back it is
    displayed from the start of the active interval so the opacity has
    something to animate. */
-.rail-brand,
-.rail-foot,
+.rail-wordmark,
 .nav-heading,
 .nav-label,
 .nav-flag {
@@ -988,8 +1020,7 @@ button.primary:hover:not(:disabled) {
 }
 
 @starting-style {
-  .rail-brand,
-  .rail-foot,
+  .rail-wordmark,
   .nav-heading,
   .nav-label,
   .nav-flag {
@@ -997,8 +1028,7 @@ button.primary:hover:not(:disabled) {
   }
 }
 
-.shell[data-collapsed="true"] .rail-brand,
-.shell[data-collapsed="true"] .rail-foot,
+.shell[data-collapsed="true"] .rail-wordmark,
 .shell[data-collapsed="true"] .nav-heading,
 .shell[data-collapsed="true"] .nav-label,
 .shell[data-collapsed="true"] .nav-flag {
@@ -1028,15 +1058,53 @@ button.primary:hover:not(:disabled) {
   display: none;
 }
 
+/* Groups, folded: a short rule where the heading was. */
+.shell[data-collapsed="true"] .nav {
+  gap: 0;
+}
+
+.shell[data-collapsed="true"] .nav-group + .nav-group::before {
+  content: "";
+  display: block;
+  width: 24px;
+  height: 1px;
+  margin: 8px auto;
+  background: var(--line);
+}
+
+/* A starred skill keeps a dot on its icon, so the favourites are still
+   findable in a column of glyphs. */
+.shell[data-collapsed="true"] .nav-row:has(.nav-fav[data-on="true"]) .nav-item::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: 9px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-55);
+}
+
+.shell[data-collapsed="true"] .nav-item {
+  position: relative;
+}
+
 .shell[data-collapsed="true"] .rail-head {
   justify-content: center;
   padding-inline: 6px;
 }
 
-/* The wordmark is gone at this width, so the auto margin that pinned the
-   toggle opposite it would now pin it against nothing. */
+/* Folded, the head holds only the way back out, above Home where the menu
+   button has always been. The wordmark link has nothing left to show. */
+.shell[data-collapsed="true"] .rail-brand {
+  display: none;
+}
+
 .shell[data-collapsed="true"] .rail-toggle {
   margin-left: 0;
+  width: 34px;
+  height: 30px;
+  border-radius: 8px;
 }
 
 /* Both exist only for the narrow-screen drawer; the media query below is the
@@ -1056,7 +1124,12 @@ button.primary:hover:not(:disabled) {
   grid-template-columns: 244px 1fr;
 }
 
-.session-rail {
+/* ---------- the chat screen's rail ----------
+   Laid out the way the chat products people already use lay theirs out: a
+   New chat button, Projects, then Recents as plain one-line rows. A row is a
+   name to recognise, so it carries no border and no figures — selection and
+   hover are a tint, and the ⋯ menu only appears under the pointer. */
+.chat-rail {
   background: var(--panel);
   border-right: 1px solid var(--line);
   display: flex;
@@ -1064,80 +1137,917 @@ button.primary:hover:not(:disabled) {
   min-height: 0;
 }
 
-.session-rail-head {
-  padding: 14px 12px 14px 16px;
-  border-bottom: 1px solid var(--line);
+.chat-rail-top {
+  padding: 12px 10px 8px;
+}
+
+.rail-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.rail-new .ph {
+  font-size: 16px;
+  color: var(--ink-55);
+}
+
+.rail-new:hover:not(:disabled) {
+  background: var(--panel-2);
+  border-color: var(--line-strong);
+}
+
+.chat-rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  padding: 4px 8px 16px;
+}
+
+.rail-section + .rail-section {
+  margin-top: 14px;
+}
+
+.rail-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 6px;
+  padding: 6px 6px 4px;
 }
 
-/* The square `+` sits on the heading's own line: a full-width button under it
-   was the widest thing in the rail, for the action taken least often. */
-.session-add {
+.rail-section-head h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-55);
+}
+
+.rail-section-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Small square controls on a section's heading line: add, filter. Quiet until
+   pointed at, so the headings read as labels and not as toolbars. */
+.rail-icon-button {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--panel);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-38);
+  font-size: 14px;
+}
+
+.rail-icon-button:hover:not(:disabled),
+.rail-icon-button.is-open {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+.rail-icon-button.is-danger:hover:not(:disabled) {
+  color: var(--bad);
+}
+
+.rail-link {
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--ink-55);
-  /* The glyph, not the button. The frame stays a comfortable target while the
-     mark inside it goes back to being a mark — a `+` filling its box reads as
-     a control shouting rather than one waiting. */
   font-size: 11px;
 }
 
-.session-add:hover:not(:disabled) {
-  border-color: var(--ink);
+.rail-link:hover,
+.rail-link.is-active {
+  background: var(--panel-3);
   color: var(--ink);
-  background: var(--panel-2);
 }
 
-/* Smaller than a heading of its own, because it is a label on a list rather
-   than a title for a screen — the conversations under it are what the eye
-   should land on. The icon carries the weight the type gave up. */
-.session-rail-head h2 {
+.rail-project-input {
+  width: 100%;
+  margin: 2px 0 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.rail-group + .rail-group {
+  margin-top: 8px;
+}
+
+.rail-group-label {
+  margin: 6px 6px 2px;
+  font-size: 10.5px;
+  color: var(--ink-38);
+}
+
+.rail-empty {
+  margin: 6px;
+  font-size: 12px;
+  color: var(--ink-38);
+}
+
+/* One line, always: a row that grows to fit a long question makes the list
+   jump under the pointer. */
+.rail-row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin: 0;
-  font-size: 10px;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-  color: var(--ink-55);
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 4px 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-80);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
 }
 
-/* A step larger than the letters beside it: at the label's own size the glyph
-   read as a smudge, and uppercase tracking already makes the word wide enough
-   to carry itself. */
-.session-rail-head h2 .ph {
+.rail-row:hover,
+.rail-row:focus-visible,
+.rail-row:has(.row-more.is-open) {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.rail-row.is-active {
+  background: var(--panel-3);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.rail-row > .ph {
+  flex: none;
   font-size: 14px;
   color: var(--ink-38);
 }
 
-.session-list {
+.rail-project {
+  padding-right: 8px;
+}
+
+/* A project's fold: the folder icon, swapped for a caret while the row is
+   pointed at, the way file trees show that a folder opens. */
+.rail-fold {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-left: -2px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-38);
+}
+
+.rail-fold .ph {
+  grid-area: 1 / 1;
+  font-size: 14px;
+  transition:
+    opacity var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.rail-fold-caret {
+  opacity: 0;
+  font-size: 11px !important;
+}
+
+.rail-fold.is-open .rail-fold-caret {
+  transform: rotate(90deg);
+}
+
+.rail-project:hover .rail-fold-folder,
+.rail-fold:focus-visible .rail-fold-folder {
+  opacity: 0;
+}
+
+.rail-project:hover .rail-fold-caret,
+.rail-fold:focus-visible .rail-fold-caret {
+  opacity: 1;
+}
+
+.rail-fold:hover {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+.rail-count {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  color: var(--ink-55);
+  font-size: 10.5px;
+  line-height: 17px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The project's conversations, indented under it, opening and shutting by
+   height like Pinned. */
+.rail-children {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--t-base) var(--ease);
+}
+
+.rail-children.is-open {
+  grid-template-rows: 1fr;
+}
+
+.rail-children-inner {
+  min-height: 0;
+  overflow: hidden;
+  margin-left: 15px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-children {
+    transition: none;
+  }
+}
+
+.row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* The row's ⋯: there for whoever is pointing at the row, hidden from whoever
+   is reading the list. Always there for a keyboard, and while its menu is
+   open. */
+.row-more {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 15px;
+  opacity: 0;
+}
+
+.rail-row:hover .row-more,
+.browser-row:hover .row-more,
+.row-more:focus-visible,
+.row-more.is-open {
+  opacity: 1;
+}
+
+.row-more:hover,
+.row-more.is-open {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+@media (hover: none) {
+  .row-more {
+    opacity: 1;
+  }
+}
+
+/* ---------- dragging a conversation ----------
+   While one is in the air, every place it can land is outlined and the one
+   under the pointer fills — the way the chat products people use show a drop.
+   A place it would not change (a pinned chat over Pinned) stays plain. */
+.chat-rail [data-drop] {
+  transition:
+    background-color var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
+}
+
+.chat-rail [data-drop="ready"] {
+  box-shadow: inset 0 0 0 1px var(--line);
+  border-radius: 8px;
+}
+
+.chat-rail [data-drop="over"] {
+  background: var(--panel-3);
+  box-shadow: inset 0 0 0 1.5px var(--ink-55);
+  border-radius: 8px;
+}
+
+.rail-drop-section {
+  padding-bottom: 2px;
+}
+
+.rail-drop-section[data-drop] {
+  margin-inline: -4px;
+  padding-inline: 4px;
+}
+
+/* Pinned opens and closes by height and opacity together. A grid row going
+   from 0fr to 1fr animates to the content's own height, which `height: auto`
+   cannot. Closed, it takes no room and none of the gap above it either.
+   Scoped to the rail so it outranks the drop-target transition above, which
+   would otherwise replace this list the moment a drag lights the section. */
+.chat-rail .rail-pinned {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--t-base) var(--ease),
+    opacity var(--t-base) var(--ease),
+    margin-top var(--t-base) var(--ease),
+    background-color var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
+}
+
+.chat-rail .rail-section + .rail-pinned:not(.is-open) {
+  margin-top: 0;
+}
+
+.chat-rail .rail-pinned.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.rail-pinned-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-rail .rail-pinned {
+    transition: none;
+  }
+}
+
+.rail-drop-hint {
+  margin: 2px 6px 6px;
+  padding: 10px 8px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: var(--ink-38);
+  text-align: center;
+}
+
+.rail-row.is-dragging {
+  opacity: 0.45;
+}
+
+/* The card the pointer carries: the conversation's icon and title. Fixed at
+   the origin and moved by transform, so following the pointer costs no
+   layout. */
+.rail-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  /* The row's own geometry, so the card is the row lifted off the list. */
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 10px 26px rgba(var(--shadow-rgb), 0.2);
+}
+
+.rail-drag-ghost .ph {
+  flex: none;
+  font-size: 14px;
+  color: var(--ink-55);
+}
+
+.rail-drag-ghost span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* While a conversation is carried nothing else on the page is selected or
+   hovered into, and the pointer says what is happening. */
+body.is-dragging-chat {
+  user-select: none;
+  cursor: grabbing;
+}
+
+body.is-dragging-chat * {
+  cursor: grabbing !important;
+}
+
+.browser-row-pin {
+  display: inline-flex;
+  color: var(--ink-55);
+}
+
+/* ---------- the rail's popovers ---------- */
+.list-menu-anchor {
+  position: relative;
+  flex: none;
+}
+
+/* Placed by `FloatingMenu` in fixed coordinates, over everything. */
+.list-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 10px 28px rgba(var(--shadow-rgb), 0.16);
+  animation: list-menu-in var(--t-fast) var(--ease) both;
+}
+
+@keyframes list-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* A second panel hung off the right edge of the first, level with the entry
+   that opened it. Absolute inside the fixed menu, so it moves with it. */
+.list-menu .list-submenu {
+  position: absolute;
+  left: calc(100% + 4px);
+  min-width: 150px;
+}
+
+.list-menu-value {
+  flex: none !important;
+  margin-left: auto;
+  color: var(--ink-38);
+  font-size: 11.5px;
+}
+
+.list-menu-value + .list-menu-trail {
+  margin-left: 2px;
+}
+
+.list-menu-item.is-open {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.list-menu-label {
+  margin: 6px 8px 3px;
+  font-size: 10.5px;
+  color: var(--ink-38);
+}
+
+.list-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-80);
+  font-size: 12.5px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.list-menu-item span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-menu-item .ph {
+  font-size: 14px;
+  color: var(--ink-55);
+}
+
+.list-menu-item:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.list-menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.list-menu-item.is-on {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.list-menu-item.is-danger,
+.list-menu-item.is-danger .ph {
+  color: var(--bad);
+}
+
+.list-menu-trail {
+  margin-left: auto;
+}
+
+.list-menu-back {
+  color: var(--ink-55);
+}
+
+.list-menu-rule {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--line-soft);
+}
+
+/* ---------- View all, and a project's page ---------- */
+.browser {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  /* Explicit, not inherited. `overflow-y: auto` makes the other axis compute
-     to `auto` as well, so the exit animation's sideways nudge counted as
-     overflow — a horizontal scrollbar appeared, and the height it took brought
-     a vertical one with it on a list of two rows. */
-  overflow-x: hidden;
-  /* The gutter is always there, whether or not a bar is in it.
-  
-     Adding or closing a row briefly overshoots the height it settles at — the
-     arriving row opens its gap and the leaving one has not closed its own yet
-     — so a list nowhere near full flashed a scrollbar for a few frames, and
-     every row in the column stepped sideways as it came and went. Reserving
-     the space costs the width of a thin bar and takes the movement out. */
-  scrollbar-gutter: stable;
-  padding: 10px;
+  width: min(820px, 100%);
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+}
+
+.browser-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 34px;
+  margin-bottom: 24px;
+}
+
+.browser-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.browser-title .ph {
+  font-size: 22px;
+  color: var(--ink-55);
+}
+
+/* The same weight and tracking as every other page title — at 500 it was
+   the one title in the app set lighter than the rest. */
+.browser-title h1 {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.browser-rename {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.browser-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* The same quiet button as the rail's New chat: white, a hairline, the
+   glyph in grey. A filled black block was the heaviest thing on the page for
+   the action taken least often there. */
+.browser-new {
+  /* A step apart from the rename and delete icons, so the project's own
+     controls and the action for a new chat read as two groups. */
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.browser-new .ph {
+  font-size: 15px;
+  color: var(--ink-55);
+}
+
+.browser-new:hover:not(:disabled) {
+  background: var(--panel-2);
+  border-color: var(--line-strong);
+}
+
+.browser-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.browser-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.browser-search:focus-within {
+  border-color: var(--ink-55);
+}
+
+.browser-search .ph {
+  color: var(--ink-38);
+}
+
+.browser-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+/* The line above the list: the count and Select, or — while selecting — the
+   tick-all box and the actions. One fixed height either way. */
+.browser-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 34px;
+  margin: 16px 0 4px;
+  padding: 0 2px 0 4px;
+  border-radius: 8px;
+}
+
+.browser-bar.is-selecting {
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--line-soft);
+  padding: 0 6px 0 10px;
+}
+
+.browser-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.browser-bar-actions button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.browser-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--ink-80);
+  cursor: pointer;
+}
+
+.browser-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--ink);
+}
+
+.browser-select {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 12px;
+}
+
+.browser-select:hover:not(:disabled) {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+.browser-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+  font-weight: 600;
+}
+
+.browser-delete:hover:not(:disabled) {
+  filter: brightness(1.08);
+  border-color: var(--bad);
+}
+
+.browser-count {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-55);
+}
+
+.browser-empty {
+  margin: 28px 2px;
+  font-size: 13px;
+  color: var(--ink-55);
+}
+
+.browser-group-label {
+  margin: 18px 2px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-38);
+}
+
+.browser-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 8px 11px 12px;
+  border-top: 1px solid var(--line-soft);
+  cursor: pointer;
+}
+
+.browser-row:hover,
+.browser-row:focus-visible,
+.browser-row:has(.row-more.is-open) {
+  background: var(--panel-2);
+  border-radius: 8px;
+}
+
+.browser-row > .row-kind {
+  flex: none;
+  font-size: 16px;
+  color: var(--ink-38);
+}
+
+/* The tick box shares the kind icon's place: hidden until the row is pointed
+   at, then shown in its stead; always shown while selecting. */
+.browser-tick {
+  flex: none;
+  display: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--ink-38);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--on-ink);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.browser-tick.is-on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.browser-tick.is-off {
+  visibility: hidden;
+}
+
+.browser-row:hover .browser-tick,
+.browser-row.is-selecting .browser-tick {
+  display: grid;
+}
+
+.browser-row:hover > .row-kind,
+.browser-row.is-selecting > .row-kind {
+  display: none;
+}
+
+.browser-row.is-picked {
+  background: var(--panel-2);
+  border-radius: 8px;
+}
+
+/* The text around the search hit, under the row's figures. */
+.browser-row-snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-55);
+}
+
+.browser-row-text {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
+}
+
+.browser-row .row-title {
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.browser-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 11.5px;
+  color: var(--ink-38);
+  font-variant-numeric: tabular-nums;
+}
+
+.browser-row-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kind-chip {
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--ink-55);
+}
+
+.kind-chip.is-task {
+  border-color: var(--line-strong);
+  color: var(--ink-80);
+}
+
+@media (max-width: 900px) {
+  .browser {
+    padding: 24px 16px 48px;
+  }
+
+  .browser-head {
+    flex-wrap: wrap;
+  }
 }
 
 /* Hand-drawn scrollbars — see `DragScrollBar.tsx` for why the platform's own
@@ -1146,102 +2056,6 @@ button.primary:hover:not(:disabled) {
    narrow-screen block turns them on and gives them their shape. */
 .drag-scrollbar {
   display: none;
-}
-
-.session-item {
-  position: relative;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: stretch;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--panel);
-  animation: session-in var(--t-slow) var(--ease) both;
-}
-
-/* Held in the DOM by `SessionList` for exactly this long after it leaves the
-   props, so closing a session is a row collapsing rather than a row that was
-   there and then was not. */
-.session-item.leaving {
-  animation: session-out 420ms var(--ease) both;
-  pointer-events: none;
-}
-
-@keyframes session-in {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-    /* Opens the gap as the row arrives, so the rows below it slide down
-       instead of being shoved. */
-    margin-bottom: -46px;
-  }
-}
-
-@keyframes session-out {
-  to {
-    opacity: 0;
-    transform: translateX(14px);
-    /* Closes the gap the row leaves behind, so the rows under it settle up
-       instead of jumping. */
-    margin-bottom: -46px;
-  }
-}
-
-/* Selection is the border alone — no fill. A tinted row read as disabled next
-   to the white ones, which is the opposite of what being selected means. */
-.session-item.active {
-  border-color: var(--ink);
-}
-
-.session-open {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 2px;
-  min-width: 0;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  padding: 8px 10px;
-}
-
-/* One line, always: the prompt is already clipped to ~60 characters on the
-   server, and a row that grows to fit a long question makes the list jump. */
-.session-title {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* One clipped line of someone's own prompt, in a 244px column — it is there
-     to be recognised, not read, and the smaller it is the more of it fits
-     before the ellipsis. */
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--ink);
-}
-
-.session-meta {
-  color: var(--ink-38);
-  font-size: 10px;
-  line-height: 1.35;
-}
-
-.session-close {
-  background: transparent;
-  border: 0;
-  border-left: 1px solid var(--line);
-  border-radius: 0;
-  color: var(--ink-38);
-  font-size: 15px;
-  line-height: 1;
-  padding: 0 9px;
-}
-
-.session-close:hover:not(:disabled) {
-  color: var(--ink);
-  background: var(--panel-3);
 }
 
 /* ---------- main ---------- */
@@ -1347,7 +2161,10 @@ button.primary:hover:not(:disabled) {
 
 .stage-greeting h1 {
   margin: 0;
-  font-family: var(--font-display);
+  /* Pretendard, not the display face: the greeting is the chat screen's one
+     line of type, and it should read in the same hand as the conversation
+     under it rather than as a headline. */
+  font-family: var(--font-sans);
   /* Smaller than it was. At 34px it was the largest type in the app by a wide
      margin, which made an empty screen shout — and the line under it, the
      composer, is where the reader is actually going. */
@@ -1359,7 +2176,7 @@ button.primary:hover:not(:disabled) {
 }
 
 .stage-composer {
-  width: min(var(--measure), 100%);
+  width: min(var(--composer-measure), 100%);
   margin: 0 auto;
   padding: 0 20px;
 }
@@ -1374,7 +2191,7 @@ button.primary:hover:not(:disabled) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  width: min(var(--measure), 100%);
+  width: min(var(--composer-measure), 100%);
   margin: 0 auto 8px;
   padding: 7px 14px;
   border: 1px solid var(--line);
@@ -1400,7 +2217,7 @@ button.primary:hover:not(:disabled) {
    reply in sit on the same two edges. */
 .stage-body .transcript {
   flex: 1 1 0;
-  width: min(var(--measure), 100%);
+  width: min(var(--composer-measure), 100%);
   margin: 0 auto;
   /* The first turn starts well below the top edge: with no header band above
      it, a prompt pinned to the top of the viewport read as cut off. */
@@ -1496,6 +2313,11 @@ button.primary:hover:not(:disabled) {
 
 .transcript {
   overflow-y: auto;
+  /* Scrolls without a visible bar, the way the chat products people use do:
+     the bar at the right edge of the conversation was the one piece of
+     chrome in a column that is otherwise only text. Wheel, touch and keys
+     still scroll it. */
+  scrollbar-width: none;
   /* Explicit, not inherited. `overflow-y: auto` computes the other axis to
      `auto` as well, so anything that did get through the rules above would put
      a horizontal scrollbar under the whole conversation rather than inside the
@@ -2371,6 +3193,18 @@ button.primary:hover:not(:disabled) {
   border-color: var(--ink-38);
 }
 
+/* Docked under a conversation, the box is a tool at the foot of the page
+   rather than the centre of an empty one: less air above and below it, and
+   closer to the bottom edge. The greeting's composer keeps its size. */
+.stage:not(.is-hero) .composer {
+  gap: 2px;
+  margin: 8px 0 18px;
+  padding: 8px 10px 7px;
+}
+
+
+
+
 .composer textarea {
   font: inherit;
   color: var(--ink);
@@ -2391,11 +3225,13 @@ button.primary:hover:not(:disabled) {
   outline: none;
 }
 
+/* The model sits beside the + on the left and Send stands alone on the
+   right, in the greeting's composer and the docked one alike. */
 .composer-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 4px;
 }
 
 /* A label, not a picker. The model is `SC4SAP_MODEL` on the server, so there
@@ -2541,6 +3377,16 @@ button.primary:hover:not(:disabled) {
 .drop-veil-hint {
   font-size: 12.5px;
   color: var(--ink-55);
+}
+
+/* A wrapper in the markup only: its children join the foot row, so the
+   model follows the + and Send is pushed to the far end. */
+.composer-right {
+  display: contents;
+}
+
+.composer-send {
+  margin-left: auto;
 }
 
 .composer-tools {
@@ -2998,9 +3844,22 @@ button.primary:hover:not(:disabled) {
   gap: 10px;
 }
 
-.modal-actions button {
-  padding: 9px 20px;
+/* Every dialog's answer buttons, at one size: the same height, padding and
+   type whichever dialog they sit in, so Cancel in one and Run in another are
+   the same object. Smaller than a page button — a dialog is already the
+   thing being looked at, and its buttons do not need to call out to it. */
+.modal-actions :is(button, a.ghost) {
+  justify-content: center;
+  min-width: 76px;
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12.5px;
   font-weight: 600;
+  line-height: 1;
+}
+
+.modal-actions :is(button, a.ghost) .ph {
+  font-size: 14px;
 }
 
 .modal-note {
@@ -3358,11 +4217,6 @@ button.primary:hover:not(:disabled) {
   margin-top: 4px;
   padding-top: 18px;
   border-top: 1px solid var(--line-soft);
-}
-
-.survey-actions button {
-  padding: 6px 14px;
-  font-size: 12.5px;
 }
 
 @media (max-width: 560px) {
@@ -3997,16 +4851,35 @@ button.primary:hover:not(:disabled) {
   gap: 14px;
 }
 
-.skill-icon {
+.command-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-55);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.skill .eyebrow {
+  margin-bottom: 12px;
+}
+
+.skill-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.skill-title-icon {
   flex: none;
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  background: var(--ink);
-  color: var(--on-ink);
-  font-size: 21px;
+  font-size: 20px;
+  color: var(--ink-55);
 }
 
 /* ---------- skill screen ----------
@@ -4015,13 +4888,6 @@ button.primary:hover:not(:disabled) {
    labels end up shouting over the values they belong to. Everything here is a
    step down, scoped to this screen so the settings form — which is rows of
    text rather than a form to fill in — is not dragged with it. */
-
-.skill .skill-icon {
-  width: 34px;
-  height: 34px;
-  border-radius: 9px;
-  font-size: 17px;
-}
 
 .skill .page-head h1 {
   font-size: 19px;
@@ -4242,6 +5108,28 @@ button.primary:hover:not(:disabled) {
   border-top: 1px solid var(--line);
   font-size: 12px;
   color: var(--ink-55);
+}
+
+/* What a settled run took — time and cost — on the result panel's last line.
+   A footnote to the work, so it sits at hint weight and right-aligned, out of
+   the reading line of the report above it. */
+.skill-run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px 18px;
+  margin: 18px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+  color: var(--ink-55);
+  font-variant-numeric: tabular-nums;
+}
+
+.skill-run-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* ---------- a run's files (Program → Spec) ---------- */
@@ -4526,8 +5414,11 @@ button.primary:hover:not(:disabled) {
 .panel {
   padding: 22px;
   background: var(--panel);
-  border: 1px solid var(--line);
+  /* A lighter edge and a faint lift: cards outlined in the full hairline,
+     page after page, were what read as a printed form. */
+  border: 1px solid var(--line-soft);
   border-radius: 12px;
+  box-shadow: var(--card-shadow);
 }
 
 /* ---------- legal prose ----------
@@ -5306,9 +6197,9 @@ button.link-button:disabled {
   .fav-card,
   .msg-in,
   .dots-row,
-  .session-item,
   .account-menu,
   .account-submenu,
+  .list-menu,
   .modal-backdrop,
   .modal,
   .setup,
@@ -5431,77 +6322,13 @@ button.link-button:disabled {
     grid-template-rows: auto 1fr;
   }
 
-  .session-rail {
+  /* Above the conversation rather than beside it, and short: the list scrolls
+     inside its own box so the transcript keeps the screen. */
+  .chat-rail {
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    /* Height from one row of cards, not from a cap. The cap squeezed the list
-       to 24px against 52px of card, so the strip was clipped top and bottom
-       and the vertical overflow it created then competed with the sideways
-       swipe this strip exists for. */
-    max-height: none;
-    /* A grid item will not shrink below its content unless told to, which is
-       how the strip ended up wider than the screen — and a scroll container
-       wider than the viewport cannot be scrolled, only overflowed. */
+    max-height: 38vh;
     min-width: 0;
-  }
-
-  .session-list {
-    flex-direction: row;
-    /*
-     * One axis, on purpose.
-     *
-     * The column layout sets `overflow-y: auto`, and leaving it on here meant
-     * the strip scrolled both ways at once. A browser has to decide which axis
-     * a drag belongs to, and on a strip barely taller than one card a mostly
-     * sideways swipe kept being read as a vertical one — so the second
-     * conversation was visible at the edge and could not be reached.
-     */
-    overflow-x: auto;
-    overflow-y: hidden;
-    /* Reserved for a vertical bar that no longer exists here, and it was
-       taking height from a strip that has little to spare. */
-    scrollbar-gutter: auto;
-    /* Keep the swipe in the strip. Past the last card it would otherwise be
-       handed to the browser, which reads a rightward drag at the edge as
-       "go back" — losing the page instead of showing a conversation. */
-    overscroll-behavior-x: contain;
-    /* Cards come to rest aligned rather than half-cut, so what stops under the
-       thumb is a whole title and not the middle of one. `proximity` rather
-       than `mandatory`: a flick across four conversations should be able to
-       overshoot to the end instead of being caught by every card on the way. */
-    scroll-snap-type: x proximity;
-    min-width: 0;
-    /* Named so the fade below can follow this element's scroll position from
-       outside it. Ignored where scroll-driven animation is not supported. */
-    scroll-timeline: --sessions inline;
-  }
-
-  /*
-   * The strip scrolls, and on a touch screen nothing says so.
-   *
-   * Overlay scrollbars are invisible at rest, so the only hint was a card
-   * clipped at the edge — which reads as "clipped", not as "there is more".
-   * This is the standard answer: the strip fades out where it continues, which
-   * is a cue people already know how to read.
-   *
-   * Drawn on the rail rather than on the scroller, because a pseudo-element
-   * inside a scroll container scrolls away with the content.
-   */
-  .session-rail {
-    position: relative;
-  }
-
-  .session-rail::after {
-    content: "";
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    /* Clears the heading, so the fade sits over the cards and not over the
-       word SESSIONS. */
-    top: 56px;
-    width: 44px;
-    pointer-events: none;
-    background: linear-gradient(to left, var(--panel), transparent);
   }
 
   /*
@@ -5564,7 +6391,6 @@ button.link-button:disabled {
 
   /* Snapping fights a scrub — the strip would tug back to a card on every
      frame of the drag. It comes back the moment the bar is let go. */
-  .session-rail:has(.drag-scrollbar.dragging) .session-list,
   .markdown-code:has(.drag-scrollbar.dragging) .markdown-code-scroll {
     scroll-snap-type: none;
     scroll-behavior: auto;
@@ -5577,32 +6403,6 @@ button.link-button:disabled {
     margin: 0 14px 8px;
   }
 
-  /* The list already has its own bottom padding; the bar takes the place of
-     the gap rather than adding to it. */
-  .session-list {
-    padding-bottom: 4px;
-  }
-
-  /* Where the browser can follow a scroller's position, the cue goes away once
-     there is nothing more to reach — a fade that never leaves is just a
-     gradient, and stops being information. */
-  @supports (animation-timeline: scroll()) {
-    .session-rail {
-      timeline-scope: --sessions;
-    }
-
-    .session-rail::after {
-      animation: session-edge-fade linear both;
-      animation-timeline: --sessions;
-      animation-range: calc(100% - 44px) 100%;
-    }
-  }
-
-  .session-item {
-    flex: none;
-    min-width: 190px;
-    scroll-snap-align: start;
-  }
 
   .page {
     padding: 22px 18px 72px;
@@ -5613,21 +6413,10 @@ button.link-button:disabled {
   }
 }
 
-/* Runs over the last stretch of the session strip's scroll, so the edge cue is
-   at full strength while there is more to reach and gone once there is not. */
-@keyframes session-edge-fade {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
 
 /* ---------- scrollbars ---------- */
 
-.session-list,
-.transcript,
+.chat-rail-scroll,
 .nav,
 .page {
   scrollbar-width: thin;
@@ -8513,13 +9302,6 @@ button.mon-switch.is-on {
   font-size: 14px;
 }
 
-/* A step down from the app's usual modal buttons: this dialog is read, not
-   answered, and Close should not weigh as much as a Confirm. */
-.modal.toolcall .modal-actions button {
-  padding: 7px 14px;
-  font-size: 12.5px;
-}
-
 .toolcall-note {
   margin: 0;
   font-size: 11.5px;
@@ -9467,4 +10249,8 @@ button.mon-switch.is-on {
   .cfg-main {
     padding: 18px 16px 40px;
   }
+}
+
+.transcript::-webkit-scrollbar {
+  display: none;
 }

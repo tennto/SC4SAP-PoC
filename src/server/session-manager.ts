@@ -156,14 +156,17 @@ const COLLECT_NUDGE_GRACE_MS = 5_000;
  * Sub-agents are told by `withPluginRoot`; the main thread was not, and a
  * measured Program → Spec run (2026-09-28) spent its first minute running
  * `find` across the repository for the plugin's spec scripts and `where` for
- * a browser. The scripts find the browser themselves.
+ * a browser. The scripts find the browser themselves. The `common/` line is
+ * from 2026-10-02: a Standard run read `../../common/...` as
+ * `skills/common/...`, failed twice and globbed the plugin for the files.
  */
 function pluginRootLine(pluginPath: string): string {
   const root = pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
   return (
     `The sc4sap plugin is at ${root}: its scripts are under ${root}/scripts ` +
-    `(run them as \`node ${root}/scripts/...\`) and its skill files under ` +
-    `${root}/skills. Do not search the disk for the plugin, its scripts or a ` +
+    `(run them as \`node ${root}/scripts/...\`), its skill files under ` +
+    `${root}/skills and the shared rule files a skill links as ` +
+    `\`../../common/...\` under ${root}/common. Do not search the disk for the plugin, its scripts or a ` +
     "browser — the scripts locate the browser themselves.\n\n"
   );
 }
@@ -559,6 +562,12 @@ export type SessionRecord = {
    * `economy`. See `dispatchFor`.
    */
   subagentModel: SubagentModel | null;
+  /**
+   * Opened by the chat screen, or by a skill's page. The chat screen's list
+   * files a skill's session under Tasks from the moment it exists, before
+   * the web app has saved anything about it.
+   */
+  kind: "chat" | "task";
 };
 
 type Subscriber = (event: SequencedEvent) => void;
@@ -985,6 +994,8 @@ export class SessionManager {
       resume?: string;
       priorTurns?: number;
       priorCostUsd?: number;
+      /** Not part of the shape: a warm session can be either. */
+      kind?: "chat" | "task";
     } = {},
   ): SessionRecord {
     const key = options.resume ? null : this.#shapeKey(options);
@@ -1009,6 +1020,7 @@ export class SessionManager {
     live.record.turns = priorTurns;
     live.priorCostUsd = priorCostUsd;
     live.record.totalCostUsd = priorCostUsd;
+    live.record.kind = options.kind === "task" ? "task" : "chat";
 
     this.#sessions.set(live.record.id, live);
     return { ...live.record };
@@ -1386,6 +1398,7 @@ export class SessionManager {
         subagentModel,
         model: options.model ?? this.#config.model,
         approval: options.approval ?? "all",
+        kind: "chat",
       },
       ...(options.reviewRules ? { rulesPending: true } : {}),
       pump,

@@ -84,21 +84,23 @@ export default async function SkillPage({
     <div className="page skill">
       <header className="page-head rise">
         <div className="skill-head">
-          <span className="skill-icon">
-            <Icon name={skill.icon} />
-          </span>
           <div>
+            {/* The slash command as a label, not a line of small print: it is
+                the skill's name in the plugin, and the thing to type in chat. */}
             <p className="eyebrow">
-              <code>{skill.command}</code>
+              <code className="command-chip">{skill.command}</code>
             </p>
-            <h1>{shown.title}</h1>
+            {/* The skill's glyph beside its name, unboxed and grey — a boxed
+                tile pinned to the first of three lines sat off the title's
+                axis. */}
+            <h1 className="skill-title">
+              <Icon name={skill.icon} className="skill-title-icon" />
+              {shown.title}
+            </h1>
             <p className="page-lede">{shown.summary}</p>
           </div>
         </div>
 
-        <span className={`badge ${skill.status === "ready" ? "idle" : "closed"}`}>
-          {skill.status === "ready" ? t.runnable : t.notInPoc}
-        </span>
       </header>
 
       {showsNotice && (

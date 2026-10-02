@@ -9,6 +9,7 @@
  * That is the whole reason each entry carries a Phosphor name in the catalog:
  * at 62px the glyph is the entry.
  */
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SKILLS_BY_GROUP } from "@/lib/skills";
@@ -55,6 +56,18 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
   const t = messages.nav;
   /** Every dictionary key in `nav` is a string; the typed indexer says so. */
   const word = (key: NavKey): string => t[key] as string;
+  /**
+   * The folded rail's label, shown beside the icon under the pointer. Drawn
+   * here in fixed coordinates rather than as a pseudo-element: the nav is a
+   * scroll box, and anything sticking out of a 62px scroll box is clipped.
+   */
+  const [tip, setTip] = useState<{ label: string; top: number; left: number } | null>(null);
+  const showTip = (label: string) => (event: React.MouseEvent | React.FocusEvent) => {
+    if (!collapsed) return;
+    const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    setTip({ label, top: box.top + box.height / 2, left: box.right + 8 });
+  };
+  const hideTip = (): void => setTip(null);
 
   const entry = (
     href: string,
@@ -77,9 +90,19 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
         <Link
           href={href}
           className={`nav-item${active ? " active" : ""}`}
-          title={collapsed ? title : undefined}
+          // Folded, the label is drawn by `nav-tip` on hover; a native title
+          // on top of it would be a second tooltip saying the same thing. The
+          // accessible name has to come from here once the label is hidden.
+          aria-label={collapsed ? title : undefined}
           aria-current={active ? "page" : undefined}
-          onClick={onNavigate}
+          onClick={() => {
+            hideTip();
+            onNavigate();
+          }}
+          onMouseEnter={showTip(label)}
+          onMouseLeave={hideTip}
+          onFocus={showTip(label)}
+          onBlur={hideTip}
         >
           <span className="nav-icon">
             <Icon name={icon} />
@@ -122,9 +145,8 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
         const heading = groupDisplay(locale, group);
         return (
           <div className="nav-group" key={group.id}>
-            <p className="nav-heading">
-              <span>{heading.label}</span>
-              <span className="nav-heading-hint">{heading.hint}</span>
+            <p className="nav-heading" title={heading.hint}>
+              {heading.label}
             </p>
             {skills.map((skill) => {
               const shown = skillDisplay(locale, skill);
@@ -156,6 +178,12 @@ export function SkillNav({ collapsed, onNavigate }: Props) {
           </div>
         );
       })}
+
+      {collapsed && tip && (
+        <span className="nav-tip" role="tooltip" style={{ top: tip.top, left: tip.left }}>
+          {tip.label}
+        </span>
+      )}
     </nav>
   );
 }
