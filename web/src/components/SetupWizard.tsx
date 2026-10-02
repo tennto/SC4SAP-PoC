@@ -26,7 +26,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { WorkingMark } from "@/components/WorkingMark";
+import { ThinkingOrb } from "thinking-orbs";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Select } from "@/components/Select";
 import { useLocale } from "@/lib/i18n/client";
@@ -431,8 +431,13 @@ export function SetupWizard({ firstName }: { firstName: string }) {
           aria-live="polite"
           aria-busy="true"
         >
-          {/* The app's one working mark — see `components/WorkingMark`. */}
-          <WorkingMark />
+          {/* thinking-orbs' `connecting`: a constellation wiring itself with
+              packets running its edges — this screen is the app connecting
+              to SAP and to Claude, and the mark should say exactly that. The
+              same library as the chat's working mark, at its 64px design. */}
+          <span className="setup-orb" role="img" aria-label={t.connecting}>
+            <ThinkingOrb state="connecting" size={64} theme="light" />
+          </span>
 
           {/* Keyed, so each line arrives rather than being swapped in place. */}
           <p className="setup-connecting-line" key={t.connectingLines[line]}>

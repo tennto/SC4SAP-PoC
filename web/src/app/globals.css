@@ -25,6 +25,10 @@
   /* A card lifted off the ground. Faint enough that a page of them still
      reads as one surface, enough that a card is no longer only a hairline. */
   --card-shadow: 0 1px 2px rgba(30, 36, 48, 0.04), 0 4px 14px rgba(30, 36, 48, 0.04);
+  /* The prompt box: a touch softer than a card at rest, a touch more when
+     it is being typed in. */
+  --composer-shadow: 0 1px 2px rgba(30, 36, 48, 0.03), 0 6px 18px rgba(30, 36, 48, 0.05);
+  --composer-shadow-focus: 0 1px 2px rgba(30, 36, 48, 0.04), 0 8px 22px rgba(30, 36, 48, 0.07);
 
   --ink: #2f3540;
   /* Text and glyphs sitting *on* filled ink — a primary button, the active nav
@@ -202,6 +206,10 @@
     --panel-3: #252a31;
     --rail-bg: #0c0e11;
     --card-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+  --composer-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  --composer-shadow-focus: 0 8px 24px rgba(0, 0, 0, 0.36);
+    --composer-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+    --composer-shadow-focus: 0 8px 24px rgba(0, 0, 0, 0.36);
 
     --ink: #e6e9ee;
     /* The ground, not black: something on filled ink should read as a hole
@@ -3186,11 +3194,17 @@ body.is-dragging-chat * {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
-  transition: border-color var(--t-fast) var(--ease);
+  /* Lifted off the page by a breath, like the cards: the box the hand is on
+     should read as an object, not as a rule drawn on the ground. */
+  box-shadow: var(--composer-shadow);
+  transition:
+    border-color var(--t-fast) var(--ease),
+    box-shadow var(--t-fast) var(--ease);
 }
 
 .composer:focus-within {
   border-color: var(--ink-38);
+  box-shadow: var(--composer-shadow-focus);
 }
 
 /* Docked under a conversation, the box is a tool at the foot of the page
@@ -4917,6 +4931,10 @@ body.is-dragging-chat * {
      from one another; 1240px is `--measure`'s own ceiling, so nothing changes
      until the window is wider than a laptop's. */
   max-width: 1240px;
+  /* `auto-fill`, not `auto-fit`: the empty tracks stay, so a form with two
+     fields gives each the width a field has on a form with four, instead of
+     stretching both across the whole panel. */
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
 }
 
 .skill .field-label {
@@ -7644,6 +7662,15 @@ a.ghost.auth-submit .google-mark {
   text-align: center;
 }
 
+/* The connecting orb, at the library's 64px design, held in a box of its own
+   size so the lines under it do not move while the canvas mounts. */
+.setup-orb {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+}
+
 /* How much of the ring the tail covers. Declared rather than left a plain
    custom property because a plain one is a string to the animation engine and
    jumps between keyframes — typed as an angle it interpolates, which is the
@@ -7846,19 +7873,19 @@ a.ghost.auth-submit .google-mark {
 
 /* ---------- setup: done ---------- */
 
+/* The green check on its own: a grey disc around it was a second outline
+   for one symbol. A size up from inside the disc, so it still carries the
+   card's first line. */
 .setup-done-mark {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   color: var(--ok);
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 50%;
 }
 
 .setup-done-mark .ph {
-  font-size: 21px;
+  font-size: 30px;
 }
 
 /* A narrower label column than the dashboard's 132px: this card is 560px wide
@@ -7874,6 +7901,9 @@ a.ghost.auth-submit .google-mark {
 /* The one control on the card, centred rather than pushed to an edge. */
 .setup-done .setup-actions {
   justify-content: center;
+  /* A little air above Start, so it reads as the card's answer rather than
+     the last line of the notice above it. */
+  margin-top: 20px;
 }
 
 /* A pill, and the one thing in this app that casts a shadow.
