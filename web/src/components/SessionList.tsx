@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/Icon";
 import {
@@ -21,6 +21,8 @@ export type { RailItem } from "@/components/ChatRows";
 
 /** How many conversations the rail lists before "View all" takes over. */
 const RECENT_LIMIT = 30;
+
+const FOLDED_KEY = "sc4sap.chat.folded-projects";
 
 /** What the main area is showing, so the rail can mark it. */
 export type ChatView =
@@ -86,10 +88,42 @@ export function SessionList({
   const pinned = items
     .filter((item) => item.pinnedAt)
     .sort((a, b) => Date.parse(b.pinnedAt!) - Date.parse(a.pinnedAt!));
+  /**
+   * A conversation filed in a project is listed under that project and not
+   * again in Recents. Pinned wins over both: a pinned one is in Pinned only.
+   */
+  const knownProjects = new Set(projects.map((project) => project.id));
+  const filedIn = (item: RailItem): string | null =>
+    item.projectId && knownProjects.has(item.projectId) ? item.projectId : null;
   const recent = applyShow(
-    items.filter((item) => !item.pinnedAt),
+    items.filter((item) => !item.pinnedAt && !filedIn(item)),
     prefs.show,
   ).slice(0, RECENT_LIMIT);
+  const underProject = (id: string): RailItem[] =>
+    items.filter((item) => !item.pinnedAt && filedIn(item) === id);
+
+  /** Projects folded shut, remembered per browser; open is the default. */
+  const [folded, setFolded] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FOLDED_KEY);
+      if (raw) setFolded(new Set(JSON.parse(raw) as string[]));
+    } catch {
+      // Unreadable: everything starts open.
+    }
+  }, []);
+  const toggleFold = (id: string): void =>
+    setFolded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(FOLDED_KEY, JSON.stringify([...next]));
+      } catch {
+        // Not remembered; still folded for this visit.
+      }
+      return next;
+    });
   const groups =
     prefs.group === "date" ? groupByDate(recent) : [{ bucket: null, items: recent }];
   const actions: RowActions = { onRename, onMove, onPin, onDelete };
@@ -212,7 +246,8 @@ export function SessionList({
     document.addEventListener("keydown", cancel);
   };
 
-  const row = (item: RailItem) => {
+  /** `fixed`: listed under a project, where a row stays put — no dragging. */
+  const row = (item: RailItem, fixed = false) => {
     const active = view.kind === "chat" && item.id === activeId;
     return (
       <div
@@ -223,7 +258,7 @@ export function SessionList({
         role="button"
         tabIndex={0}
         title={`${item.kind === "task" ? t.task : t.chat} · ${item.title ?? t.newConversation}`}
-        onPointerDown={(event) => pointerDown(event, item)}
+        onPointerDown={fixed ? undefined : (event) => pointerDown(event, item)}
         onClick={() => {
           if (swallowClick.current) {
             swallowClick.current = false;
@@ -295,21 +330,58 @@ export function SessionList({
           )}
           {projects.map((project) => {
             const active = view.kind === "project" && view.id === project.id;
+            const children = underProject(project.id);
+            const open = !folded.has(project.id);
             return (
-              <button
-                key={project.id}
-                className={`rail-row rail-project${active ? " is-active" : ""}`}
-                onClick={() => onOpenProject(project.id)}
-                title={project.name}
-                {...dropZone(
-                  `project:${project.id}`,
-                  (item) => item.projectId !== project.id,
-                  (item) => onMove(item.id, project.id),
+              <div key={project.id} className="rail-project-group">
+                <div
+                  className={`rail-row rail-project${active ? " is-active" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  title={project.name}
+                  onClick={() => onOpenProject(project.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") onOpenProject(project.id);
+                  }}
+                  {...dropZone(
+                    `project:${project.id}`,
+                    (item) => item.projectId !== project.id,
+                    (item) => onMove(item.id, project.id),
+                  )}
+                >
+                  {/* The fold, on the folder's own place: a project with
+                      conversations in it shows a caret that opens and shuts
+                      the list under it, an empty one just its folder. */}
+                  {children.length > 0 ? (
+                    <button
+                      type="button"
+                      className={`rail-fold${open ? " is-open" : ""}`}
+                      aria-expanded={open}
+                      aria-label={project.name}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleFold(project.id);
+                      }}
+                    >
+                      <Icon name="folder-simple" className="rail-fold-folder" />
+                      <Icon name="caret-right" className="rail-fold-caret" />
+                    </button>
+                  ) : (
+                    <Icon name="folder-simple" />
+                  )}
+                  <span className="row-title">{project.name}</span>
+                  {children.length > 0 && (
+                    <span className="rail-count">{children.length}</span>
+                  )}
+                </div>
+                {children.length > 0 && (
+                  <div className={`rail-children${open ? " is-open" : ""}`}>
+                    <div className="rail-children-inner">
+                      {children.map((item) => row(item, true))}
+                    </div>
+                  </div>
                 )}
-              >
-                <Icon name="folder-simple" />
-                <span className="row-title">{project.name}</span>
-              </button>
+              </div>
             );
           })}
         </section>
@@ -328,14 +400,22 @@ export function SessionList({
             <div className="rail-section-head">
               <h2>{t.pinned}</h2>
             </div>
-            {pinned.map(row)}
+            {pinned.map((item) => row(item))}
             {pinned.length === 0 && <p className="rail-drop-hint">{t.dropToPin}</p>}
           </div>
         </section>
 
         <section
           className="rail-section rail-drop-section"
-          {...dropZone("recents", (item) => item.pinnedAt !== null, (item) => onPin(item.id, false))}
+          {...dropZone(
+            "recents",
+            (item) => item.pinnedAt !== null || filedIn(item) !== null,
+            (item) => {
+              // Back to the plain list: unpinned, and out of its project.
+              if (item.pinnedAt) onPin(item.id, false);
+              if (filedIn(item)) onMove(item.id, null);
+            },
+          )}
         >
           <div className="rail-section-head">
             <h2>{t.recents}</h2>
@@ -356,7 +436,7 @@ export function SessionList({
           {groups.map((group) => (
             <div key={group.bucket ?? "all"} className="rail-group">
               {group.bucket && <p className="rail-group-label">{t[group.bucket]}</p>}
-              {group.items.map(row)}
+              {group.items.map((item) => row(item))}
             </div>
           ))}
         </section>

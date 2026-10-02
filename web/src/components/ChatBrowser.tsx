@@ -177,7 +177,7 @@ export function ChatBrowser({
               all has the rail's New chat beside it already. */}
           {project && (
             <button className="browser-new" onClick={onCreate} disabled={busy}>
-              <Icon name="plus" /> {t.newChatInProject}
+              <Icon name="plus-circle" /> {t.newChatInProject}
             </button>
           )}
         </div>

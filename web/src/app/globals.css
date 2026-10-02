@@ -1310,6 +1310,94 @@ button.primary:hover:not(:disabled) {
   padding-right: 8px;
 }
 
+/* A project's fold: the folder icon, swapped for a caret while the row is
+   pointed at, the way file trees show that a folder opens. */
+.rail-fold {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-left: -2px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-38);
+}
+
+.rail-fold .ph {
+  grid-area: 1 / 1;
+  font-size: 14px;
+  transition:
+    opacity var(--t-fast) var(--ease),
+    transform var(--t-fast) var(--ease);
+}
+
+.rail-fold-caret {
+  opacity: 0;
+  font-size: 11px !important;
+}
+
+.rail-fold.is-open .rail-fold-caret {
+  transform: rotate(90deg);
+}
+
+.rail-project:hover .rail-fold-folder,
+.rail-fold:focus-visible .rail-fold-folder {
+  opacity: 0;
+}
+
+.rail-project:hover .rail-fold-caret,
+.rail-fold:focus-visible .rail-fold-caret {
+  opacity: 1;
+}
+
+.rail-fold:hover {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+.rail-count {
+  flex: none;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  color: var(--ink-55);
+  font-size: 10.5px;
+  line-height: 17px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The project's conversations, indented under it, opening and shutting by
+   height like Pinned. */
+.rail-children {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--t-base) var(--ease);
+}
+
+.rail-children.is-open {
+  grid-template-rows: 1fr;
+}
+
+.rail-children-inner {
+  min-height: 0;
+  overflow: hidden;
+  margin-left: 15px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-children {
+    transition: none;
+  }
+}
+
 .row-title {
   flex: 1;
   min-width: 0;
@@ -1651,6 +1739,7 @@ body.is-dragging-chat * {
    the one title in the app set lighter than the rest. */
 .browser-title h1 {
   margin: 0;
+  font-family: var(--font-sans);
   font-size: 22px;
   font-weight: 700;
   line-height: 1.2;
@@ -1677,21 +1766,34 @@ body.is-dragging-chat * {
   flex: none;
 }
 
+/* The same quiet button as the rail's New chat: white, a hairline, the
+   glyph in grey. A filled black block was the heaviest thing on the page for
+   the action taken least often there. */
 .browser-new {
+  /* A step apart from the rename and delete icons, so the project's own
+     controls and the action for a new chat read as two groups. */
+  margin-left: 8px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 12px;
-  border: 1px solid var(--ink);
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--ink);
-  color: var(--on-ink);
+  background: var(--panel);
+  color: var(--ink);
   font-size: 12.5px;
   font-weight: 500;
 }
 
+.browser-new .ph {
+  font-size: 15px;
+  color: var(--ink-55);
+}
+
 .browser-new:hover:not(:disabled) {
-  opacity: 0.88;
+  background: var(--panel-2);
+  border-color: var(--line-strong);
 }
 
 .browser-tools {
@@ -2059,7 +2161,10 @@ body.is-dragging-chat * {
 
 .stage-greeting h1 {
   margin: 0;
-  font-family: var(--font-display);
+  /* Pretendard, not the display face: the greeting is the chat screen's one
+     line of type, and it should read in the same hand as the conversation
+     under it rather than as a headline. */
+  font-family: var(--font-sans);
   /* Smaller than it was. At 34px it was the largest type in the app by a wide
      margin, which made an empty screen shout — and the line under it, the
      composer, is where the reader is actually going. */
@@ -3097,29 +3202,8 @@ body.is-dragging-chat * {
   padding: 8px 10px 7px;
 }
 
-.stage:not(.is-hero) .composer textarea {
-  padding-top: 2px;
-}
 
-/* Docked, the model joins the + on the left and Send stands alone on the
-   right — the order of the foot row, changed without changing the markup. */
-.stage:not(.is-hero) .composer-right {
-  display: contents;
-}
 
-.stage:not(.is-hero) .composer-foot {
-  justify-content: flex-start;
-  gap: 4px;
-}
-
-.stage:not(.is-hero) .composer-send {
-  margin-left: auto;
-}
-
-.stage:not(.is-hero) .composer-model-pick .select-list {
-  left: 0;
-  right: auto;
-}
 
 .composer textarea {
   font: inherit;
@@ -3141,11 +3225,13 @@ body.is-dragging-chat * {
   outline: none;
 }
 
+/* The model sits beside the + on the left and Send stands alone on the
+   right, in the greeting's composer and the docked one alike. */
 .composer-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 4px;
 }
 
 /* A label, not a picker. The model is `SC4SAP_MODEL` on the server, so there
@@ -3197,10 +3283,6 @@ body.is-dragging-chat * {
 .composer-model-pick .select-list {
   top: auto;
   bottom: calc(100% + 6px);
-  /* The picker sits at the right edge now, beside Send, so its list hangs
-     from its right side instead of running off the composer. */
-  left: auto;
-  right: 0;
   min-width: 140px;
   animation-name: select-list-up;
 }
@@ -3297,10 +3379,14 @@ body.is-dragging-chat * {
   color: var(--ink-55);
 }
 
+/* A wrapper in the markup only: its children join the foot row, so the
+   model follows the + and Send is pushed to the far end. */
 .composer-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  display: contents;
+}
+
+.composer-send {
+  margin-left: auto;
 }
 
 .composer-tools {

@@ -157,12 +157,17 @@ export async function appendTurns(
         ...(input.totalCostUsd !== undefined
           ? { totalCostUsd: input.totalCostUsd }
           : {}),
+        // A chat opened on a project's page files itself on every save, not
+        // only the first: when an earlier save had already created the row
+        // without it, an insert-only field never landed and the chat stayed
+        // out of its project for good.
+        ...(input.projectId ? { projectId: input.projectId } : {}),
       },
       $setOnInsert: {
         userId,
         createdAt: now,
         kind: input.kind ?? "chat",
-        projectId: input.projectId ?? null,
+        ...(input.projectId ? {} : { projectId: null }),
         ...(input.title === undefined || input.title === null
           ? { title: null }
           : {}),

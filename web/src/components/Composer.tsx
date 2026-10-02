@@ -201,7 +201,10 @@ export function Composer({
     const el = area.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
+    // Rounded up, and no scrollbar until the ceiling is reached: a height a
+    // fraction of a pixel short of the text drew a bar on a one-line prompt.
+    el.style.height = `${Math.min(Math.ceil(el.scrollHeight), 220)}px`;
+    el.style.overflowY = el.scrollHeight > 220 ? "auto" : "hidden";
   }, [text]);
 
   // Object URLs are not garbage collected; whatever is still previewed when

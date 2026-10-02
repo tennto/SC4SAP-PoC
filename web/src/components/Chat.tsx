@@ -44,6 +44,8 @@ import { useLocale } from "@/lib/i18n/client";
 
 /** Survives a browser refresh, which is one of the 3-5 QA cases. */
 const ACTIVE_KEY = "sc4sap.activeSession";
+/** Chats opened on a project's page, by session id → project id. */
+const PROJECT_FOR_KEY = "sc4sap.chat.project-for";
 /**
  * Text the monitor left for the composer: a question about a tool call,
  * written before navigating here. Read once and removed, so a reload does
@@ -115,6 +117,15 @@ export function Chat({
    * with the conversation's first save, which is what creates its row.
    */
   const projectFor = useRef<Record<string, string>>({});
+  // Kept across a reload: the row is created by the first save, and a reload
+  // between opening the chat and that save lost which project it was for.
+  useEffect(() => {
+    try {
+      projectFor.current = JSON.parse(localStorage.getItem(PROJECT_FOR_KEY) ?? "{}");
+    } catch {
+      // Unreadable: start empty.
+    }
+  }, []);
   /** chat id → the backend session currently running it. */
   const [attachedState, setAttached] = useState<Record<string, string>>({});
   /**
@@ -714,7 +725,7 @@ export function Chat({
         // Both only count when this save creates the row. A skill's session
         // opened from the list here is still that skill's task.
         kind: live?.kind ?? "chat",
-        projectId: projectFor.current[activeId] ?? null,
+        projectId: projectFor.current[activeId],
         sdkSessionId: live?.sdkSessionId ?? null,
         turns: live?.turns,
         totalCostUsd: live?.totalCostUsd,
@@ -793,7 +804,14 @@ export function Chat({
     setError(null);
     try {
       const session = await api.createSession(undefined, undefined, spend());
-      if (projectId) projectFor.current[session.id] = projectId;
+      if (projectId) {
+        projectFor.current[session.id] = projectId;
+        try {
+          localStorage.setItem(PROJECT_FOR_KEY, JSON.stringify(projectFor.current));
+        } catch {
+          // Not kept past this tab; the first save still files it.
+        }
+      }
       setView({ kind: "chat" });
       setSessions((current) => [...current, session]);
       setHistory(null);
