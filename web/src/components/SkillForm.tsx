@@ -1162,7 +1162,9 @@ export function SkillForm({
         setWanted(survey.formats);
         // The method is the spending decision here, so there is no cost
         // dialog: both run on Sonnet with sub-agents kept off Opus, and each
-        // has a ceiling well above what it measured.
+        // has a ceiling well above what it measured. Standard keeps the
+        // default effort: medium cut its time by about 40% but the reader
+        // judged the spec it wrote too thin (2026-10-02).
         const session = await api.createSession(undefined, undefined, {
           model: "claude-sonnet-5",
           economy: true,

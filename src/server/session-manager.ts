@@ -156,14 +156,17 @@ const COLLECT_NUDGE_GRACE_MS = 5_000;
  * Sub-agents are told by `withPluginRoot`; the main thread was not, and a
  * measured Program → Spec run (2026-09-28) spent its first minute running
  * `find` across the repository for the plugin's spec scripts and `where` for
- * a browser. The scripts find the browser themselves.
+ * a browser. The scripts find the browser themselves. The `common/` line is
+ * from 2026-10-02: a Standard run read `../../common/...` as
+ * `skills/common/...`, failed twice and globbed the plugin for the files.
  */
 function pluginRootLine(pluginPath: string): string {
   const root = pluginPath.replace(/\\/g, "/").replace(/\/+$/, "");
   return (
     `The sc4sap plugin is at ${root}: its scripts are under ${root}/scripts ` +
-    `(run them as \`node ${root}/scripts/...\`) and its skill files under ` +
-    `${root}/skills. Do not search the disk for the plugin, its scripts or a ` +
+    `(run them as \`node ${root}/scripts/...\`), its skill files under ` +
+    `${root}/skills and the shared rule files a skill links as ` +
+    `\`../../common/...\` under ${root}/common. Do not search the disk for the plugin, its scripts or a ` +
     "browser — the scripts locate the browser themselves.\n\n"
   );
 }
