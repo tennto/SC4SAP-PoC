@@ -390,6 +390,11 @@ export function Composer({
               </button>
             </div>
           )}
+        </div>
+        {/* The model sits beside Send, the way the chat products people
+            already use lay it out: what is being sent with on the right,
+            what is being added on the left. */}
+        <div className="composer-right">
           {models && models.length > 1 && onModelChange ? (
             <span className="composer-model-pick">
               <Select
@@ -407,23 +412,23 @@ export function Composer({
               {model ? modelLabel(model) : "—"}
             </span>
           )}
-        </div>
-        {/* One button, two jobs. A separate stop control beside the send one
-            would sit dead for the whole time it is not needed, and the two are
-            never both available: there is nothing to send while a turn is
-            running, and nothing to stop while one is not.
+          {/* One button, two jobs. A separate stop control beside the send one
+              would sit dead for the whole time it is not needed, and the two
+              are never both available: there is nothing to send while a turn
+              is running, and nothing to stop while one is not.
 
-            Not disabled by an empty box while running — what it acts on then
-            is the turn, not the text. */}
-        <button
-          className={`composer-send${running ? " is-stop" : ""}`}
-          type="submit"
-          disabled={running ? false : !canSend || reading > 0}
-          aria-label={running ? t.stop : t.send}
-          title={running ? t.stopTitle : undefined}
-        >
-          <Icon name={running ? "stop" : "arrow-up"} weight={running ? "fill" : "regular"} />
-        </button>
+              Not disabled by an empty box while running — what it acts on
+              then is the turn, not the text. */}
+          <button
+            className={`composer-send${running ? " is-stop" : ""}`}
+            type="submit"
+            disabled={running ? false : !canSend || reading > 0}
+            aria-label={running ? t.stop : t.send}
+            title={running ? t.stopTitle : undefined}
+          >
+            <Icon name={running ? "stop" : "arrow-up"} weight={running ? "fill" : "regular"} />
+          </button>
+        </div>
       </div>
     </form>
   );

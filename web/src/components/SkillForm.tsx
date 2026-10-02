@@ -473,6 +473,30 @@ function filenameFor(title: string): string {
   return `${slug}-${new Date().toISOString().slice(0, 10)}.md`;
 }
 
+
+/** `3분 57초`-style run time in the screen's words: minutes and seconds. */
+function runDuration(ms: number): { minutes: number; seconds: number } {
+  const total = Math.max(1, Math.round(ms / 1000));
+  return { minutes: Math.floor(total / 60), seconds: total % 60 };
+}
+
+/**
+ * A run's cost, in the en-US dollar shape the home screen uses (`$ 0.93`), to
+ * the cent — or the tenth of a cent below one, where a cent would read as
+ * nothing.
+ */
+function runCost(usd: number): string {
+  const digits = usd < 0.1 ? 3 : 2;
+  return usd
+    .toLocaleString("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    })
+    .replace("$", "$ ");
+}
+
 export function SkillForm({
   slug,
   command,
@@ -958,6 +982,8 @@ export function SkillForm({
         // line is a slash command, which makes a poor label in a rail — and so
         // does the skill's name on its own once there are six of them.
         title: runTitle(shownSkill.title, fields, values),
+        // A Task on the chat screen's list, not a Chat.
+        kind: "task",
         sdkSessionId: live?.sdkSessionId ?? null,
         ...(live ? { turns: live.turns, totalCostUsd: live.totalCostUsd } : {}),
         messages: saved.map((row, index) => ({
@@ -1076,6 +1102,30 @@ export function SkillForm({
     if (stream.status !== null) setStarting(false);
   }, [stream.status]);
 
+  /**
+   * The settled run's spend at list price, read from the backend each time a
+   * turn ends — a follow-up round adds to it, so it is read again.
+   */
+  const [spent, setSpent] = useState<number | null>(null);
+  useEffect(() => {
+    setSpent(null);
+  }, [sessionId]);
+  useEffect(() => {
+    if (!sessionId || stream.status !== "idle" || stream.runMs === 0) return;
+    let live = true;
+    api
+      .getSession(sessionId)
+      .then((session) => {
+        if (live) setSpent(session.totalCostUsd);
+      })
+      .catch(() => {
+        // Gone already: the time still shows, the cost does not.
+      });
+    return () => {
+      live = false;
+    };
+  }, [sessionId, stream.status, stream.runMs]);
+
   const result = useRef<HTMLDivElement>(null);
 
   /**
@@ -1170,6 +1220,7 @@ export function SkillForm({
           economy: true,
           maxBudgetUsd: survey.method === "Precise" ? 3 : 1.5,
           profile: tools,
+          kind: "task",
           ...(survey.method === "Economy" ? { effort: "medium" as const } : {}),
         });
         setSessionId(session.id);
@@ -1193,6 +1244,7 @@ export function SkillForm({
         const session = await api.createSession(undefined, undefined, {
           model: "claude-sonnet-5",
           profile: tools,
+          kind: "task",
           reviewRules: true,
           ...(effort ? { effort } : {}),
         });
@@ -1220,6 +1272,7 @@ export function SkillForm({
       const session = await api.createSession(undefined, undefined, {
         ...(how ?? {}),
         profile: tools,
+        kind: "task",
         ...(effort ? { effort } : {}),
       });
       setSessionId(session.id);
@@ -1790,6 +1843,22 @@ export function SkillForm({
                 </button>
               </div>
             </div>
+          )}
+
+          {/* What the run took, once it has settled: the turns' own running
+              time and the session's spend at list price, the figure the home
+              screen adds up. */}
+          {settled && stream.runMs > 0 && (
+            <p className="skill-run-meta">
+              <span>
+                <Icon name="timer" /> {t.ranFor(runDuration(stream.runMs))}
+              </span>
+              {spent !== null && (
+                <span>
+                  <Icon name="coins" /> {t.costIt(runCost(spent))}
+                </span>
+              )}
+            </p>
           )}
         </section>
       )}

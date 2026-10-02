@@ -1,6 +1,7 @@
 import "server-only";
 import { ObjectId } from "mongodb";
-import { chatMessages, chats, runSpend, spendMonths, users, type ChatDoc } from "@/lib/mongo";
+import { inferKind } from "@/lib/chat-kind";
+import { chatMessages, chats, projects, runSpend, spendMonths, users, type ChatDoc } from "@/lib/mongo";
 
 /**
  * Persisting the conversation the reader can see.
@@ -29,7 +30,13 @@ export type ChatSummary = {
   totalCostUsd: number;
   createdAt: string;
   updatedAt: string;
+  kind: "chat" | "task";
+  projectId: string | null;
+  /** Pinned to the top of the rail; ISO time it was pinned, or null. */
+  pinnedAt: string | null;
 };
+
+export type ProjectSummary = { id: string; name: string; createdAt: string };
 
 export type AttachmentMeta = { name: string; mediaType: string; size: number };
 
@@ -51,8 +58,12 @@ function summarize(doc: ChatDoc): ChatSummary {
     // Rows written before `createdAt` existed fall back to their last write.
     createdAt: (doc.createdAt ?? doc.updatedAt).toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
+    kind: doc.kind ?? inferKind(doc.title),
+    projectId: doc.projectId ?? null,
+    pinnedAt: doc.pinnedAt ? doc.pinnedAt.toISOString() : null,
   };
 }
+
 
 /**
  * The rail, for one account. Newest conversation first — by when it was
@@ -113,6 +124,10 @@ export async function appendTurns(
     sdkSessionId?: string | null;
     turns?: number;
     totalCostUsd?: number;
+    /** Fixed when the row is created; later saves cannot change it. */
+    kind?: "chat" | "task";
+    /** Where a new conversation is filed — a chat started inside a project. */
+    projectId?: string | null;
     messages: {
       seq: number;
       role: "user" | "agent";
@@ -146,6 +161,8 @@ export async function appendTurns(
       $setOnInsert: {
         userId,
         createdAt: now,
+        kind: input.kind ?? "chat",
+        projectId: input.projectId ?? null,
         ...(input.title === undefined || input.title === null
           ? { title: null }
           : {}),
@@ -244,6 +261,118 @@ export async function deleteChat(
       },
     },
   );
+}
+
+/**
+ * Conversations whose title or any saved message contains `query`, with the
+ * text around the first hit in the messages — View all's search.
+ *
+ * A case-insensitive substring match rather than a text index: one account's
+ * history is small, and a text index would stem and tokenise the SAP names
+ * (ZMMR00020, EKKO-EBELN) people actually search for.
+ */
+export async function searchChats(
+  userId: string,
+  query: string,
+): Promise<{ id: string; snippet: string | null }[]> {
+  const needle = query.trim().slice(0, 100);
+  if (needle === "") return [];
+  const pattern = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+
+  const byTitle = await (await chats())
+    .find({ userId, title: pattern }, { projection: { _id: 1 } })
+    .limit(200)
+    .toArray();
+  const byText = await (await chatMessages())
+    .aggregate<{ _id: string; text: string }>([
+      { $match: { userId, text: pattern } },
+      { $sort: { seq: 1 } },
+      { $group: { _id: "$chatId", text: { $first: "$text" } } },
+      { $limit: 200 },
+    ])
+    .toArray();
+
+  const found = new Map<string, string | null>();
+  for (const row of byText) found.set(row._id, excerpt(row.text, pattern));
+  for (const row of byTitle) if (!found.has(row._id)) found.set(row._id, null);
+  return [...found].map(([id, snippet]) => ({ id, snippet }));
+}
+
+/** About a line of text around the first match, on word-ish edges. */
+function excerpt(text: string, pattern: RegExp): string {
+  const flat = text.replace(/\s+/g, " ");
+  const at = flat.search(pattern);
+  if (at < 0) return flat.slice(0, 120);
+  const start = Math.max(0, at - 50);
+  const end = Math.min(flat.length, at + 90);
+  return `${start > 0 ? "…" : ""}${flat.slice(start, end).trim()}${end < flat.length ? "…" : ""}`;
+}
+
+/**
+ * Renames a conversation or files it under a project — the rail's row menu.
+ * `projectId: null` takes it out of its project. A project id that is not
+ * this account's is refused rather than stored.
+ */
+export async function updateChat(
+  userId: string,
+  chatId: string,
+  change: { title?: string; projectId?: string | null; pinned?: boolean },
+): Promise<boolean> {
+  const set: Partial<ChatDoc> = {};
+  if (change.pinned !== undefined) set.pinnedAt = change.pinned ? new Date() : null;
+  if (typeof change.title === "string" && change.title.trim() !== "") {
+    set.title = change.title.trim().slice(0, 200);
+  }
+  if (change.projectId !== undefined) {
+    if (change.projectId !== null && !(await ownsProject(userId, change.projectId))) {
+      return false;
+    }
+    set.projectId = change.projectId;
+  }
+  if (Object.keys(set).length === 0) return true;
+  const result = await (await chats()).updateOne({ _id: chatId, userId }, { $set: set });
+  return result.matchedCount === 1;
+}
+
+async function ownsProject(userId: string, projectId: string): Promise<boolean> {
+  if (!ObjectId.isValid(projectId)) return false;
+  return (await (await projects()).countDocuments({ _id: new ObjectId(projectId), userId })) === 1;
+}
+
+/** One account's projects, oldest first — the order they were made in. */
+export async function listProjects(userId: string): Promise<ProjectSummary[]> {
+  const rows = await (await projects()).find({ userId }).sort({ createdAt: 1 }).limit(100).toArray();
+  return rows.map((row) => ({
+    id: row._id.toHexString(),
+    name: row.name,
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
+export async function createProject(userId: string, name: string): Promise<ProjectSummary> {
+  const doc = { _id: new ObjectId(), userId, name: name.trim().slice(0, 80), createdAt: new Date() };
+  await (await projects()).insertOne(doc);
+  return { id: doc._id.toHexString(), name: doc.name, createdAt: doc.createdAt.toISOString() };
+}
+
+export async function renameProject(userId: string, projectId: string, name: string): Promise<boolean> {
+  if (!ObjectId.isValid(projectId)) return false;
+  const result = await (await projects()).updateOne(
+    { _id: new ObjectId(projectId), userId },
+    { $set: { name: name.trim().slice(0, 80) } },
+  );
+  return result.matchedCount === 1;
+}
+
+/**
+ * Deletes a project and unfiles its conversations. The conversations stay:
+ * a project is a label on them, and taking the label away is not a reason to
+ * lose what was said.
+ */
+export async function deleteProject(userId: string, projectId: string): Promise<void> {
+  if (!ObjectId.isValid(projectId)) return;
+  await (await projects()).deleteOne({ _id: new ObjectId(projectId), userId });
+  await (await chats()).updateMany({ userId, projectId }, { $set: { projectId: null } });
 }
 
 /**

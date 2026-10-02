@@ -279,6 +279,28 @@ export type ChatDoc = {
   totalCostUsd: number;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * A conversation typed on the chat screen, or a skill run saved from its
+   * page. Absent on rows written before 2026-10-02; `chat-store.ts` infers it
+   * for those.
+   */
+  kind?: "chat" | "task";
+  /** The project the reader filed it under, if any. See `ProjectDoc`. */
+  projectId?: string | null;
+  /** When it was pinned to the top of the rail; absent or null when not. */
+  pinnedAt?: Date | null;
+};
+
+/**
+ * A folder of conversations, named by the reader — the chat screen's
+ * Projects. Holds nothing but its name: a conversation points at it, so
+ * deleting one only unfiles its conversations.
+ */
+export type ProjectDoc = {
+  _id: ObjectId;
+  userId: string;
+  name: string;
+  createdAt: Date;
 };
 
 /**
@@ -391,6 +413,11 @@ function ensureIndexes(db: Db): Promise<void> {
         { userId: 1, updatedAt: -1 },
         { name: "chat_by_user" },
       );
+      // The chat screen's Projects, one account's at a time.
+      await db.collection<ProjectDoc>("chat_projects").createIndex(
+        { userId: 1, createdAt: 1 },
+        { name: "project_by_user" },
+      );
       // The dashboard's month arrows: this account's months, in order.
       await db.collection<SpendMonthDoc>("spend_months").createIndex(
         { userId: 1, month: 1 },
@@ -432,6 +459,10 @@ export async function resets(): Promise<Collection<ResetDoc>> {
 
 export async function chats(): Promise<Collection<ChatDoc>> {
   return (await database()).collection<ChatDoc>("chat_sessions");
+}
+
+export async function projects(): Promise<Collection<ProjectDoc>> {
+  return (await database()).collection<ProjectDoc>("chat_projects");
 }
 
 export async function toolCalls(): Promise<Collection<ToolCallDoc>> {

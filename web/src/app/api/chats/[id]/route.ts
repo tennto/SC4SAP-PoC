@@ -5,6 +5,7 @@ import {
   contextPreamble,
   deleteChat,
   readChat,
+  updateChat,
 } from "@/lib/chat-store";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +63,8 @@ export async function POST(
     sdkSessionId?: string | null;
     turns?: number;
     totalCostUsd?: number;
+    kind?: unknown;
+    projectId?: unknown;
     messages?: {
       seq: number;
       role: "user" | "agent";
@@ -103,7 +106,15 @@ export async function POST(
     }));
 
   try {
-    await appendTurns(account.id, id, { ...body, messages });
+    await appendTurns(account.id, id, {
+      title: body.title,
+      sdkSessionId: body.sdkSessionId,
+      turns: body.turns,
+      totalCostUsd: body.totalCostUsd,
+      kind: body.kind === "task" ? "task" : body.kind === "chat" ? "chat" : undefined,
+      projectId: typeof body.projectId === "string" ? body.projectId : undefined,
+      messages,
+    });
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json(
@@ -132,5 +143,36 @@ export async function DELETE(
       { error: (err as Error).message },
       { status: 503 },
     );
+  }
+}
+
+/** Renames a conversation, or files it under a project (`null` unfiles it). */
+export async function PATCH(
+  request: Request,
+  { params }: Context,
+): Promise<Response> {
+  const auth = await apiConnected();
+  if ("response" in auth) return auth.response;
+  const account = auth.account;
+
+  const { id } = await params;
+  const body = (await request.json().catch(() => ({}))) as {
+    title?: unknown;
+    projectId?: unknown;
+    pinned?: unknown;
+  };
+  const change: { title?: string; projectId?: string | null; pinned?: boolean } = {};
+  if (typeof body.pinned === "boolean") change.pinned = body.pinned;
+  if (typeof body.title === "string") change.title = body.title;
+  if (body.projectId === null || typeof body.projectId === "string") {
+    change.projectId = body.projectId;
+  }
+  try {
+    const ok = await updateChat(account.id, id, change);
+    return ok
+      ? NextResponse.json({ ok: true })
+      : NextResponse.json({ error: "unknown chat or project" }, { status: 404 });
+  } catch (err) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 503 });
   }
 }

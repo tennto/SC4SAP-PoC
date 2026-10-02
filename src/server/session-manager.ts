@@ -562,6 +562,12 @@ export type SessionRecord = {
    * `economy`. See `dispatchFor`.
    */
   subagentModel: SubagentModel | null;
+  /**
+   * Opened by the chat screen, or by a skill's page. The chat screen's list
+   * files a skill's session under Tasks from the moment it exists, before
+   * the web app has saved anything about it.
+   */
+  kind: "chat" | "task";
 };
 
 type Subscriber = (event: SequencedEvent) => void;
@@ -988,6 +994,8 @@ export class SessionManager {
       resume?: string;
       priorTurns?: number;
       priorCostUsd?: number;
+      /** Not part of the shape: a warm session can be either. */
+      kind?: "chat" | "task";
     } = {},
   ): SessionRecord {
     const key = options.resume ? null : this.#shapeKey(options);
@@ -1012,6 +1020,7 @@ export class SessionManager {
     live.record.turns = priorTurns;
     live.priorCostUsd = priorCostUsd;
     live.record.totalCostUsd = priorCostUsd;
+    live.record.kind = options.kind === "task" ? "task" : "chat";
 
     this.#sessions.set(live.record.id, live);
     return { ...live.record };
@@ -1389,6 +1398,7 @@ export class SessionManager {
         subagentModel,
         model: options.model ?? this.#config.model,
         approval: options.approval ?? "all",
+        kind: "chat",
       },
       ...(options.reviewRules ? { rulesPending: true } : {}),
       pump,

@@ -11,6 +11,7 @@ import type {
   Health,
   PendingApproval,
   PermissionResponse,
+  Project,
   RunFile,
   Session,
 } from "./types";
@@ -68,6 +69,9 @@ export const api = {
       sdkSessionId?: string | null;
       turns?: number;
       totalCostUsd?: number;
+      /** Only read when the row is created. */
+      kind?: "chat" | "task";
+      projectId?: string | null;
       messages: {
         seq: number;
         role: "user" | "agent";
@@ -78,8 +82,38 @@ export const api = {
   ): Promise<{ ok: boolean }> =>
     request(`/chats/${id}`, { method: "POST", body: JSON.stringify(body) }),
 
+  /** Renames a stored conversation, or files it (`projectId: null` unfiles). */
+  updateChat: (
+    id: string,
+    change: { title?: string; projectId?: string | null; pinned?: boolean },
+  ): Promise<{ ok: boolean }> =>
+    request(`/chats/${id}`, { method: "PATCH", body: JSON.stringify(change) }),
+
   deleteChat: (id: string): Promise<{ ok: boolean }> =>
     request(`/chats/${id}`, { method: "DELETE" }),
+
+  /** Conversations whose title or saved messages contain `q`, with a snippet. */
+  searchChats: async (q: string): Promise<{ id: string; snippet: string | null }[]> =>
+    (
+      await request<{ results: { id: string; snippet: string | null }[] }>(
+        `/chats/search?q=${encodeURIComponent(q)}`,
+      )
+    ).results,
+
+  listProjects: async (): Promise<Project[]> =>
+    (await request<{ projects: Project[] }>("/projects")).projects,
+
+  createProject: async (name: string): Promise<Project> =>
+    (await request<{ project: Project }>("/projects", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    })).project,
+
+  renameProject: (id: string, name: string): Promise<{ ok: boolean }> =>
+    request(`/projects/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+
+  deleteProject: (id: string): Promise<{ ok: boolean }> =>
+    request(`/projects/${id}`, { method: "DELETE" }),
 
   listSessions: async (): Promise<Session[]> =>
     (await request<{ sessions: Session[] }>("/sessions")).sessions,
@@ -117,6 +151,8 @@ export const api = {
       profile?: "analyse" | "build";
       /** Reasoning effort, where the skill sets one. See `Skill.effort`. */
       effort?: "low" | "medium" | "high";
+      /** `task` from a skill's page, so the chat list files it under Tasks. */
+      kind?: "task";
     },
   ): Promise<Session> =>
     (
@@ -134,6 +170,7 @@ export const api = {
           ...(spend?.model ? { model: spend.model } : {}),
           ...(spend?.subagentModel ? { subagentModel: spend.subagentModel } : {}),
           ...(spend?.reviewRules ? { reviewRules: true } : {}),
+          ...(spend?.kind ? { kind: spend.kind } : {}),
         }),
       })
     ).session,
