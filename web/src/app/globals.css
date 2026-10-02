@@ -7671,153 +7671,6 @@ a.ghost.auth-submit .google-mark {
   height: 64px;
 }
 
-/* How much of the ring the tail covers. Declared rather than left a plain
-   custom property because a plain one is a string to the animation engine and
-   jumps between keyframes — typed as an angle it interpolates, which is the
-   whole trick behind the breathing below. */
-@property --tail {
-  syntax: "<angle>";
-  inherits: true;
-  initial-value: 70deg;
-}
-
-/* The tail length is animated here rather than on the sweep itself, so that
-   anything else on the mark can read the same value without a second
-   animation to keep in step by hand.
-
-   Its period shares no factor with either rotation, so the tail is never the
-   same length twice at the same point in a turn and the mark does not settle
-   into a loop the eye can finish. `alternate`, so it eases back the way it
-   came instead of snapping at the end of each pass. */
-.work-mark {
-  --ring: 20.875px;
-  --band: 2.25px;
-  position: relative;
-  display: block;
-  width: 44px;
-  height: 44px;
-  animation: setup-tail 3800ms var(--ease) infinite alternate;
-}
-
-
-/* Everything that follows is a ring cut out of a full disc by the same kind of
-   mask: paint the whole circle, then keep only a band of it at the edge. The
-   band width is the only thing that differs, so it is the one number in each
-   rule. The inner edge is feathered across half a pixel; a hard stop there
-   aliases into a visible staircase on the diagonals. */
-.work-mark-track,
-.work-mark-comet {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  mask: radial-gradient(
-    closest-side,
-    transparent calc(100% - var(--band)),
-    #000 calc(100% - var(--band) + 0.5px)
-  );
-}
-
-/* The sweep.
-
-   `color-mix` down to nothing rather than the `transparent` keyword, which
-   interpolates through transparent *black* and greys the fade on the way.
-
-   The gradient starts a tail-length early so that its last stop — the bright
-   end — always lands at twelve o'clock however long the tail currently is.
-   Without that the head would swing back and forth as the tail breathed. */
-.work-mark-comet {
-  background: conic-gradient(
-    from calc(0deg - var(--tail)),
-    color-mix(in srgb, var(--ink), transparent 100%) 0deg,
-    color-mix(in srgb, var(--ink), transparent 82%) calc(var(--tail) * 0.5),
-    color-mix(in srgb, var(--ink), transparent 40%) calc(var(--tail) * 0.84),
-    var(--ink) var(--tail),
-    color-mix(in srgb, var(--ink), transparent 100%) calc(var(--tail) + 0.5deg)
-  );
-  animation: setup-spin 2600ms linear infinite;
-}
-
-/* The course, at the weight of every other hairline in the app. Without it the
-   sweep reads as a loose stroke rather than as something running a ring. Inset
-   so it is centred in the sweep's band rather than sitting on its outer edge:
-   half the difference between the two widths, 2.25 and 1.5. */
-.work-mark-track {
-  --band: 1.5px;
-  inset: 0.375px;
-  background: var(--line);
-}
-
-/* A second, much wider sweep on a smaller ring, running the other way and
-   slower. Alone it would be a spinner in its own right; under the first one it
-   is depth — something further off, moving at a speed that says so. Faint
-   enough to be felt rather than counted: at anything darker there were two
-   spinners on the screen. */
-.work-mark-under {
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    color-mix(in srgb, var(--ink), transparent 100%) 0deg,
-    color-mix(in srgb, var(--ink), transparent 86%) 150deg,
-    color-mix(in srgb, var(--ink), transparent 100%) 210deg
-  );
-  mask: radial-gradient(
-    closest-side,
-    transparent calc(100% - 1.5px),
-    #000 calc(100% - 1px)
-  );
-  animation: setup-spin-back 4300ms linear infinite;
-}
-
-/* The head. A shade wider than the band it rides so it reads as a point rather
-   than as the end of a stroke, and the one thing on the mark at full ink.
-
-   `rotate` then `translateX` puts it on the ring; `rotate(0)` lands at three
-   o'clock where the sweep's bright end is at twelve, hence the quarter turn.
-   Same duration as the sweep and also linear, so the two never drift. */
-.work-mark-head {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 4px;
-  height: 4px;
-  margin: -2px;
-  border-radius: 50%;
-  background: var(--ink);
-  animation: setup-spin-head 2600ms linear infinite;
-}
-
-@keyframes setup-tail {
-  from {
-    --tail: 46deg;
-  }
-  to {
-    --tail: 132deg;
-  }
-}
-
-@keyframes setup-spin {
-  to {
-    rotate: 360deg;
-  }
-}
-
-@keyframes setup-spin-back {
-  to {
-    rotate: -360deg;
-  }
-}
-
-@keyframes setup-spin-head {
-  from {
-    transform: rotate(-90deg) translateX(var(--ring));
-  }
-  to {
-    transform: rotate(270deg) translateX(var(--ring));
-  }
-}
-
 /* The rotating headline. Sized as the card's own heading would be, because
    while the checks run it is the only heading there is. */
 .setup-connecting-line {
@@ -7851,23 +7704,11 @@ a.ghost.auth-submit .google-mark {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* The indefinite loops on this screen, which are the ones that actually
-     hurt. The mark stays where it is — a ring with a point parked on it is
-     still legible as "not finished". */
-  .work-mark,
-  .work-mark-comet,
-  .work-mark-under,
-  .work-mark-head,
+  /* The lines' arrival. The connecting orb is the library's own canvas and
+     is left to it. */
   .setup-connecting-line,
   .setup-check {
     animation: none;
-  }
-
-  /* Stopping the head's animation also drops the transform it carried, which
-     would leave it in the middle of the ring rather than on it. The tail keeps
-     the length its property was declared with. */
-  .work-mark-head {
-    transform: rotate(-90deg) translateX(var(--ring));
   }
 }
 
