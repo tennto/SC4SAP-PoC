@@ -242,7 +242,8 @@ export default async function HomePage({
 
           <div className="conn-actions">
             <ReconnectButton online={online} wasConnected={connected} />
-            <Link className="link-button" href="/skills/sap-doctor">
+            <Link className="ghost conn-diagnose" href="/skills/sap-doctor">
+              <Icon name="stethoscope" />
               {t.runDiagnostics}
             </Link>
           </div>

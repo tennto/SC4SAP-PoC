@@ -200,7 +200,7 @@ export function ReconnectButton({
   return (
     <>
       <button
-        className={online ? "ghost" : "primary"}
+        className={`conn-connect ${online ? "ghost" : "primary"}`}
         onClick={() => void check()}
         disabled={checking}
       >

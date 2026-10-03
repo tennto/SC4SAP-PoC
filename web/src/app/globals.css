@@ -4485,7 +4485,48 @@ body.is-dragging-chat * {
 .conn-actions {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 6px;
+}
+
+/* Connect and diagnose as one pair of controls of one height: the button
+   that does the work, then a quiet one beside it — not a filled block next
+   to an underlined line of small print. */
+.conn-actions .conn-connect,
+.conn-actions .conn-diagnose {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  white-space: nowrap;
+}
+
+.conn-actions .conn-connect.primary {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.12),
+    0 4px 12px -6px rgb(0 0 0 / 0.35);
+}
+
+.conn-actions .conn-connect.primary:hover:not(:disabled) {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 0.14),
+    0 8px 18px -8px rgb(0 0 0 / 0.4);
+}
+
+.conn-actions .conn-diagnose {
+  border-color: transparent;
+  color: var(--ink-55);
+}
+
+.conn-actions .conn-diagnose:hover {
+  border-color: transparent;
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+@media (max-width: 560px) {
+  .conn-actions .conn-diagnose {
+    padding: 0 10px;
+  }
 }
 
 .conn-list {
@@ -5187,11 +5228,29 @@ body.is-dragging-chat * {
   background: #ffffff;
 }
 
+/* A manual's one line on its edit mode: under the bar, quieter than it. */
+.html-preview-note {
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-55);
+}
+
+/* A manual is read through, not glanced at: a taller box. */
+.html-preview-note + .html-preview-viewport {
+  height: min(80vh, 900px);
+}
+
 .html-preview-frame {
   position: absolute;
   inset: 0;
   display: block;
-  width: 100%;
+  /* iOS Safari grows an iframe to its content's width; a 1px width held
+     at the box's by min-width keeps it the box's width there too. */
+  width: 1px;
+  min-width: 100%;
   height: 100%;
   border: 0;
   background: #ffffff;

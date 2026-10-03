@@ -155,8 +155,14 @@ export type Skill = {
    * Nothing of the run is remembered: not in this tab's storage, not as a
    * conversation — only its cost is recorded. Done, a reload or closing the
    * tab ends it, and the backend session with it.
+   *
+   * Which documents: `spec` is Program → Spec (`spec-prompt.ts`, its survey
+   * dialog in Standard mode), `manual` is Program → Manual (`manual-prompt.ts`,
+   * a cover dialog in both modes, the manual previewed with its edit mode),
+   * `cbo` is Inventory a CBO Package (`cbo-prompt.ts`, its index previewed
+   * as HTML in the spec's look, with inventory.json beside it).
    */
-  documents?: boolean;
+  documents?: "spec" | "manual" | "cbo";
 };
 
 export type SkillGroup = {
@@ -254,7 +260,7 @@ export const SKILLS: Skill[] = [
       // on the system, so this is worth giving when the name is ambiguous or
       // the review should read the neighbours around it.
       { label: "Package", kind: "text", placeholder: "ZMM_CBO", hint: "Optional. Narrows the search and gives the review the surrounding objects." },
-      { label: "Object name", kind: "text", placeholder: "ZMM_PO_REPORT" },
+      { label: "Object name", kind: "text", placeholder: "ZPROGRAM" },
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
       {
         label: "Mode",
@@ -360,9 +366,14 @@ export const SKILLS: Skill[] = [
     followUp: true,
   },
   {
-    // Not yet worked on for model choice: no cost dialog, so no budget and no
-    // economy, and its Opus agents run unchecked. Add both when this skill is
-    // next developed — see docs/model-selection-improvements.md, item 4.
+    // Built out on 2026-10-04. The plugin asks package, flagship programs and
+    // module one at a time and writes .sc4sap/cbo/<MODULE>/<PACKAGE>/; here
+    // the three are form fields and the files go to the run's own folder, to
+    // be shown and downloaded like a spec's — nothing is kept on the server.
+    // Measured 2026-10-04 on ZMMPAEK (362 objects, flagship ZMMR00020), after
+    // the app scripts took over the object list and the object table: Economy
+    // 190 s, $0.95; Standard 437 s, $1.63 with every section of the stocker's
+    // analysis kept; no dialogs (before: 255 s / $1.56 and 466 s / $2.39).
     slug: "analyze-cbo-obj",
     command: "/sc4sap:analyze-cbo-obj",
     tools: "build",
@@ -373,9 +384,30 @@ export const SKILLS: Skill[] = [
     group: "analyze",
     status: "ready",
     fields: [
-      { label: "Package", kind: "text", placeholder: "ZMM_CBO" },
-      { label: "Module", kind: "select", options: MODULES.slice(1) },
+      { label: "Package", kind: "text", placeholder: "ZMM_CBO", span: "half" },
+      {
+        label: "Flagship programs",
+        kind: "text",
+        placeholder: "ZPROGRAM1, ZPROGRAM2",
+        hint: "Optional. The programs used most; what they use is pinned to the top.",
+        span: "half",
+      },
+      {
+        label: "Mode",
+        kind: "select",
+        span: "third",
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy:
+            "One agent walks the package and its where-used graph and describes the objects that matter. Estimated cost: about $0.80–1.20. Estimated time: 2–4 min.",
+          Standard:
+            "The plugin's skill with its stocker agent; it flags sensitive objects more thoroughly. Estimated cost: about $1.40–2.00. Estimated time: 6–8 min.",
+        },
+      },
+      { label: "Module", kind: "select", options: MODULES.slice(1), span: "third" },
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
     ],
+    documents: "cbo",
   },
   {
     // Not yet worked on for model choice: no cost dialog, so no budget and no
@@ -418,8 +450,8 @@ export const SKILLS: Skill[] = [
     // `lib/spec-prompt.ts`.
     fields: [
       // Two rows: what to document, then how — mode, files, language.
-      { label: "Package", kind: "text", placeholder: "ZMMPAEK", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
-      { label: "Program name", kind: "text", placeholder: "ZMMR00020", span: "half" },
+      { label: "Package", kind: "text", placeholder: "ZMM_CBO", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
+      { label: "Program name", kind: "text", placeholder: "ZPROGRAM", span: "half" },
       // Excel on its own: the workbook carries the whole spec.
       {
         label: "Mode",
@@ -450,7 +482,55 @@ export const SKILLS: Skill[] = [
       // nothing — writes in the language chosen, not the screen's.
       { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
     ],
-    documents: true,
+    documents: "spec",
+  },
+  {
+    // The plugin's newest document skill (0.6.31): one HTML file a key user
+    // follows, with an edit mode inside it. Economy measured on 2026-10-03
+    // against ZMMR00020 (Korean, no English copy): 87 s, $0.56, 15 turns, no
+    // approval dialogs. Standard is not measured yet; its hint is an estimate.
+    slug: "program-to-manual",
+    command: "/sc4sap:program-to-manual",
+    tools: "build",
+    title: "Program → Manual",
+    icon: "book-open-text",
+    summary:
+      "Writes the end-user manual for one program — scenario steps on drawn screens with numbered callouts, check points, messages and a glossary, editable in the page",
+    group: "analyze",
+    status: "ready",
+    // The same two rows as Program → Spec. No output format: the manual is
+    // one HTML file. The cover — author, team, company, confidentiality — is
+    // asked in a dialog when Run is pressed (`ManualSurveyModal`).
+    fields: [
+      { label: "Package", kind: "text", placeholder: "ZMM_CBO", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
+      { label: "Program name", kind: "text", placeholder: "ZPROGRAM", span: "half" },
+      {
+        label: "Mode",
+        kind: "select",
+        span: "third",
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy:
+            "One agent reads the program and its screens and writes the manual. Estimated cost: about $0.50–0.80. Estimated time: 1–3 min.",
+          Standard:
+            "The plugin's full skill: an analyst and a module consultant, then a writer. Estimated cost: about $1.50–3.00. Estimated time: 10–20 min.",
+        },
+      },
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
+      {
+        label: "English copy",
+        kind: "select",
+        span: "third",
+        // No first: a second manual is a second writer pass, close to the
+        // cost of the first one's writing again.
+        options: ["No", "Yes"],
+        optionHints: {
+          No: "One manual, in the language chosen.",
+          Yes: "An English manual as well, translated from the first. Adds about a third to the cost. Ignored for an English manual.",
+        },
+      },
+    ],
+    documents: "manual",
   },
   {
     // Not yet worked on for model choice: no cost dialog, so no budget and no

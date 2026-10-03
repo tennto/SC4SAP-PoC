@@ -176,7 +176,22 @@ const ko: CatalogText = {
         "커스텀 패키지를 훑어 재사용할 만한 Z 오브젝트를 정리해, 이후 실행이 새로 만들기보다 기존 요소를 쓰게 합니다",
       fields: {
         Package: { label: "패키지" },
+        "Flagship programs": {
+          label: "핵심 프로그램",
+          hint: "선택 사항. 가장 많이 쓰는 프로그램입니다. 이 프로그램이 쓰는 오브젝트를 맨 위에 고정합니다.",
+        },
+        Mode: {
+          label: "모드",
+          options: { Economy: "절약", Standard: "기본" },
+          optionHints: {
+            Economy:
+              "에이전트 1개가 패키지와 사용처 관계를 훑고 중요한 오브젝트를 설명합니다. 예상 소요비용은 약 1,100~1,600원, 예상 소요시간은 2~4분입니다.",
+            Standard:
+              "플러그인 스킬과 인벤토리 에이전트로 실행하며, 민감 오브젝트를 더 꼼꼼히 찾습니다. 예상 소요비용은 약 1,900~2,700원, 예상 소요시간은 6~8분입니다.",
+          },
+        },
         Module: { label: "모듈", options: MODULES_KO },
+        Language: { label: "작성 언어", options: LANGUAGES_KO },
       },
     },
     "compare-programs": {
@@ -239,6 +254,34 @@ const ko: CatalogText = {
           },
         },
         Language: { label: "작성 언어", options: LANGUAGES_KO },
+      },
+    },
+    "program-to-manual": {
+      title: "프로그램 → 매뉴얼",
+      summary:
+        "프로그램 하나의 사용자 매뉴얼을 만듭니다. 화면 그림 위 번호 설명으로 시나리오별 단계를 보여주고, 체크 포인트, 메시지, 용어집을 담으며, 페이지 안에서 바로 편집할 수 있습니다",
+      fields: {
+        Package: { label: "패키지", hint: "선택 사항. 프로그램과 커스텀 오브젝트를 찾는 데 씁니다." },
+        "Program name": { label: "프로그램 이름" },
+        Mode: {
+          label: "모드",
+          options: { Economy: "절약", Standard: "기본" },
+          optionHints: {
+            Economy:
+              "에이전트 1개가 프로그램과 화면을 읽고 매뉴얼을 씁니다. 예상 소요비용은 약 700~1,100원, 예상 소요시간은 1~3분입니다.",
+            Standard:
+              "플러그인 전체 스킬입니다. 분석 에이전트와 모듈 컨설턴트가 먼저 보고 작성 에이전트가 씁니다. 예상 소요비용은 약 2,000~4,000원, 예상 소요시간은 10~20분입니다.",
+          },
+        },
+        Language: { label: "작성 언어", options: LANGUAGES_KO },
+        "English copy": {
+          label: "영문본",
+          options: { No: "만들지 않음", Yes: "함께 만들기" },
+          optionHints: {
+            No: "고른 언어로 매뉴얼 하나만 만듭니다.",
+            Yes: "첫 매뉴얼을 번역한 영어 매뉴얼도 만듭니다. 비용이 약 3분의 1 늘어납니다. 영어 매뉴얼이면 무시됩니다.",
+          },
+        },
       },
     },
     "package-to-process": {
@@ -439,7 +482,22 @@ const ja: CatalogText = {
         "カスタムパッケージを走査し、再利用に値する Z オブジェクトを一覧化して、以降の実行が新規作成より既存要素を優先するようにします",
       fields: {
         Package: { label: "パッケージ" },
+        "Flagship programs": {
+          label: "主要プログラム",
+          hint: "任意。最もよく使うプログラムです。これらが使うオブジェクトを先頭に固定します。",
+        },
+        Mode: {
+          label: "モード",
+          options: { Economy: "節約", Standard: "標準" },
+          optionHints: {
+            Economy:
+              "エージェント 1 つがパッケージと使用先関係を走査し、重要なオブジェクトを説明します。予想費用は約 110〜160 円、予想所要時間は 2〜4 分です。",
+            Standard:
+              "プラグインのスキルと棚卸しエージェントで実行し、機密オブジェクトをより丁寧に洗い出します。予想費用は約 190〜270 円、予想所要時間は 6〜8 分です。",
+          },
+        },
         Module: { label: "モジュール", options: MODULES_JA },
+        Language: { label: "記述言語", options: LANGUAGES_JA },
       },
     },
     "compare-programs": {
@@ -502,6 +560,34 @@ const ja: CatalogText = {
           },
         },
         Language: { label: "記述言語", options: LANGUAGES_JA },
+      },
+    },
+    "program-to-manual": {
+      title: "プログラム → マニュアル",
+      summary:
+        "プログラム 1 本のユーザーマニュアルを作ります。画面の図に番号付きの説明を重ねてシナリオごとの手順を示し、チェックポイント、メッセージ、用語集を収め、ページ内でそのまま編集できます",
+      fields: {
+        Package: { label: "パッケージ", hint: "任意。プログラムとカスタムオブジェクトを探すのに使います。" },
+        "Program name": { label: "プログラム名" },
+        Mode: {
+          label: "モード",
+          options: { Economy: "節約", Standard: "標準" },
+          optionHints: {
+            Economy:
+              "エージェント 1 つがプログラムと画面を読み、マニュアルを書きます。予想費用は約 75〜110 円、予想所要時間は 1〜3 分です。",
+            Standard:
+              "プラグインのフルスキルです。分析エージェントとモジュールコンサルタントが先に読み、作成エージェントが書きます。予想費用は約 200〜400 円、予想所要時間は 10〜20 分です。",
+          },
+        },
+        Language: { label: "記述言語", options: LANGUAGES_JA },
+        "English copy": {
+          label: "英語版",
+          options: { No: "作らない", Yes: "一緒に作る" },
+          optionHints: {
+            No: "選んだ言語のマニュアルを 1 つだけ作ります。",
+            Yes: "最初のマニュアルを翻訳した英語のマニュアルも作ります。費用が約 3 分の 1 増えます。英語のマニュアルでは無視されます。",
+          },
+        },
       },
     },
     "package-to-process": {

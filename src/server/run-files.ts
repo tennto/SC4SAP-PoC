@@ -1,7 +1,7 @@
 /**
  * Files a skill run writes for the reader to take away — and nothing kept.
  *
- * A run that produces documents (Program → Spec's .md / .html / .xlsx) is
+ * A run that produces documents (Program → Spec's .md / .html / .xlsx, Program → Manual's .html) is
  * told to write them under its own folder, `.sc4sap/out/<session id>/` in
  * the workspace. The web app asks for them once the run has settled; they
  * are read, handed over, and the folder is deleted in the same breath. What
@@ -13,6 +13,7 @@
  * went down between the two.
  */
 import { existsSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,6 +41,12 @@ const ASSET_DIR = "_assets";
  * plugin's PNG of it. The rest of `_img/` stays behind.
  */
 const IMAGE_SPEC = /(^|\/)_img\/[^/]*image-spec\.json$/;
+
+/**
+ * An Inventory a CBO Package run's machine-readable inventory, which the
+ * plugin's other skills read — handed over beside its HTML for download.
+ */
+const INVENTORY = /^inventory\.json$/;
 
 /** Ceiling per file. A spec workbook is ~100 KB; this is a runaway guard. */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -96,7 +103,7 @@ export function takeRunFiles(workspace: string, sessionId: string): RunFile[] {
       const parts = path.split("/");
       const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
       const asset = ext === ".png" && parts.includes(ASSET_DIR);
-      const imageSpec = IMAGE_SPEC.test(path);
+      const imageSpec = IMAGE_SPEC.test(path) || INVENTORY.test(path);
       if (!asset && !imageSpec && parts.some((part) => part.startsWith("_"))) continue;
       const mediaType = asset ? "image/png" : imageSpec ? "application/json" : HANDED_OVER[ext];
       if (!mediaType) continue;
@@ -128,18 +135,50 @@ export function sweepRunFiles(workspace: string): void {
   rmSync(resolve(workspace, OUTPUT_ROOT), { recursive: true, force: true });
 }
 
-/** The plugin scripts a documents run may run on its own files. */
-const SPEC_SCRIPTS = new Set(["md-to-html.mjs", "render-md-images.mjs", "build-spec.mjs"]);
+/**
+ * The plugin scripts a documents run may run on its own files, by their path
+ * under the plugin's `scripts/`. `build-manual.mjs` is Program → Manual's
+ * builder; its `--import` form is not listed, since no run here is given an
+ * edited manual to read back.
+ */
+const PLUGIN_SCRIPTS = new Set([
+  "spec/md-to-html.mjs",
+  "spec/render-md-images.mjs",
+  "spec/build-spec.mjs",
+  "manual/build-manual.mjs",
+]);
+
+/** Switches those scripts take that name no file. */
+const SCRIPT_FLAGS = new Set(["--same-version", "--major", "--keep"]);
 
 /**
- * This app's own spec scripts — see `scripts/spec/`. A run names them
- * relative to its cwd, the workspace, as `../scripts/spec/...`.
+ * This app's own scripts — see `scripts/`. A run names them relative to its
+ * cwd, the workspace, as `../scripts/spec/...` or `../scripts/cbo/...`.
  */
-const APP_SCRIPTS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../scripts/spec");
-const APP_SCRIPTS = new Set(["build-xlsx.mjs"]);
+const APP_SCRIPTS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../scripts");
+const APP_SCRIPTS = new Set(["spec/build-xlsx.mjs", "cbo/objects.mjs", "cbo/build-index.mjs"]);
+
+/**
+ * Where the Agent SDK saves a tool result too large to hand the model —
+ * `~/.claude/projects/<workspace, dashed>/` — and tells it to Read from there.
+ * Read is allowed there (session-manager), and the CBO list script may take a
+ * file from there as its input.
+ */
+export function toolResultsRoot(workspace: string): string {
+  return join(homedir(), ".claude", "projects", workspace.replace(/[^A-Za-z0-9]/g, "-"));
+}
 
 const norm = (path: string): string =>
   path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+
+/**
+ * A Git Bash path (`/c/Users/...`) as Windows writes it (`C:/Users/...`).
+ * Measured 2026-10-04: a Standard CBO run's `mkdir -p "/c/Users/.../out/<id>"`
+ * resolved under the current drive's root and raised a dialog for its own
+ * folder.
+ */
+const fromBash = (path: string): string =>
+  process.platform === "win32" ? path.replace(/^\/([a-zA-Z])(?=\/)/, "$1:") : path;
 
 /** Arguments of a simple command line, honouring double and single quotes. */
 function tokens(command: string): string[] | null {
@@ -153,8 +192,8 @@ function tokens(command: string): string[] | null {
 
 /**
  * A step of a documents run that needs no one's approval: writing a file
- * inside the run's own folder, or running one of the plugin's spec scripts
- * on files there.
+ * inside the run's own folder, or running one of the plugin's spec or manual
+ * scripts on files there.
  *
  * Measured 2026-09-28: an Economy Program → Spec run stopped four times for
  * a person to allow its own image spec, its own Markdown and the two
@@ -172,10 +211,14 @@ export function isOwnRunStep(
   const dir = absolute(workspace, sessionId);
   if (!dir) return false;
   const inside = (path: string): boolean => {
-    const full = norm(resolve(workspace, path));
+    const full = norm(resolve(workspace, fromBash(path)));
     return full.startsWith(`${norm(dir)}/`);
   };
-  const self = (path: string): boolean => norm(resolve(workspace, path)) === norm(dir);
+  const self = (path: string): boolean => norm(resolve(workspace, fromBash(path))) === norm(dir);
+  const savedResult = (path: string): boolean => {
+    const full = norm(resolve(workspace, fromBash(path)));
+    return full.startsWith(`${norm(toolResultsRoot(workspace))}/`) && full.includes("/tool-results/");
+  };
 
   if (toolName === "Write" || toolName === "Edit") {
     return typeof input.file_path === "string" && inside(input.file_path);
@@ -210,13 +253,35 @@ export function isOwnRunStep(
     if (verb === "rm") return paths.length > 0 && paths.every(inside);
     if (verb !== "node") return false;
     const script = norm(resolve(workspace, rest[0]!));
-    const plugin = `${norm(pluginPath)}/scripts/spec/`;
+    const plugin = `${norm(pluginPath)}/scripts/`;
     const app = `${norm(APP_SCRIPTS_DIR)}/`;
     const known =
-      (script.startsWith(plugin) && SPEC_SCRIPTS.has(script.slice(plugin.length))) ||
+      (script.startsWith(plugin) && PLUGIN_SCRIPTS.has(script.slice(plugin.length))) ||
       (script.startsWith(app) && APP_SCRIPTS.has(script.slice(app.length)));
     if (!known) return false;
-    // Every file it is given is the run's own; `-` skips a build input.
-    return rest.slice(1).every((arg) => arg === "-" || inside(arg));
+    // Every file it is given is the run's own; `-` skips a build input. The
+    // manual builder's `--out-dir` may name the folder itself.
+    const given = rest.slice(1);
+    // Without `--out-dir` the manual builder writes to the profile's own
+    // manuals folder, outside the run's.
+    if (
+      script.endsWith("/manual/build-manual.mjs") &&
+      !given.some((arg) => arg === "--out-dir" || arg.startsWith("--out-dir="))
+    ) {
+      return false;
+    }
+    for (let index = 0; index < given.length; index += 1) {
+      const arg = given[index]!;
+      if (arg === "-" || SCRIPT_FLAGS.has(arg)) continue;
+      if (arg === "--out-dir" || arg.startsWith("--out-dir=")) {
+        const dir = arg === "--out-dir" ? given[(index += 1)] : arg.slice("--out-dir=".length);
+        if (!dir || !(inside(dir) || self(dir))) return false;
+        continue;
+      }
+      // The CBO list script reads the SDK's saved GetPackageContents result.
+      if (script.endsWith("/cbo/objects.mjs") && index === 0 && savedResult(arg)) continue;
+      if (!inside(arg) && !self(arg)) return false;
+    }
+    return true;
   }
 }
