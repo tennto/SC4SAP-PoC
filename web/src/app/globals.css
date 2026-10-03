@@ -5247,7 +5247,10 @@ body.is-dragging-chat * {
   position: absolute;
   inset: 0;
   display: block;
-  width: 100%;
+  /* iOS Safari grows an iframe to its content's width; a 1px width held
+     at the box's by min-width keeps it the box's width there too. */
+  width: 1px;
+  min-width: 100%;
   height: 100%;
   border: 0;
   background: #ffffff;

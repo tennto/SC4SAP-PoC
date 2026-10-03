@@ -25,6 +25,7 @@
  *   - the process flow drawn as SVG from the run's data (`spec-flow.ts`).
  */
 import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
+import { DOC_ICON_SCRIPT, DOC_ICON_STYLE } from "@/lib/doc-icons";
 
 /** The app's typeface, from the same jsDelivr stylesheet the app loads. */
 const TYPE_LINK = `<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">`;
@@ -117,10 +118,16 @@ td{font-size:14px}
 tbody tr:hover{background:color-mix(in srgb,var(--head) 60%,transparent)}
 td.id{font:500 13px/1.55 ui-monospace,"Cascadia Mono",Consolas,monospace}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
-th.sortable::after{content:"";margin:0}
-th.sortable:hover::after{content:"↕";opacity:.45;margin-left:.4em}
-th[aria-sort=ascending]::after{content:"↑";opacity:.9;margin-left:.4em}
-th[aria-sort=descending]::after{content:"↓";opacity:.9;margin-left:.4em}
+/* The sort mark always holds its place and only shows on hover or when
+   sorted, so pointing at a head never widens it and moves the table. */
+th.sortable::after{content:"↕";display:inline-block;width:.8em;margin-left:.4em;opacity:0;transition:opacity .15s}
+th.sortable:hover::after{opacity:.45}
+th[aria-sort=ascending]::after{content:"↑";opacity:.9}
+th[aria-sort=descending]::after{content:"↓";opacity:.9}
+/* A long run without spaces — "A/B/C/…" lists of names — folds inside its
+   cell instead of stretching the column (cbo-theme also adds break points
+   after its slashes and commas). */
+td{overflow-wrap:break-word}
 .tbl-tools input,.tbl-tools button{border-radius:8px}
 a.xref{text-decoration:none}
 a.xref:hover{text-decoration:underline;text-decoration-color:var(--line-strong)}
@@ -152,6 +159,17 @@ figure img,figure svg.spec-flow{cursor:zoom-in}
 .zoombox-hint{position:absolute;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.12);color:rgba(255,255,255,.8);font-size:12px;white-space:nowrap;pointer-events:none}
 @keyframes zoombox-in{from{opacity:0}}
 @media (prefers-reduced-motion:reduce){.zoombox{animation:none}}
+
+/* Phones: a table scrolls sideways at a width its columns can be read at,
+   and never also up and down inside the page — two scroll directions in one
+   box under a thumb is the box that does not move. */
+@media (max-width:700px){
+  .table-wrap,.table-wrap.tall{max-height:none;overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  .table-wrap>table{min-width:600px}
+  th,td{padding:9px 12px}
+  td{font-size:13.5px}
+  .layout{padding:0 16px 72px}
+}
 
 @media print{
   .sec.collapsed>.sec-body{grid-template-rows:1fr;opacity:1}
@@ -519,5 +537,5 @@ export function styledSpec(
       if (start >= 0 && end > at) page = page.slice(0, start) + drawn.svg + page.slice(end + 1);
     }
   }
-  return before(before(page, "head", TYPE_LINK + STYLE), "body", SCRIPT);
+  return before(before(page, "head", TYPE_LINK + STYLE + DOC_ICON_STYLE), "body", SCRIPT + DOC_ICON_SCRIPT);
 }

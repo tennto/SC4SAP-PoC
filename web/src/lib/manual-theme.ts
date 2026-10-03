@@ -23,6 +23,7 @@
  * they are the one colour on the page that means "look here".
  */
 import { flowSvg } from "@/lib/spec-flow";
+import { DOC_ICON_SCRIPT, DOC_ICON_STYLE } from "@/lib/doc-icons";
 
 /** The app's typeface, as the spec loads it. */
 const TYPE_LINK = `<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">`;
@@ -228,6 +229,17 @@ body.editing .topbar #edit-btn:hover{background:var(--head)}
 .ed-bar>button.primary svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
 .topbar>#print-btn{order:5}
 .topbar>#theme-btn{order:6}
+
+/* Phones: the manual's tables scroll sideways inside their own box rather
+   than squeezing their columns or widening the page. The step head stays a
+   caption. */
+@media (max-width:700px){
+  main table:not(.step-head){display:block;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+  main table:not(.step-head)>thead,main table:not(.step-head)>tbody{display:table;width:100%;min-width:560px}
+  .layout{padding:0 16px 72px}
+  .step{padding:14px 14px 16px}
+  .cover .meta{grid-template-rows:none;grid-auto-flow:row;grid-template-columns:max-content 1fr}
+}
 
 @media print{
   :root,:root:not([data-theme=light]),:root[data-theme=dark]{${LIGHT}}
@@ -593,5 +605,5 @@ export function styledManual(html: string): string {
   // Revisions first: it reads the source the flow step left untouched.
   page = editableRevisions(page, source);
   page = withGuide(page, String(manual?.lang ?? ""));
-  return inBody(inHead(page, TYPE_LINK + STYLE), SCRIPT);
+  return inBody(inHead(page, TYPE_LINK + STYLE + DOC_ICON_STYLE), SCRIPT + DOC_ICON_SCRIPT);
 }
