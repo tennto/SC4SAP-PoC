@@ -1,7 +1,7 @@
 /**
  * Files a skill run writes for the reader to take away — and nothing kept.
  *
- * A run that produces documents (Program → Spec's .md / .html / .xlsx) is
+ * A run that produces documents (Program → Spec's .md / .html / .xlsx, Program → Manual's .html) is
  * told to write them under its own folder, `.sc4sap/out/<session id>/` in
  * the workspace. The web app asks for them once the run has settled; they
  * are read, handed over, and the folder is deleted in the same breath. What
@@ -128,8 +128,21 @@ export function sweepRunFiles(workspace: string): void {
   rmSync(resolve(workspace, OUTPUT_ROOT), { recursive: true, force: true });
 }
 
-/** The plugin scripts a documents run may run on its own files. */
-const SPEC_SCRIPTS = new Set(["md-to-html.mjs", "render-md-images.mjs", "build-spec.mjs"]);
+/**
+ * The plugin scripts a documents run may run on its own files, by their path
+ * under the plugin's `scripts/`. `build-manual.mjs` is Program → Manual's
+ * builder; its `--import` form is not listed, since no run here is given an
+ * edited manual to read back.
+ */
+const PLUGIN_SCRIPTS = new Set([
+  "spec/md-to-html.mjs",
+  "spec/render-md-images.mjs",
+  "spec/build-spec.mjs",
+  "manual/build-manual.mjs",
+]);
+
+/** Switches those scripts take that name no file. */
+const SCRIPT_FLAGS = new Set(["--same-version", "--major"]);
 
 /**
  * This app's own spec scripts — see `scripts/spec/`. A run names them
@@ -153,8 +166,8 @@ function tokens(command: string): string[] | null {
 
 /**
  * A step of a documents run that needs no one's approval: writing a file
- * inside the run's own folder, or running one of the plugin's spec scripts
- * on files there.
+ * inside the run's own folder, or running one of the plugin's spec or manual
+ * scripts on files there.
  *
  * Measured 2026-09-28: an Economy Program → Spec run stopped four times for
  * a person to allow its own image spec, its own Markdown and the two
@@ -210,13 +223,33 @@ export function isOwnRunStep(
     if (verb === "rm") return paths.length > 0 && paths.every(inside);
     if (verb !== "node") return false;
     const script = norm(resolve(workspace, rest[0]!));
-    const plugin = `${norm(pluginPath)}/scripts/spec/`;
+    const plugin = `${norm(pluginPath)}/scripts/`;
     const app = `${norm(APP_SCRIPTS_DIR)}/`;
     const known =
-      (script.startsWith(plugin) && SPEC_SCRIPTS.has(script.slice(plugin.length))) ||
+      (script.startsWith(plugin) && PLUGIN_SCRIPTS.has(script.slice(plugin.length))) ||
       (script.startsWith(app) && APP_SCRIPTS.has(script.slice(app.length)));
     if (!known) return false;
-    // Every file it is given is the run's own; `-` skips a build input.
-    return rest.slice(1).every((arg) => arg === "-" || inside(arg));
+    // Every file it is given is the run's own; `-` skips a build input. The
+    // manual builder's `--out-dir` may name the folder itself.
+    const given = rest.slice(1);
+    // Without `--out-dir` the manual builder writes to the profile's own
+    // manuals folder, outside the run's.
+    if (
+      script.endsWith("/manual/build-manual.mjs") &&
+      !given.some((arg) => arg === "--out-dir" || arg.startsWith("--out-dir="))
+    ) {
+      return false;
+    }
+    for (let index = 0; index < given.length; index += 1) {
+      const arg = given[index]!;
+      if (arg === "-" || SCRIPT_FLAGS.has(arg)) continue;
+      if (arg === "--out-dir" || arg.startsWith("--out-dir=")) {
+        const dir = arg === "--out-dir" ? given[(index += 1)] : arg.slice("--out-dir=".length);
+        if (!dir || !(inside(dir) || self(dir))) return false;
+        continue;
+      }
+      if (!inside(arg)) return false;
+    }
+    return true;
   }
 }

@@ -155,8 +155,12 @@ export type Skill = {
    * Nothing of the run is remembered: not in this tab's storage, not as a
    * conversation — only its cost is recorded. Done, a reload or closing the
    * tab ends it, and the backend session with it.
+   *
+   * Which documents: `spec` is Program → Spec (`spec-prompt.ts`, its survey
+   * dialog in Standard mode), `manual` is Program → Manual (`manual-prompt.ts`,
+   * a cover dialog in both modes, the manual previewed with its edit mode).
    */
-  documents?: boolean;
+  documents?: "spec" | "manual";
 };
 
 export type SkillGroup = {
@@ -450,7 +454,54 @@ export const SKILLS: Skill[] = [
       // nothing — writes in the language chosen, not the screen's.
       { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
     ],
-    documents: true,
+    documents: "spec",
+  },
+  {
+    // The plugin's newest document skill (0.6.31): one HTML file a key user
+    // follows, with an edit mode inside it. Not measured here yet — the cost
+    // hints are estimates from Program → Spec's runs.
+    slug: "program-to-manual",
+    command: "/sc4sap:program-to-manual",
+    tools: "build",
+    title: "Program → Manual",
+    icon: "book-open-text",
+    summary:
+      "Writes the end-user manual for one program — scenario steps on drawn screens with numbered callouts, check points, messages and a glossary, editable in the page",
+    group: "analyze",
+    status: "ready",
+    // The same two rows as Program → Spec. No output format: the manual is
+    // one HTML file. The cover — author, team, company, confidentiality — is
+    // asked in a dialog when Run is pressed (`ManualSurveyModal`).
+    fields: [
+      { label: "Package", kind: "text", placeholder: "ZMMPAEK", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
+      { label: "Program name", kind: "text", placeholder: "ZMMR00020", span: "half" },
+      {
+        label: "Mode",
+        kind: "select",
+        span: "third",
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy:
+            "One agent reads the program and its screens and writes the manual. Estimated cost: about $0.40–0.80. Estimated time: 3–6 min.",
+          Standard:
+            "The plugin's full skill: an analyst and a module consultant, then a writer. Estimated cost: about $1.50–3.00. Estimated time: 10–20 min.",
+        },
+      },
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
+      {
+        label: "English copy",
+        kind: "select",
+        span: "third",
+        // No first: a second manual is a second writer pass, close to the
+        // cost of the first one's writing again.
+        options: ["No", "Yes"],
+        optionHints: {
+          No: "One manual, in the language chosen.",
+          Yes: "An English manual as well, translated from the first. Adds about a third to the cost. Ignored for an English manual.",
+        },
+      },
+    ],
+    documents: "manual",
   },
   {
     // Not yet worked on for model choice: no cost dialog, so no budget and no

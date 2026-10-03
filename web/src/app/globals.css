@@ -5187,6 +5187,21 @@ body.is-dragging-chat * {
   background: #ffffff;
 }
 
+/* A manual's one line on its edit mode: under the bar, quieter than it. */
+.html-preview-note {
+  margin: 0;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-55);
+}
+
+/* A manual is read through, not glanced at: a taller box. */
+.html-preview-note + .html-preview-viewport {
+  height: min(80vh, 900px);
+}
+
 .html-preview-frame {
   position: absolute;
   inset: 0;

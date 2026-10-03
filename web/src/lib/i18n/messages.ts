@@ -223,6 +223,22 @@ const en = {
     cancel: "Cancel",
     run: "Run",
   },
+  manualSurvey: {
+    kind: "Before it runs",
+    title: (program: string) => `Manual · ${program}`,
+    description:
+      "The cover and footer of the manual. Leave any of them empty and it is left off — nothing is made up. Kept in this browser for the next manual.",
+    author: "Author",
+    authorPlaceholder: "Kim Minji",
+    team: "Team",
+    teamPlaceholder: "MM key users",
+    company: "Company",
+    companyPlaceholder: "Your company",
+    confidentiality: "Confidentiality notice",
+    confidentialityPlaceholder: "Internal use only",
+    cancel: "Cancel",
+    run: "Run",
+  },
   skillForm: {
     haikuNote: "Half the price of Sonnet. Enough to read a table or a program.",
     sonnetNote: "Fast, and enough to narrow most causes.",
@@ -277,6 +293,12 @@ const en = {
       "The specification and its files are deleted. Nothing of this run is kept, so download anything you need first.",
     closeIt: "Close it",
     programRequired: "Enter the program to document.",
+    programRequiredManual: "Enter the program to write the manual for.",
+    closeBodyManual:
+      "The manual is deleted. Nothing of this run is kept, so download it first — and save any edits you made in it.",
+    manualPreview: "Manual",
+    manualEditHint:
+      "Press Edit inside the manual to change it. Its Save downloads an edited copy (…-edited.html); edits are not kept on this page.",
     runSummary: "Summary",
     collectingFiles: "Collecting the files…",
     noFiles: "The run finished without writing a file. The summary above is all it produced.",
@@ -1173,6 +1195,22 @@ const ko: Messages = {
     cancel: "취소",
     run: "실행",
   },
+  manualSurvey: {
+    kind: "실행 전 확인",
+    title: (program) => `매뉴얼 · ${program}`,
+    description:
+      "매뉴얼 표지와 바닥글에 들어갈 정보입니다. 비워 둔 항목은 넣지 않으며, 지어내지 않습니다. 다음 매뉴얼을 위해 이 브라우저에 기억합니다.",
+    author: "작성자",
+    authorPlaceholder: "김민지",
+    team: "팀",
+    teamPlaceholder: "MM 키유저",
+    company: "회사",
+    companyPlaceholder: "회사 이름",
+    confidentiality: "보안 문구",
+    confidentialityPlaceholder: "사내 한정",
+    cancel: "취소",
+    run: "실행",
+  },
   skillForm: {
     haikuNote: "Sonnet의 절반 가격입니다. 테이블이나 프로그램을 읽는 데는 충분합니다.",
     sonnetNote: "빠르고, 대부분의 원인을 좁히기에 충분합니다.",
@@ -1222,6 +1260,12 @@ const ko: Messages = {
     closeBodyDocuments:
       "명세서와 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하세요.",
     programRequired: "명세를 만들 프로그램을 입력하세요.",
+    programRequiredManual: "매뉴얼을 만들 프로그램을 입력하세요.",
+    closeBodyManual:
+      "매뉴얼이 삭제됩니다. 이 실행은 어디에도 보관되지 않으니 먼저 다운로드하고, 매뉴얼 안에서 편집했다면 저장해 두세요.",
+    manualPreview: "매뉴얼",
+    manualEditHint:
+      "매뉴얼 안의 편집 버튼으로 고칠 수 있습니다. 저장을 누르면 편집본(…-edited.html)이 다운로드되며, 편집 내용은 이 화면에 남지 않습니다.",
     runSummary: "요약",
     collectingFiles: "파일을 가져오는 중…",
     noFiles: "파일을 만들지 않고 실행이 끝났습니다. 위의 요약이 결과의 전부입니다.",
@@ -2097,6 +2141,22 @@ const ja: Messages = {
     cancel: "キャンセル",
     run: "実行",
   },
+  manualSurvey: {
+    kind: "実行前の確認",
+    title: (program) => `マニュアル · ${program}`,
+    description:
+      "マニュアルの表紙とフッターに入る情報です。空欄の項目は載せず、作り上げることもしません。次のマニュアルのためにこのブラウザに記憶します。",
+    author: "作成者",
+    authorPlaceholder: "山田 花子",
+    team: "チーム",
+    teamPlaceholder: "MM キーユーザー",
+    company: "会社",
+    companyPlaceholder: "会社名",
+    confidentiality: "機密表示",
+    confidentialityPlaceholder: "社外秘",
+    cancel: "キャンセル",
+    run: "実行",
+  },
   skillForm: {
     haikuNote: "Sonnet の半額です。テーブルやプログラムを読むには十分です。",
     sonnetNote: "高速で、ほとんどの原因を絞り込むには十分です。",
@@ -2146,6 +2206,12 @@ const ja: Messages = {
     closeBodyDocuments:
       "仕様書とファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードしてください。",
     programRequired: "仕様書を作るプログラムを入力してください。",
+    programRequiredManual: "マニュアルを作るプログラムを入力してください。",
+    closeBodyManual:
+      "マニュアルは削除されます。この実行はどこにも保存されないため、先にダウンロードし、マニュアル内で編集した場合は保存しておいてください。",
+    manualPreview: "マニュアル",
+    manualEditHint:
+      "マニュアル内の編集ボタンで変更できます。保存を押すと編集版 (…-edited.html) がダウンロードされ、編集内容はこの画面には残りません。",
     runSummary: "要約",
     collectingFiles: "ファイルを取得しています…",
     noFiles: "ファイルを作らずに実行が終わりました。上の要約が結果のすべてです。",

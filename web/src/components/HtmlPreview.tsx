@@ -60,24 +60,67 @@ document.addEventListener("click", function (event) {
 });
 </script>`;
 
-/** The document with `PREVIEW_HEAD` at the start of its head. */
-function framed(html: string): string {
+/** Marks a document's "save a copy" among anything else posted to this page. */
+const SAVE_MESSAGE = "sc4sap-preview-save";
+
+/**
+ * Added as well to a document with an edit mode of its own — the plugin's
+ * manual, whose Save hands the edited page to the browser as a download.
+ *
+ * In this frame that cannot work as written: a sandbox without
+ * `allow-downloads` drops the download, and the file would be named after
+ * `about:srcdoc` anyway. So the blob the editor makes is remembered, and the
+ * click that would download it posts its text up to this page instead, which
+ * saves it under the document's own name. `showSaveFilePicker`, which a
+ * cross-origin frame may not use, is hidden so the editor takes that path.
+ */
+const EDIT_HEAD = `<script>
+(function () {
+  try { window.showSaveFilePicker = undefined; } catch (e) {}
+  var blobs = {};
+  var create = URL.createObjectURL;
+  URL.createObjectURL = function (object) {
+    var url = create.call(URL, object);
+    if (object instanceof Blob) blobs[url] = object;
+    return url;
+  };
+  var click = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function () {
+    var blob = this.hasAttribute("download") ? blobs[this.href] : null;
+    if (!blob) return click.call(this);
+    blob.text().then(function (html) {
+      parent.postMessage({ type: "${SAVE_MESSAGE}", html: html }, "*");
+    });
+  };
+})();
+</script>`;
+
+/** The document with `PREVIEW_HEAD` (and `EDIT_HEAD`) at the start of its head. */
+function framed(html: string, editable: boolean): string {
+  const added = editable ? PREVIEW_HEAD + EDIT_HEAD : PREVIEW_HEAD;
   const head = /<head[^>]*>/i.exec(html);
   if (head) {
     const at = head.index + head[0].length;
-    return html.slice(0, at) + PREVIEW_HEAD + html.slice(at);
+    return html.slice(0, at) + added + html.slice(at);
   }
-  return PREVIEW_HEAD + html;
+  return added + html;
 }
 
 export function HtmlPreview({
   name,
   html,
   onDownload,
+  onSaveEdited,
 }: {
   name: string;
   html: string;
   onDownload: () => void;
+  /**
+   * The document has an edit mode, and this takes what its Save produced.
+   * With it the frame may also open dialogs — the editor confirms a deleted
+   * step, and the manual prints itself — and the bar says how editing works.
+   */
+  onSaveEdited?: (html: string) => void;
 }) {
   const { t: messages } = useLocale();
   const t = messages.skillForm;
@@ -106,7 +149,25 @@ export function HtmlPreview({
     });
 
   const frame = useRef<HTMLIFrameElement>(null);
-  const srcDoc = useMemo(() => framed(html), [html]);
+  const editable = onSaveEdited !== undefined;
+  const srcDoc = useMemo(() => framed(html, editable), [html, editable]);
+
+  // The editor's Save, from this frame only.
+  const saveEdited = useRef(onSaveEdited);
+  useEffect(() => {
+    saveEdited.current = onSaveEdited;
+  }, [onSaveEdited]);
+  useEffect(() => {
+    if (!editable) return;
+    const onMessage = (event: MessageEvent): void => {
+      if (event.source !== frame.current?.contentWindow) return;
+      const data = event.data as { type?: unknown; html?: unknown } | null;
+      if (data?.type !== SAVE_MESSAGE || typeof data.html !== "string") return;
+      saveEdited.current?.(data.html);
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [editable]);
 
   /** Tells the document its zoom; the frame's own origin is opaque, hence "*". */
   const sendZoom = (): void => {
@@ -118,7 +179,15 @@ export function HtmlPreview({
     <div className="skill-doc-box html-preview">
       <div className="skill-doc-bar">
         <span className="skill-doc-kind">
-          <Icon name="file-html" /> {t.htmlPreview}
+          {editable ? (
+            <>
+              <Icon name="book-open-text" /> {t.manualPreview}
+            </>
+          ) : (
+            <>
+              <Icon name="file-html" /> {t.htmlPreview}
+            </>
+          )}
         </span>
         <div className="html-preview-tools">
           <div className="zoom" role="group" aria-label={t.zoom}>
@@ -171,12 +240,13 @@ export function HtmlPreview({
           Mermaid flowchart, the preview's own listeners) but can reach
           nothing of this app. Popups only so an outside link opens in a new
           tab, which leaves the sandbox rather than inheriting it. */}
+      {editable && <p className="html-preview-note">{t.manualEditHint}</p>}
       <div className="html-preview-viewport">
         <iframe
           ref={frame}
           className="html-preview-frame"
           title={name}
-          sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+          sandbox={`allow-scripts allow-popups allow-popups-to-escape-sandbox${editable ? " allow-modals" : ""}`}
           srcDoc={srcDoc}
           onLoad={sendZoom}
         />
