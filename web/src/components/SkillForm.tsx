@@ -55,6 +55,7 @@ import { ManualSurveyModal } from "@/components/ManualSurveyModal";
 import { HtmlPreview } from "@/components/HtmlPreview";
 import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { styledSpec } from "@/lib/spec-theme";
+import { styledManual } from "@/lib/manual-theme";
 import { codeReviewPrompt } from "@/lib/code-review-prompt";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
@@ -915,7 +916,9 @@ export function SkillForm({
                 Number(/-en\.html$/i.test(a.name)) - Number(/-en\.html$/i.test(b.name)) ||
                 a.name.localeCompare(b.name),
             )
-            .map((file) => ({ file, html: textOf(file) }))
+            // Restyled, and with the drawn flow, for the preview and the
+            // download both — as the spec is.
+            .map((file) => ({ file, html: styledManual(textOf(file)) }))
         : [],
     [docKind, docs],
   );

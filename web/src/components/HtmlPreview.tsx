@@ -58,6 +58,9 @@ document.addEventListener("click", function (event) {
   // away and move the target up.
   setTimeout(function () { target.scrollIntoView({ block: "start" }); });
 });
+// Gone from the document once it has run, so a page that saves itself — the
+// manual's edit mode — does not carry the preview's wiring into the file.
+document.currentScript && document.currentScript.remove();
 </script>`;
 
 /** Marks a document's "save a copy" among anything else posted to this page. */
@@ -76,6 +79,7 @@ const SAVE_MESSAGE = "sc4sap-preview-save";
  */
 const EDIT_HEAD = `<script>
 (function () {
+  if (window.parent === window) return;
   try { window.showSaveFilePicker = undefined; } catch (e) {}
   var blobs = {};
   var create = URL.createObjectURL;
@@ -93,6 +97,7 @@ const EDIT_HEAD = `<script>
     });
   };
 })();
+document.currentScript && document.currentScript.remove();
 </script>`;
 
 /** The document with `PREVIEW_HEAD` (and `EDIT_HEAD`) at the start of its head. */

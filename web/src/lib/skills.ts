@@ -258,7 +258,7 @@ export const SKILLS: Skill[] = [
       // on the system, so this is worth giving when the name is ambiguous or
       // the review should read the neighbours around it.
       { label: "Package", kind: "text", placeholder: "ZMM_CBO", hint: "Optional. Narrows the search and gives the review the surrounding objects." },
-      { label: "Object name", kind: "text", placeholder: "ZMM_PO_REPORT" },
+      { label: "Object name", kind: "text", placeholder: "ZPROGRAM" },
       { label: "Review focus", kind: "select", options: ["All", "Clean ABAP", "Performance", "Security", "SAP standard compliance"] },
       {
         label: "Mode",
@@ -422,8 +422,8 @@ export const SKILLS: Skill[] = [
     // `lib/spec-prompt.ts`.
     fields: [
       // Two rows: what to document, then how — mode, files, language.
-      { label: "Package", kind: "text", placeholder: "ZMMPAEK", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
-      { label: "Program name", kind: "text", placeholder: "ZMMR00020", span: "half" },
+      { label: "Package", kind: "text", placeholder: "ZMM_CBO", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
+      { label: "Program name", kind: "text", placeholder: "ZPROGRAM", span: "half" },
       // Excel on its own: the workbook carries the whole spec.
       {
         label: "Mode",
@@ -458,8 +458,9 @@ export const SKILLS: Skill[] = [
   },
   {
     // The plugin's newest document skill (0.6.31): one HTML file a key user
-    // follows, with an edit mode inside it. Not measured here yet — the cost
-    // hints are estimates from Program → Spec's runs.
+    // follows, with an edit mode inside it. Economy measured on 2026-10-03
+    // against ZMMR00020 (Korean, no English copy): 87 s, $0.56, 15 turns, no
+    // approval dialogs. Standard is not measured yet; its hint is an estimate.
     slug: "program-to-manual",
     command: "/sc4sap:program-to-manual",
     tools: "build",
@@ -473,8 +474,8 @@ export const SKILLS: Skill[] = [
     // one HTML file. The cover — author, team, company, confidentiality — is
     // asked in a dialog when Run is pressed (`ManualSurveyModal`).
     fields: [
-      { label: "Package", kind: "text", placeholder: "ZMMPAEK", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
-      { label: "Program name", kind: "text", placeholder: "ZMMR00020", span: "half" },
+      { label: "Package", kind: "text", placeholder: "ZMM_CBO", hint: "Optional. Helps find the program and its custom objects.", span: "half" },
+      { label: "Program name", kind: "text", placeholder: "ZPROGRAM", span: "half" },
       {
         label: "Mode",
         kind: "select",
@@ -482,7 +483,7 @@ export const SKILLS: Skill[] = [
         options: ["Economy", "Standard"],
         optionHints: {
           Economy:
-            "One agent reads the program and its screens and writes the manual. Estimated cost: about $0.40–0.80. Estimated time: 3–6 min.",
+            "One agent reads the program and its screens and writes the manual. Estimated cost: about $0.50–0.80. Estimated time: 1–3 min.",
           Standard:
             "The plugin's full skill: an analyst and a module consultant, then a writer. Estimated cost: about $1.50–3.00. Estimated time: 10–20 min.",
         },

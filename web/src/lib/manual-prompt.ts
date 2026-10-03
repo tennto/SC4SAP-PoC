@@ -151,7 +151,7 @@ function economyPrompt(survey: ManualSurvey, outDir: string): string {
     `   - \`lang\` is \`${lang}\`; \`changeNote\` is "${FIRST_NOTE[survey.language]}"; ${coverLine(survey)}.`,
     "   - Scenarios are the tasks a user performs: each radio option, execution mode or processing button that leads to a different outcome. Steps follow the screens the user sees, one step per screen state (a popup is its own step), at most 6 callouts each, anchored by the keys in manual-schema.md §4.",
     "   - Every scenario has check points with their source: mandatory inputs, AT SELECTION-SCREEN checks, authority checks, confirmation popups, and processing that cannot be undone.",
-    "   - `fields`, `messages` (cause in business terms, the user's action; leave out messages the user never sees) and a short `glossary`.",
+    "   - `fields`, `messages` (cause in business terms, the user's action; leave out messages the user never sees) and a short `glossary`. Every message has a `code`: its class and number (`ZMM 015`), or `—` for a MESSAGE with a literal text.",
     "   - Any business statement the source does not show goes into `intro.unverified` too, copied exactly.",
     "   - Sample values in the screens are invented (`4500000015`, `KR01`, `100234`) — never business data or real names.",
     "   - Only when a screen needs a shape the example does not show (a popup with fields, several grids, a selection frame), Read `<plugin>/skills/program-to-spec/selection-schema.md` or `alv-buttons-schema.md` for it.",
