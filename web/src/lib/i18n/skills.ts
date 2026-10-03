@@ -176,7 +176,22 @@ const ko: CatalogText = {
         "커스텀 패키지를 훑어 재사용할 만한 Z 오브젝트를 정리해, 이후 실행이 새로 만들기보다 기존 요소를 쓰게 합니다",
       fields: {
         Package: { label: "패키지" },
+        "Flagship programs": {
+          label: "핵심 프로그램",
+          hint: "선택 사항. 가장 많이 쓰는 프로그램입니다. 이 프로그램이 쓰는 오브젝트를 맨 위에 고정합니다.",
+        },
+        Mode: {
+          label: "모드",
+          options: { Economy: "절약", Standard: "기본" },
+          optionHints: {
+            Economy:
+              "에이전트 1개가 패키지와 사용처 관계를 훑고 중요한 오브젝트를 설명합니다. 예상 소요비용은 약 1,100~1,600원, 예상 소요시간은 2~4분입니다.",
+            Standard:
+              "플러그인 스킬과 인벤토리 에이전트로 실행하며, 민감 오브젝트를 더 꼼꼼히 찾습니다. 예상 소요비용은 약 1,900~2,700원, 예상 소요시간은 6~8분입니다.",
+          },
+        },
         Module: { label: "모듈", options: MODULES_KO },
+        Language: { label: "작성 언어", options: LANGUAGES_KO },
       },
     },
     "compare-programs": {
@@ -467,7 +482,22 @@ const ja: CatalogText = {
         "カスタムパッケージを走査し、再利用に値する Z オブジェクトを一覧化して、以降の実行が新規作成より既存要素を優先するようにします",
       fields: {
         Package: { label: "パッケージ" },
+        "Flagship programs": {
+          label: "主要プログラム",
+          hint: "任意。最もよく使うプログラムです。これらが使うオブジェクトを先頭に固定します。",
+        },
+        Mode: {
+          label: "モード",
+          options: { Economy: "節約", Standard: "標準" },
+          optionHints: {
+            Economy:
+              "エージェント 1 つがパッケージと使用先関係を走査し、重要なオブジェクトを説明します。予想費用は約 110〜160 円、予想所要時間は 2〜4 分です。",
+            Standard:
+              "プラグインのスキルと棚卸しエージェントで実行し、機密オブジェクトをより丁寧に洗い出します。予想費用は約 190〜270 円、予想所要時間は 6〜8 分です。",
+          },
+        },
         Module: { label: "モジュール", options: MODULES_JA },
+        Language: { label: "記述言語", options: LANGUAGES_JA },
       },
     },
     "compare-programs": {

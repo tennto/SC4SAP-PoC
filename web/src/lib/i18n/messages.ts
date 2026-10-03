@@ -294,6 +294,10 @@ const en = {
     closeIt: "Close it",
     programRequired: "Enter the program to document.",
     programRequiredManual: "Enter the program to write the manual for.",
+    packageRequired: "Enter the package to inventory.",
+    closeBodyCbo:
+      "The inventory and its files are deleted. Nothing of this run is kept, so download anything you need first.",
+    inventoryJson: "Inventory for the other skills (JSON)",
     closeBodyManual:
       "The manual is deleted. Nothing of this run is kept, so download it first — and save any edits you made in it.",
     manualPreview: "Manual",
@@ -1261,6 +1265,10 @@ const ko: Messages = {
       "명세서와 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하세요.",
     programRequired: "명세를 만들 프로그램을 입력하세요.",
     programRequiredManual: "매뉴얼을 만들 프로그램을 입력하세요.",
+    packageRequired: "인벤토리를 만들 패키지를 입력하세요.",
+    closeBodyCbo:
+      "인벤토리와 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하세요.",
+    inventoryJson: "다른 스킬이 읽는 인벤토리 (JSON)",
     closeBodyManual:
       "매뉴얼이 삭제됩니다. 이 실행은 어디에도 보관되지 않으니 먼저 다운로드하고, 매뉴얼 안에서 편집했다면 저장해 두세요.",
     manualPreview: "매뉴얼",
@@ -2207,6 +2215,10 @@ const ja: Messages = {
       "仕様書とファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードしてください。",
     programRequired: "仕様書を作るプログラムを入力してください。",
     programRequiredManual: "マニュアルを作るプログラムを入力してください。",
+    packageRequired: "棚卸しするパッケージを入力してください。",
+    closeBodyCbo:
+      "棚卸しとファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードしてください。",
+    inventoryJson: "他のスキルが読む棚卸し (JSON)",
     closeBodyManual:
       "マニュアルは削除されます。この実行はどこにも保存されないため、先にダウンロードし、マニュアル内で編集した場合は保存しておいてください。",
     manualPreview: "マニュアル",

@@ -158,9 +158,11 @@ export type Skill = {
    *
    * Which documents: `spec` is Program → Spec (`spec-prompt.ts`, its survey
    * dialog in Standard mode), `manual` is Program → Manual (`manual-prompt.ts`,
-   * a cover dialog in both modes, the manual previewed with its edit mode).
+   * a cover dialog in both modes, the manual previewed with its edit mode),
+   * `cbo` is Inventory a CBO Package (`cbo-prompt.ts`, its index previewed
+   * as HTML in the spec's look, with inventory.json beside it).
    */
-  documents?: "spec" | "manual";
+  documents?: "spec" | "manual" | "cbo";
 };
 
 export type SkillGroup = {
@@ -364,9 +366,14 @@ export const SKILLS: Skill[] = [
     followUp: true,
   },
   {
-    // Not yet worked on for model choice: no cost dialog, so no budget and no
-    // economy, and its Opus agents run unchecked. Add both when this skill is
-    // next developed — see docs/model-selection-improvements.md, item 4.
+    // Built out on 2026-10-04. The plugin asks package, flagship programs and
+    // module one at a time and writes .sc4sap/cbo/<MODULE>/<PACKAGE>/; here
+    // the three are form fields and the files go to the run's own folder, to
+    // be shown and downloaded like a spec's — nothing is kept on the server.
+    // Measured 2026-10-04 on ZMMPAEK (362 objects, flagship ZMMR00020), after
+    // the app scripts took over the object list and the object table: Economy
+    // 190 s, $0.95; Standard 437 s, $1.63 with every section of the stocker's
+    // analysis kept; no dialogs (before: 255 s / $1.56 and 466 s / $2.39).
     slug: "analyze-cbo-obj",
     command: "/sc4sap:analyze-cbo-obj",
     tools: "build",
@@ -377,9 +384,30 @@ export const SKILLS: Skill[] = [
     group: "analyze",
     status: "ready",
     fields: [
-      { label: "Package", kind: "text", placeholder: "ZMM_CBO" },
-      { label: "Module", kind: "select", options: MODULES.slice(1) },
+      { label: "Package", kind: "text", placeholder: "ZMM_CBO", span: "half" },
+      {
+        label: "Flagship programs",
+        kind: "text",
+        placeholder: "ZPROGRAM1, ZPROGRAM2",
+        hint: "Optional. The programs used most; what they use is pinned to the top.",
+        span: "half",
+      },
+      {
+        label: "Mode",
+        kind: "select",
+        span: "third",
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy:
+            "One agent walks the package and its where-used graph and describes the objects that matter. Estimated cost: about $0.80–1.20. Estimated time: 2–4 min.",
+          Standard:
+            "The plugin's skill with its stocker agent; it flags sensitive objects more thoroughly. Estimated cost: about $1.40–2.00. Estimated time: 6–8 min.",
+        },
+      },
+      { label: "Module", kind: "select", options: MODULES.slice(1), span: "third" },
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
     ],
+    documents: "cbo",
   },
   {
     // Not yet worked on for model choice: no cost dialog, so no budget and no

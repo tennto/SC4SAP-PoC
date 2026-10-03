@@ -34,6 +34,7 @@ import { ToolLog } from "./tool-log.ts";
 import { listPriceCost } from "./pricing.ts";
 import {
   isOwnRunStep,
+  toolResultsRoot,
   removeRunFiles,
   sweepRunFiles,
   takeRunFiles,
@@ -170,6 +171,7 @@ function pluginRootLine(pluginPath: string): string {
     "browser — the scripts locate the browser themselves.\n\n"
   );
 }
+
 
 const hostAppend = (pluginPath: string): string =>
   "Host: sc4sap-web — a headless web host that governs tool permissions itself; " +
@@ -1334,8 +1336,11 @@ export class SessionManager {
                     (input.tool_input ?? {}) as Record<string, unknown>,
                     // The workspace first, because relative paths resolve
                     // against it; the plugin second, for the skills' own
-                    // reference files.
-                    [this.#config.workspace, this.#config.pluginPath],
+                    // reference files; for Read, the SDK's own folder of
+                    // tool results too.
+                    input.tool_name === "Read"
+                      ? [this.#config.workspace, this.#config.pluginPath, toolResultsRoot(this.#config.workspace)]
+                      : [this.#config.workspace, this.#config.pluginPath],
                   );
                   if (strayPath) {
                     this.toolLog.decide(toolUseID ?? input.tool_use_id, "denied");

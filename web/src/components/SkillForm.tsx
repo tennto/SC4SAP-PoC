@@ -52,10 +52,12 @@ import { specPrompt, type SpecSurvey } from "@/lib/spec-prompt";
 import { SpecSurveyModal, type SpecAnswers } from "@/components/SpecSurveyModal";
 import { manualPrompt, type ManualCover, type ManualSurvey } from "@/lib/manual-prompt";
 import { ManualSurveyModal } from "@/components/ManualSurveyModal";
+import { CBO_FILES, cboPrompt, type CboSurvey } from "@/lib/cbo-prompt";
 import { HtmlPreview } from "@/components/HtmlPreview";
 import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { styledSpec } from "@/lib/spec-theme";
 import { styledManual } from "@/lib/manual-theme";
+import { styledCbo } from "@/lib/cbo-theme";
 import { codeReviewPrompt } from "@/lib/code-review-prompt";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
@@ -425,6 +427,24 @@ function manualOf(values: Record<string, Value>, cover: ManualCover): ManualSurv
     language: (pick("Language") || "Korean") as ManualSurvey["language"],
     english: pick("English copy") === "Yes",
     cover,
+  };
+}
+
+/** An Inventory a CBO Package run from its form. */
+function cboOf(values: Record<string, Value>): CboSurvey {
+  const pick = (label: string): string => {
+    const value = values[label];
+    return typeof value === "string" ? value.trim() : "";
+  };
+  return {
+    package: pick("Package").toUpperCase(),
+    module: pick("Module") || "MM",
+    keyPrograms: pick("Flagship programs")
+      .split(/[\s,;]+/)
+      .map((name) => name.trim().toUpperCase())
+      .filter(Boolean),
+    method: pick("Mode") === "Standard" ? "Precise" : "Economy",
+    language: (pick("Language") || "Korean") as CboSurvey["language"],
   };
 }
 
@@ -902,7 +922,7 @@ export function SkillForm({
     ? (docs?.find((file) => file.name.toLowerCase().endsWith(".md")) ?? null)
     : null;
   const htmlFile =
-    docKind === "spec"
+    docKind === "spec" || docKind === "cbo"
       ? (docs?.find((file) => file.name.toLowerCase().endsWith(".html")) ?? null)
       : null;
   // A manual run's pages: the manual, and its English companion after it.
@@ -923,6 +943,15 @@ export function SkillForm({
     [docKind, docs],
   );
   const xlsxFile = docs?.find((file) => file.name.toLowerCase().endsWith(".xlsx")) ?? null;
+  // The CBO run's machine-readable inventory, the file the plugin's other
+  // skills read.
+  /** What a CBO run's files are saved as: `ZMMPAEK-cbo-inventory.html` / `.json`. */
+  const cboName =
+    docKind === "cbo" && typeof values["Package"] === "string" && values["Package"].trim()
+      ? `${values["Package"].trim().toUpperCase()}-cbo-inventory`
+      : null;
+  const inventoryFile =
+    docKind === "cbo" ? (docs?.find((file) => file.name === CBO_FILES.json) ?? null) : null;
   // The flow's data and the plugin's own picture of it, when the run left both:
   // the page draws the flow again from the data (`spec-flow.ts`).
   const flow = useMemo(() => {
@@ -955,12 +984,14 @@ export function SkillForm({
   const htmlText = useMemo(
     () =>
       htmlFile
-        ? styledSpec(
-            textOf(htmlFile),
-            flow ? { spec: flow.spec, flowPngBase64: flow.flowPng.data } : null,
-          )
+        ? docKind === "cbo"
+          ? styledCbo(textOf(htmlFile))
+          : styledSpec(
+              textOf(htmlFile),
+              flow ? { spec: flow.spec, flowPngBase64: flow.flowPng.data } : null,
+            )
         : null,
-    [htmlFile, flow],
+    [htmlFile, flow, docKind],
   );
 
   // Anything the run said that was not the answer — "Stopped.", a disconnect.
@@ -1216,6 +1247,17 @@ export function SkillForm({
   function start(context: string | null = null): void {
     if (running || blocked) return;
     if (documents) {
+      // The inventory is of a package, and asks nothing before it runs.
+      if (docKind === "cbo") {
+        const survey = cboOf(values);
+        if (survey.package === "") {
+          setError(t.packageRequired);
+          return;
+        }
+        setError(null);
+        void run(null, null, null, null, survey);
+        return;
+      }
       // The survey needs something to be about before it is worth asking.
       if (programOf(values) === "") {
         setError(docKind === "manual" ? t.programRequiredManual : t.programRequired);
@@ -1254,6 +1296,8 @@ export function SkillForm({
     survey: SpecSurvey | null = null,
     /** A Program → Manual run, with its cover — see `manual-prompt.ts`. */
     manual: ManualSurvey | null = null,
+    /** An Inventory a CBO Package run — see `cbo-prompt.ts`. */
+    cbo: CboSurvey | null = null,
   ): Promise<void> {
     if (running || blocked) return;
     setStarting(true);
@@ -1262,6 +1306,27 @@ export function SkillForm({
     heldDocs.delete(slug);
     keepers.get(slug)?.stop();
     try {
+      if (cbo) {
+        // The index as HTML, with inventory.json beside it. Both modes on
+        // Sonnet with sub-agents kept off Opus. Ceilings about twice what
+        // ZMMPAEK (362 objects) measured: $0.95 Economy, $1.63 Standard.
+        setWanted(["html"]);
+        const session = await api.createSession(undefined, undefined, {
+          model: "claude-sonnet-5",
+          economy: true,
+          maxBudgetUsd: cbo.method === "Precise" ? 3.5 : 2,
+          profile: tools,
+          kind: "task",
+          ...(cbo.method === "Economy" ? { effort: "medium" as const } : {}),
+        });
+        setSessionId(session.id);
+        await api.sendMessage(session.id, cboPrompt(cbo, `.sc4sap/out/${session.id}`));
+        keepDocuments(slug, session.id);
+        requestAnimationFrame(() =>
+          result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+        );
+        return;
+      }
       if (manual) {
         // One HTML file, or two with the English companion. Both modes on
         // Sonnet with sub-agents kept off Opus, as on Program → Spec; the
@@ -1840,9 +1905,15 @@ export function SkillForm({
 
               {htmlFile && htmlText !== null && (
                 <HtmlPreview
-                  name={htmlFile.name}
+                  name={cboName ? `${cboName}.html` : htmlFile.name}
                   html={htmlText}
-                  onDownload={() => download(htmlFile.name, htmlText, "text/html;charset=utf-8")}
+                  onDownload={() =>
+                    download(
+                      cboName ? `${cboName}.html` : htmlFile.name,
+                      htmlText,
+                      "text/html;charset=utf-8",
+                    )
+                  }
                 />
               )}
 
@@ -1857,6 +1928,34 @@ export function SkillForm({
                   }
                 />
               ))}
+
+              {inventoryFile && cboName && (
+                <button
+                  type="button"
+                  className="file-card"
+                  onClick={() =>
+                    download(`${cboName}.json`, bytesOf(inventoryFile), "application/json")
+                  }
+                  title={t.downloadFile}
+                >
+                  <span className="file-card-icon" aria-hidden="true">
+                    <Icon name="brackets-curly" weight="fill" />
+                  </span>
+                  <span className="file-card-body">
+                    <span className="file-card-name">{`${cboName}.json`}</span>
+                    <span className="file-card-meta">
+                      {t.inventoryJson} · {sizeLabel(inventoryFile.size)} ·{" "}
+                      {new Date(inventoryFile.createdAt).toLocaleString(locale, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </span>
+                  </span>
+                  <span className="file-card-action" aria-hidden="true">
+                    <Icon name="download-simple" />
+                  </span>
+                </button>
+              )}
 
               {xlsxFile && (
                 <button
@@ -2059,6 +2158,8 @@ export function SkillForm({
           description={
             docKind === "manual"
               ? t.closeBodyManual
+              : docKind === "cbo"
+                ? t.closeBodyCbo
               : documents
                 ? t.closeBodyDocuments
                 : t.closeBody
