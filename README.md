@@ -1,4 +1,11 @@
 # SC4SAP Web PoC
+## Versions
+
+| Component | Version |
+|---|---|
+| Web release | v0.5.1 |
+| sc4sap plugin | 0.6.31 |
+| abap-mcp-adt (MCP server) | 4.8.8 |
 
 ### under active development, not yet at a state we share externally, progress details not published; more information in November 2026
 
