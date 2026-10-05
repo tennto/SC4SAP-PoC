@@ -887,15 +887,27 @@ export class SessionManager {
    * auto-allow list, so every read simply prompts instead.
    */
   async discoverToolPolicy(): Promise<ToolPolicy> {
+    /**
+     * An input stream that never sends a message, not a `"noop"` prompt.
+     *
+     * A string prompt makes a single-turn query, and the SDK closes the CLI's
+     * stdin as soon as that turn's result arrives — about 4 s after init. From
+     * then on every `mcpServerStatus()` throws `ProcessTransport is not ready
+     * for writing`. A warm MCP server connects inside those 4 s; a cold one
+     * does not, so discovery read nothing and the backend came up with zero
+     * SAP tools. That was the cold-start fault. With an open stream no turn
+     * runs at all (no model call, no cost) and the transport stays writable
+     * until `finally` closes it.
+     */
+    const input = new InputPump();
     const probe = query({
-      prompt: "noop",
+      prompt: input,
       options: {
         plugins: [{ type: "local", path: this.#config.pluginPath }],
         cwd: this.#config.workspace,
         model: this.#config.model,
         settingSources: ["project"],
         permissionMode: "dontAsk",
-        maxTurns: 1,
       },
     });
 
@@ -932,32 +944,31 @@ export class SessionManager {
 
 
     try {
-      for await (const message of probe) {
-        if (message.type !== "system" || message.subtype !== "init") continue;
+      // No user message means no `init` message to wait for; the SDK's own
+      // initialize handshake is enough for control requests.
+      await probe.initializationResult();
 
-        const until = Date.now() + MCP_DISCOVERY_TIMEOUT_MS;
-        let statuses = await readStatus();
-        while (
-          Date.now() < until &&
-          (statuses.length === 0 || !statuses.every(mcpServerSettled))
-        ) {
-          await new Promise((r) => setTimeout(r, 500));
-          statuses = await readStatus();
-        }
+      const until = Date.now() + MCP_DISCOVERY_TIMEOUT_MS;
+      let statuses = await readStatus();
+      while (
+        Date.now() < until &&
+        (statuses.length === 0 || !statuses.every(mcpServerSettled))
+      ) {
+        await new Promise((r) => setTimeout(r, 500));
+        statuses = await readStatus();
+      }
 
-        const names = statuses
-          .filter((s) => s.status === "connected")
-          .flatMap((s) => s.tools ?? [])
-          .map((t) => (typeof t === "string" ? t : t.name));
+      const names = statuses
+        .filter((s) => s.status === "connected")
+        .flatMap((s) => s.tools ?? [])
+        .map((t) => (typeof t === "string" ? t : t.name));
 
-        this.#policy = buildToolPolicy(names);
-        if (names.length === 0) {
-          this.#discoveryNote =
-            last.error
-              ? `the MCP status could not be read: ${last.error.message}`
-              : "the MCP server published no tools before the timeout";
-        }
-        break;
+      this.#policy = buildToolPolicy(names);
+      if (names.length === 0) {
+        this.#discoveryNote =
+          last.error
+            ? `the MCP status could not be read: ${last.error.message}`
+            : "the MCP server published no tools before the timeout";
       }
     } catch (err) {
       // Leave the fail-safe policy in place, but say what happened: this path
@@ -965,7 +976,8 @@ export class SessionManager {
       // or permission bug from every screen that sees it.
       this.#discoveryNote = `discovery failed: ${(err as Error).message}`;
     } finally {
-      await probe.interrupt().catch(() => {});
+      input.close();
+      probe.close();
     }
 
     return this.#policy;
