@@ -26,6 +26,7 @@
  */
 import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { DOC_ICON_SCRIPT, DOC_ICON_STYLE } from "@/lib/doc-icons";
+import { editableSpec } from "@/lib/spec-editor";
 
 /** The app's typeface, from the same jsDelivr stylesheet the app loads. */
 const TYPE_LINK = `<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">`;
@@ -58,9 +59,14 @@ h2{font-size:21px;line-height:1.35;font-weight:700;border:0;padding:0;margin:48p
 h3{font-size:16.5px;font-weight:650;margin:32px 0 10px}
 h4{font-size:15px;font-weight:650;margin:24px 0 8px}
 .sec>h2:first-child{margin-top:48px}
-p,ul,ol,blockquote,pre,.table-wrap,figure,details{margin:0 0 14px}
+p,ul,ol,blockquote,pre,.table-wrap,figure,details{margin:0 0 18px}
 ul,ol{padding-left:1.35em}
-li{margin:0 0 6px}
+li{margin:0 0 9px}
+/* Room to read: the page is read as prose as much as looked up. */
+main p{line-height:1.85}
+main li{line-height:1.8}
+main td{line-height:1.65}
+h3{margin-top:38px}
 li::marker{color:var(--faint)}
 a{color:var(--link);text-decoration-color:var(--line-strong);text-underline-offset:3px}
 a:hover{text-decoration-color:currentColor}
@@ -205,6 +211,11 @@ const SCRIPT = `<script id="sc4sap-spec-theme-script">
       label.innerHTML = purpose.querySelector('dt').innerHTML;
       var text = document.createElement('p');
       text.innerHTML = purpose.querySelector('dd').innerHTML;
+      // The edit mode's marks go along, so an edit here saves into the fact.
+      var dtEd = purpose.querySelector('dt').getAttribute('data-ed');
+      var ddEd = purpose.querySelector('dd').getAttribute('data-ed');
+      if (dtEd !== null) label.setAttribute('data-ed', dtEd);
+      if (ddEd !== null) text.setAttribute('data-ed', ddEd);
       lede.appendChild(label);
       lede.appendChild(text);
       purpose.remove();
@@ -537,5 +548,7 @@ export function styledSpec(
       if (start >= 0 && end > at) page = page.slice(0, start) + drawn.svg + page.slice(end + 1);
     }
   }
-  return before(before(page, "head", TYPE_LINK + STYLE + DOC_ICON_STYLE), "body", SCRIPT + DOC_ICON_SCRIPT);
+  return editableSpec(
+    before(before(page, "head", TYPE_LINK + STYLE + DOC_ICON_STYLE), "body", SCRIPT + DOC_ICON_SCRIPT),
+  );
 }

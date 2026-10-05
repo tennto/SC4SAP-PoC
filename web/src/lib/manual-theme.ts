@@ -79,9 +79,12 @@ h1,h2,h3,h4{letter-spacing:-0.02em;color:var(--fg)}
 h2{font-size:21px;line-height:1.35;font-weight:700;border:0;padding:0;margin:64px 0 16px}
 h3{font-size:16.5px;line-height:1.45;font-weight:650;margin:36px 0 10px}
 h4{font-size:15px;font-weight:650;margin:22px 0 8px}
-p,ul,ol{margin:0 0 14px}
+p,ul,ol{margin:0 0 18px}
 ul,ol{padding-left:1.35em}
-li{margin:0 0 6px}
+li{margin:0 0 9px}
+/* Room to read, as in the spec and the process document. */
+main p{line-height:1.85}
+main li{line-height:1.8}
 li::marker{color:var(--faint)}
 
 /* Cover: the title, then the facts as one panel. Each dt/dd pair is a
@@ -97,7 +100,7 @@ li::marker{color:var(--faint)}
 
 /* Tables: horizontal rules only, the head a quiet band. */
 table{border-collapse:separate;border-spacing:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:10px 0 20px}
-th,td{border:0;border-bottom:1px solid var(--line);padding:10px 14px;line-height:1.55}
+th,td{border:0;border-bottom:1px solid var(--line);padding:10px 14px;line-height:1.65}
 tr:last-child>td,tr:last-child>th{border-bottom:0}
 th{background:var(--head);font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap}
 td{font-size:14px}
@@ -146,11 +149,11 @@ td[data-msg=I]{color:var(--msg-i)}
 .screen{padding:14px;background:#ffffff;border:1px solid var(--line);border-radius:10px}
 .screen figcaption{color:#6b6b6b;font-size:12.5px;margin-top:10px}
 .callouts{gap:12px}
-.callouts>li{grid-template-columns:24px 1fr;gap:10px;font-size:14.5px;line-height:1.6}
+.callouts>li{grid-template-columns:24px 1fr;gap:10px;font-size:14.5px;line-height:1.7;margin-bottom:10px}
 /* The number in its circle, centred both ways: a grid cell the size of the
    circle, a line box no taller than the digits, figures of one width. */
 .num{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;font-size:12px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:0;margin-top:1px}
-.callouts ul{font-size:13.5px;line-height:1.55}
+.callouts ul{font-size:13.5px;line-height:1.65}
 .step-note{font-size:14px;color:var(--muted);margin:14px 0 0}
 .step-note b,.step-note strong{color:var(--fg)}
 /* "Result:" as a label beside its text, the text's second line under the
@@ -227,6 +230,18 @@ body.editing .topbar #edit-btn:hover{background:var(--head)}
 .topbar>#edit-btn{order:3}
 .ed-bar>button.primary{order:4;display:inline-flex;align-items:center;gap:6px;margin-right:4px}
 .ed-bar>button.primary svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+/* "Save file" lives on the bar itself (the script below), and the editor's
+   own stays hidden. One filled button at a time: Save file while something
+   is unsaved, otherwise Edit. */
+.ed-bar>button.primary{display:none!important}
+.topbar>#sc4sap-save{order:4;display:inline-flex;align-items:center;gap:6px;color:var(--fg);box-shadow:inset 0 0 0 1px var(--line-strong);padding:6px 12px;margin-right:4px}
+.topbar>#sc4sap-save:hover{background:var(--head);color:var(--fg)}
+.topbar>#sc4sap-save svg{width:14px;height:14px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+body.doc-dirty .topbar>#sc4sap-save{background:var(--fg);color:var(--bg);font-weight:600;box-shadow:none}
+body.doc-dirty .topbar>#sc4sap-save:hover{background:color-mix(in srgb,var(--fg) 86%,var(--bg));color:var(--bg)}
+body.doc-dirty .topbar #edit-btn{background:none;color:var(--fg);box-shadow:inset 0 0 0 1px var(--line-strong)}
+body.doc-dirty .topbar #edit-btn:hover{background:var(--head)}
+@media print{.topbar>#sc4sap-save{display:none!important}}
 .topbar>#print-btn{order:5}
 .topbar>#theme-btn{order:6}
 
@@ -418,6 +433,66 @@ const SCRIPT = `<script id="sc4sap-manual-theme-script">
   }
   paint();
   new MutationObserver(paint).observe(table, { subtree: true, childList: true, characterData: true });
+})();
+(function () {
+  // "Save file" out of the edit mode: always on the bar, so edits can be
+  // saved after "Done editing" too. The editor's own Save (built inside its
+  // bar, shown only while editing) stays hidden and does the saving.
+  var bar = document.querySelector('.topbar');
+  var edit = document.getElementById('edit-btn');
+  if (!bar || !edit || !document.getElementById('manual-source')) return;
+  // A saved copy carries the button of the page it was saved from.
+  var old = document.getElementById('sc4sap-save');
+  if (old) old.remove();
+  var LABEL = ({ ko: '\\uD30C\\uC77C \\uC800\\uC7A5', ja: '\\u30D5\\u30A1\\u30A4\\u30EB\\u4FDD\\u5B58' })[(document.documentElement.lang || '').slice(0, 2)] || 'Save file';
+  var save = document.createElement('button');
+  save.type = 'button';
+  save.id = 'sc4sap-save';
+  save.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v7.5M4.8 7 8 10.2 11.2 7M3 12.5h10"/></svg>' + LABEL;
+  edit.insertAdjacentElement('afterend', save);
+
+  // The editor keeps its record of changes to itself, so opening the edit
+  // mode counts as a change until the next save. Unsaved, Save file is the
+  // filled button.
+  var dirty = false, quiet = false;
+  function setDirty(on) { dirty = on; document.body.classList.toggle('doc-dirty', on); }
+  setDirty(false);
+  edit.addEventListener('click', function () {
+    if (quiet || !document.body.classList.contains('editing')) return;
+    setDirty(true);
+    // "Saved" from the last save is no longer true.
+    var said = document.querySelector('.ed-bar .status');
+    if (said) said.textContent = '';
+  });
+
+  function run() {
+    var primary = document.querySelector('.ed-bar>button.primary');
+    if (!primary) {
+      // The editor builds its Save the first time the edit mode opens: open
+      // and close it once, without its guide.
+      quiet = true;
+      edit.click();
+      var guide = document.querySelector('.ed-guide');
+      if (guide) guide.remove();
+      edit.click();
+      quiet = false;
+      primary = document.querySelector('.ed-bar>button.primary');
+    }
+    if (!primary) return;
+    // Before the click, so the copy it saves is not marked unsaved.
+    setDirty(false);
+    primary.click();
+  }
+  save.addEventListener('click', run);
+
+  // The preview's own download button asks for the page as it stands: the
+  // edited copy when there is something unsaved, else word to use the
+  // original (HtmlPreview).
+  addEventListener('message', function (e) {
+    if (e.source !== parent || !e.data || e.data.type !== 'sc4sap-preview-request') return;
+    if (dirty) run();
+    else parent.postMessage({ type: 'sc4sap-preview-clean' }, '*');
+  });
 })();
 </script>`;
 

@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SC4SAP UI 스타일 가이드</title>
+<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* =========================================================================
+   SC4SAP PoC 디자인 토큰 — web/src/app/globals.css 에서 그대로 옮김 (v0.5.3)
+   라이트가 기본, 다크는 표면/잉크 토큰만 바뀜.
+   ========================================================================= */
+:root {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --panel-2: #f0f2f5;
+  --panel-3: #e7eaee;
+  --rail-bg: #eceef2;
+  --card-shadow: 0 1px 2px rgba(30, 36, 48, 0.04), 0 4px 14px rgba(30, 36, 48, 0.04);
+  --composer-shadow: 0 1px 2px rgba(30, 36, 48, 0.03), 0 6px 18px rgba(30, 36, 48, 0.05);
+  --composer-shadow-focus: 0 1px 2px rgba(30, 36, 48, 0.04), 0 8px 22px rgba(30, 36, 48, 0.07);
+
+  --ink: #2f3540;
+  --on-ink: #ffffff;
+  --on-ink-soft: rgba(255, 255, 255, 0.72);
+  --ink-hover: #232831;
+  --on-ink-wash: rgba(255, 255, 255, 0.15);
+  --scrim: rgba(47, 53, 64, 0.35);
+  --shadow-rgb: 30, 36, 48;
+  --ink-80: rgba(47, 53, 64, 0.8);
+  --ink-55: rgba(47, 53, 64, 0.7);
+  --ink-38: rgba(47, 53, 64, 0.55);
+  --line: rgba(47, 53, 64, 0.2);
+  --line-soft: rgba(47, 53, 64, 0.1);
+  --line-strong: rgba(47, 53, 64, 0.34);
+
+  --ok: #15803d;
+  --excel: #1d6f42;
+  --excel-wash: rgba(29, 111, 66, 0.09);
+  --warn: #b45309;
+  --chart-refused: #ca8a04;
+  --bad: #b91c1c;
+
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --font-display: "Schibsted Grotesk", var(--font-sans);
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 140ms;
+  --t-base: 260ms;
+  --t-slow: 620ms;
+  --t-page: 560ms;
+  --t-enter: 900ms;
+
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #111317;
+  --panel: #171a1f;
+  --panel-2: #1d2127;
+  --panel-3: #252a31;
+  --rail-bg: #0c0e11;
+  --card-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+  --composer-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  --composer-shadow-focus: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --ink: #e6e9ee;
+  --on-ink: #111317;
+  --on-ink-soft: rgba(17, 19, 23, 0.72);
+  --ink-hover: #cfd4db;
+  --on-ink-wash: rgba(17, 19, 23, 0.15);
+  --scrim: rgba(0, 0, 0, 0.62);
+  --shadow-rgb: 0, 0, 0;
+  --ink-80: rgba(230, 233, 238, 0.8);
+  --ink-55: rgba(230, 233, 238, 0.55);
+  --ink-38: rgba(230, 233, 238, 0.38);
+  --line: rgba(230, 233, 238, 0.16);
+  --line-soft: rgba(230, 233, 238, 0.09);
+  --line-strong: rgba(230, 233, 238, 0.28);
+  --ok: #4ade80;
+  --excel: #5cc98a;
+  --excel-wash: rgba(92, 201, 138, 0.12);
+  --warn: #fbbf24;
+  --chart-refused: #fbbf24;
+  --bad: #f87171;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111317; --panel: #171a1f; --panel-2: #1d2127; --panel-3: #252a31; --rail-bg: #0c0e11;
+    --card-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+    --composer-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+    --composer-shadow-focus: 0 8px 24px rgba(0, 0, 0, 0.36);
+    --ink: #e6e9ee; --on-ink: #111317; --on-ink-soft: rgba(17, 19, 23, 0.72); --ink-hover: #cfd4db;
+    --on-ink-wash: rgba(17, 19, 23, 0.15); --scrim: rgba(0, 0, 0, 0.62); --shadow-rgb: 0, 0, 0;
+    --ink-80: rgba(230, 233, 238, 0.8); --ink-55: rgba(230, 233, 238, 0.55); --ink-38: rgba(230, 233, 238, 0.38);
+    --line: rgba(230, 233, 238, 0.16); --line-soft: rgba(230, 233, 238, 0.09); --line-strong: rgba(230, 233, 238, 0.28);
+    --ok: #4ade80; --excel: #5cc98a; --excel-wash: rgba(92, 201, 138, 0.12); --warn: #fbbf24; --chart-refused: #fbbf24; --bad: #f87171;
+    color-scheme: dark;
+  }
+}
+
+/* ---------- 가이드 페이지 자체 ---------- */
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.55 var(--font-sans);
+  letter-spacing: -0.03rem;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color var(--t-slow) var(--ease), color var(--t-slow) var(--ease);
+}
+h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.02em; }
+code, kbd, pre { font-family: var(--font-mono); letter-spacing: normal; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 32px 24px 96px; }
+
+.top {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 24px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid var(--line-soft);
+}
+.top strong { font-family: var(--font-display); font-size: 15px; letter-spacing: -0.02em; margin-right: auto; }
+.top nav { display: flex; gap: 2px; flex-wrap: wrap; }
+.top nav a { color: var(--ink-55); text-decoration: none; font-size: 13px; padding: 5px 9px; border-radius: 8px; }
+.top nav a:hover { background: var(--panel-3); color: var(--ink); }
+.seg { display: inline-flex; background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 9px; padding: 2px; }
+.seg button { font: inherit; font-size: 12.5px; border: 0; background: none; color: var(--ink-55); padding: 4px 10px; border-radius: 7px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line-soft); font-weight: 600; }
+
+.hero { padding: 28px 0 8px; }
+.eyebrow { margin: 0 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-38); }
+.hero h1 { margin: 0 0 10px; font-size: 34px; line-height: 1.15; font-weight: 800; }
+.lede { margin: 0; max-width: 46em; font-size: 15.5px; line-height: 1.7; color: var(--ink-80); }
+
+section { margin-top: 56px; scroll-margin-top: 72px; }
+section > h2 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+section > p.note { margin: 0 0 20px; color: var(--ink-55); max-width: 50em; }
+h3 { font-size: 15px; font-weight: 700; margin: 28px 0 12px; }
+
+.panel {
+  padding: 22px;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+}
+.panel-head h4 { margin: 0 0 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-80); font-family: var(--font-sans); }
+.panel-note { margin: 0; font-size: 12px; color: var(--ink-38); }
+
+.principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.principles .panel h4 { margin: 0 0 6px; font-size: 14px; font-family: var(--font-display); }
+.principles .panel p { margin: 0; color: var(--ink-55); font-size: 13px; }
+
+/* 색상 칩 */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.sw { background: var(--panel); border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; box-shadow: var(--card-shadow); }
+.sw .chip-color { height: 64px; border-bottom: 1px solid var(--line-soft); position: relative; }
+.sw .chip-color.ink-on { display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+.sw .meta { padding: 10px 12px 12px; }
+.sw .name { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink); }
+.sw .val { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-55); margin-top: 2px; word-break: break-all; }
+.sw .use { font-size: 12px; color: var(--ink-38); margin-top: 6px; line-height: 1.45; }
+.checker { background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0; }
+
+/* 표 */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--panel); box-shadow: var(--card-shadow); }
+table { width: 100%; border-collapse: collapse; min-width: 640px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+th { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-55); background: var(--panel-2); }
+tr:last-child td { border-bottom: 0; }
+td code { font-size: 12px; }
+.dot { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 6px; border: 1px solid rgba(127,127,127,.25); }
+
+/* 타이포 샘플 */
+.type-row { display: grid; grid-template-columns: 180px 1fr; gap: 16px; align-items: baseline; padding: 14px 0; border-bottom: 1px solid var(--line-soft); }
+.type-row:last-child { border-bottom: 0; }
+.type-row .spec { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-55); line-height: 1.5; }
+
+/* 실제 PoC 컴포넌트 (globals.css 의 규칙 그대로) */
+.demo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.demo button, .demo a.ghost {
+  font: inherit; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer;
+  transition: background-color var(--t-slow) var(--ease), border-color var(--t-slow) var(--ease), color var(--t-slow) var(--ease), box-shadow var(--t-base) var(--ease), transform var(--t-fast) var(--ease);
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.demo button:hover:not(:disabled) { border-color: var(--ink-55); }
+.demo button:active:not(:disabled) { transform: translateY(1px); }
+.demo button.ghost { background: transparent; border-color: var(--ink-38); }
+.demo button.ghost:hover:not(:disabled) { background: var(--panel-2); border-color: var(--ink); }
+.demo button.primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); font-weight: 600; }
+.demo button.primary:hover:not(:disabled) { background: var(--ink-hover); }
+.demo button:disabled { opacity: 0.4; cursor: not-allowed; }
+.demo button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field label { font-size: 12px; font-weight: 600; color: var(--ink-80); }
+.field input, .select-button {
+  font: inherit; color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line-strong); border-radius: 8px; padding: 9px 12px; width: 100%;
+  transition: border-color var(--t-base) var(--ease);
+}
+.field input::placeholder { color: var(--ink-38); }
+.field input:hover, .select-button:hover { border-color: var(--ink-55); }
+.field input:focus-visible, .select-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.select-button { display: flex; align-items: center; justify-content: space-between; cursor: pointer; text-align: left; }
+.select-button::after { content: ""; width: 7px; height: 7px; border-right: 1.5px solid var(--ink-55); border-bottom: 1.5px solid var(--ink-55); transform: rotate(45deg) translate(-2px, -2px); }
+.field .hint { font-size: 12px; color: var(--ink-38); line-height: 1.45; }
+
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink-55); font-size: 12px;
+}
+.chip .d { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-38); }
+.chip.running { border-color: var(--ink-38); color: var(--ink); }
+.chip.running .d { background: var(--ink); animation: pulse 1.1s ease-in-out infinite; }
+.chip.dead { opacity: .45; }
+@keyframes pulse { 50% { opacity: .25; } }
+
+.status { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px; }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+.rail { background: var(--rail-bg); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--line-soft); }
+.rail .group { font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--ink-38); padding: 10px 8px 4px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; color: var(--ink-80); text-decoration: none; transition: background-color var(--t-base) var(--ease), color var(--t-base) var(--ease); }
+.nav-item:hover { background: var(--panel-3); color: var(--ink); }
+.nav-item.active { background: var(--panel); box-shadow: 0 1px 2px rgba(var(--shadow-rgb), .06), 0 0 0 1px rgba(var(--shadow-rgb), .04); color: var(--ink); font-weight: 600; }
+.nav-item i { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid currentColor; opacity: .6; flex: none; }
+.nav-item.active i { opacity: 1; }
+
+.modal-stage { position: relative; height: 260px; border-radius: 12px; overflow: hidden; border: 1px solid var(--line-soft); background: var(--bg); }
+.modal-stage::before { content: ""; position: absolute; inset: 0; background: var(--scrim); }
+.modal { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(400px, 88%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px; box-shadow: 0 24px 64px -16px rgba(var(--shadow-rgb), .35); }
+.modal .q { margin: 4px 0 6px; font-size: 17px; font-weight: 600; line-height: 1.35; }
+.modal .d { margin: 0; font-size: 13px; color: var(--ink-55); line-height: 1.6; }
+.modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 22px; }
+
+.file-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--panel); box-shadow: var(--card-shadow); }
+.file-card .ic { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; background: var(--excel-wash); color: var(--excel); font-weight: 800; font-size: 13px; }
+.file-card .n { font-size: 13px; font-weight: 600; }
+.file-card .m { font-size: 12px; color: var(--ink-38); }
+
+.composer { border: 1px solid var(--line-soft); border-radius: 16px; background: var(--panel); box-shadow: var(--composer-shadow); padding: 14px 14px 10px; transition: box-shadow var(--t-base) var(--ease); }
+.composer:focus-within { box-shadow: var(--composer-shadow-focus); }
+.composer textarea { width: 100%; border: 0; background: none; resize: none; font: inherit; color: var(--ink); outline: 0; min-height: 44px; }
+.composer textarea::placeholder { color: var(--ink-38); }
+.composer .bar { display: flex; justify-content: space-between; align-items: center; }
+.composer .bar span { font-size: 12px; color: var(--ink-38); }
+
+/* 스케일 막대 */
+.scale { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.scale .b { background: var(--panel); border: 1px solid var(--line-strong); box-shadow: var(--card-shadow); width: 74px; height: 56px; display: grid; place-items: center; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-55); }
+.motion-demo { display: flex; gap: 14px; flex-wrap: wrap; }
+.motion-demo .track { flex: 1 1 260px; height: 46px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line-soft); position: relative; overflow: hidden; }
+.motion-demo .ball { position: absolute; top: 11px; left: 10px; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); }
+.motion-demo .track.go .ball { left: calc(100% - 34px); }
+.motion-demo .label { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-55); margin-top: 6px; }
+
+/* 문서 테마 미리보기 */
+.doc-preview { border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden; background: var(--panel); box-shadow: var(--card-shadow); }
+.doc-preview .tb { display: flex; align-items: center; gap: 4px; padding: 0 16px; height: 46px; border-bottom: 1px solid var(--line-soft); }
+.doc-preview .tb strong { font-size: 13px; margin-right: auto; }
+.doc-preview .tb .b { font-size: 12.5px; padding: 5px 10px; border-radius: 8px; color: var(--ink-55); }
+.doc-preview .tb .b.fill { background: var(--ink); color: var(--on-ink); font-weight: 600; }
+.doc-preview .tb .b.out { box-shadow: inset 0 0 0 1px var(--line-strong); color: var(--ink); }
+.doc-preview .body { padding: 22px 26px; }
+.doc-preview h5 { font-family: var(--font-sans); font-size: 21px; margin: 0 0 12px; }
+.facts-card { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px 24px; padding: 16px 20px; background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 12px; }
+.facts-card dt { font-size: 11.5px; color: var(--ink-38); margin: 0 0 4px; }
+.facts-card dd { margin: 0; font-size: 14px; font-weight: 500; }
+
+pre.code { background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: 12px; padding: 16px 18px; font-size: 12.5px; line-height: 1.6; overflow-x: auto; margin: 0; }
+.copy { float: right; }
+
+.map td:first-child { white-space: nowrap; }
+.callout { border-left: 2px solid var(--ink); padding: 4px 0 4px 14px; color: var(--ink-80); margin: 14px 0; }
+footer { margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line-soft); color: var(--ink-38); font-size: 12px; }
+
+@media (max-width: 640px) {
+  .type-row { grid-template-columns: 1fr; gap: 4px; }
+  .hero h1 { font-size: 28px; }
+  .top nav { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <strong>SC4SAP UI 스타일 가이드</strong>
+  <nav>
+    <a href="#principles">원칙</a>
+    <a href="#colors">색상</a>
+    <a href="#dark">라이트/다크</a>
+    <a href="#type">타이포</a>
+    <a href="#shape">형태·간격</a>
+    <a href="#motion">모션</a>
+    <a href="#components">컴포넌트</a>
+    <a href="#docs">문서 테마</a>
+    <a href="#apply">sc4sap.dev 적용</a>
+    <a href="#tokens">토큰 코드</a>
+  </nav>
+  <div class="seg" role="group" aria-label="테마">
+    <button type="button" data-theme-set="light">라이트</button>
+    <button type="button" data-theme-set="dark">다크</button>
+    <button type="button" data-theme-set="system">시스템</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <p class="eyebrow">SC4SAP Web PoC · v0.5.3 · globals.css 기준</p>
+    <h1>한 가지 잉크, 표면의 단계, 은은한 그림자</h1>
+    <p class="lede">PoC 웹앱의 색상·타이포·모션·컴포넌트 규칙을 한 장에 모았습니다. 이 페이지의 모든 색은 PoC의 CSS 변수 그대로이며, 오른쪽 위 토글로 라이트/다크를 바로 비교할 수 있습니다. sc4sap.dev를 PoC 톤으로 맞출 때 기준 자료로 쓰세요.</p>
+  </div>
+
+  <!-- ============ 원칙 ============ -->
+  <section id="principles">
+    <h2>디자인 원칙</h2>
+    <p class="note">PoC의 팔레트는 의도적으로 "한 가지 색"입니다. 아래 다섯 가지가 모든 결정의 기준입니다.</p>
+    <div class="principles">
+      <div class="panel"><h4>잉크는 하나</h4><p>강조색은 <code>#2f3540</code>(쿨 그레이 잉크) 하나뿐. 흰색이 아닌 모든 값은 표면 단계이거나 이 잉크의 투명도입니다.</p></div>
+      <div class="panel"><h4>깊이는 표면 단계로</h4><p>배경 → 레일 → 패널 순으로 한 단계씩 차이를 두고, 카드는 아주 옅은 그림자로 띄웁니다. 색으로 구분하지 않습니다.</p></div>
+      <div class="panel"><h4>상태는 굵기와 채움으로</h4><p>실행 중 = 채운 잉크, 대기 = 외곽선, 끝남 = 흐리게. 색상(Hue)은 연결 상태(ok/warn/bad)에만 예외적으로 씁니다.</p></div>
+      <div class="panel"><h4>다크는 토큰 교체만</h4><p>다크 테마는 표면·잉크 토큰만 바꿉니다. 컴포넌트 규칙에 색을 직접 쓰지 않기 때문에 가능합니다.</p></div>
+      <div class="panel"><h4>한 폰트로 한글·영문</h4><p>Pretendard가 한글과 라틴을 같은 굵기·기준선으로 처리합니다. 제목만 Schibsted Grotesk.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ 색상 ============ -->
+  <section id="colors">
+    <h2>색상 토큰</h2>
+    <p class="note">칩 색상은 현재 선택된 테마의 실제 값입니다. 토글을 바꾸면 같이 바뀝니다.</p>
+
+    <h3>표면 (Surface)</h3>
+    <div class="swatches" id="sw-surface"></div>
+
+    <h3>잉크 (Ink) — 텍스트·아이콘·채움</h3>
+    <div class="swatches" id="sw-ink"></div>
+
+    <h3>선 (Line)</h3>
+    <div class="swatches" id="sw-line"></div>
+
+    <h3>상태 (Status) — 유일한 유채색 예외</h3>
+    <div class="swatches" id="sw-status"></div>
+
+    <h3>그림자 · 딤 (Shadow / Scrim)</h3>
+    <div class="swatches" id="sw-shadow"></div>
+  </section>
+
+  <!-- ============ 라이트/다크 ============ -->
+  <section id="dark">
+    <h2>라이트 / 다크 대응표</h2>
+    <p class="note">다크는 같은 디자인을 뒤집은 것입니다. 잉크는 순백이 아닌 <code>#e6e9ee</code> — 라이트에서 <code>#2f3540</code>이 흰 바탕과 갖는 대비 관계를 그대로 유지합니다. 상태색은 11px 대문자로도 쓰이므로 다크에서 밝게 올립니다.</p>
+    <div class="table-wrap">
+      <table id="map-table">
+        <thead><tr><th>토큰</th><th>라이트</th><th>다크</th><th>용도</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="callout">테마 선택 규칙: 사용자가 고르면 <code>&lt;html data-theme="light|dark"&gt;</code>, 고르지 않으면 <code>prefers-color-scheme</code>. 미디어쿼리는 반드시 <code>:root:not([data-theme="light"])</code>로 감싸야 "다크 OS + 라이트 선택"이 뒤집히지 않습니다.</p>
+  </section>
+
+  <!-- ============ 타이포 ============ -->
+  <section id="type">
+    <h2>타이포그래피</h2>
+    <p class="note">본문 기본 14px / 1.55, 루트 자간 <code>-0.03rem</code>(Pretendard 보정). 제목은 추가로 <code>-0.02em</code>. 코드·숫자 정렬이 필요한 곳은 모노 + 자간 normal.</p>
+    <div class="panel">
+      <div class="type-row"><div class="spec">Display · Schibsted Grotesk<br>24px / 700 · h1</div><div style="font-family:var(--font-display);font-size:24px;font-weight:700;letter-spacing:-0.02em">패키지 → 프로세스 Package to Process</div></div>
+      <div class="type-row"><div class="spec">Modal question<br>17px / 600</div><div style="font-size:17px;font-weight:600">이 실행을 닫을까요?</div></div>
+      <div class="type-row"><div class="spec">Body · Pretendard<br>14px / 400 · 1.55</div><div>CBO 패키지를 순서도, 시퀀스 다이어그램, 단계 표가 있는 종단 간 업무 프로세스 문서로 만듭니다.</div></div>
+      <div class="type-row"><div class="spec">Answer · Noto Sans Oriya → Pretendard<br>14px</div><div style="font-family:'Noto Sans Oriya',var(--font-sans)">에이전트 답변 영역 전용 서체 (한글은 Pretendard로 떨어짐)</div></div>
+      <div class="type-row"><div class="spec">Note / Hint<br>12px · --ink-38</div><div style="font-size:12px;color:var(--ink-38)">선택 사항. 트랜잭션이 실행하는 프로그램 외에 프로세스가 시작되는 프로그램입니다.</div></div>
+      <div class="type-row"><div class="spec">Panel heading<br>11px / 700 · 0.12em · UPPER</div><div style="font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-80)">Connection · 연결 상태</div></div>
+      <div class="type-row"><div class="spec">Eyebrow<br>10px / 700 · 0.14em · UPPER</div><div class="eyebrow" style="margin:0">/sc4sap:package-to-process</div></div>
+      <div class="type-row"><div class="spec">Mono · IBM Plex Mono<br>12–13px</div><div style="font-family:var(--font-mono);letter-spacing:normal">ZMMR00020 · GetProgFullCode · $0.89</div></div>
+    </div>
+    <h3>폰트 스택</h3>
+    <pre class="code">--font-sans:    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+                "Apple SD Gothic Neo", "Segoe UI", "Noto Sans KR", "Malgun Gothic", sans-serif;
+--font-display: "Schibsted Grotesk", var(--font-sans);
+--font-mono:    "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+
+/* 로드 */
+Pretendard  https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css
+Google      Schibsted Grotesk 500–800, IBM Plex Mono 400–500</pre>
+  </section>
+
+  <!-- ============ 형태 ============ -->
+  <section id="shape">
+    <h2>형태 · 간격 · 그림자</h2>
+    <h3>모서리 반경 (Radius)</h3>
+    <div class="scale">
+      <div><div class="b" style="border-radius:6px">6px</div><div class="panel-note" style="margin-top:6px">버튼</div></div>
+      <div><div class="b" style="border-radius:7px">7px</div><div class="panel-note" style="margin-top:6px">툴팁 · 세그 내부</div></div>
+      <div><div class="b" style="border-radius:8px">8px</div><div class="panel-note" style="margin-top:6px">입력 · 셀렉트 · 메뉴</div></div>
+      <div><div class="b" style="border-radius:12px">12px</div><div class="panel-note" style="margin-top:6px">패널 · 모달 · 카드</div></div>
+      <div><div class="b" style="border-radius:16px">16px</div><div class="panel-note" style="margin-top:6px">컴포저 · 큰 다이얼로그</div></div>
+      <div><div class="b" style="border-radius:999px">999px</div><div class="panel-note" style="margin-top:6px">칩 · 상태 점</div></div>
+    </div>
+    <h3>간격</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>위치</th><th>값</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr><td>패널 안쪽</td><td><code>22px</code></td><td>모달 22–26px, 큰 설문 모달 42/38px</td></tr>
+          <tr><td>패널 헤드 아래</td><td><code>18px</code></td><td>헤드 h2 아래 4px</td></tr>
+          <tr><td>페이지 헤드</td><td><code>padding-bottom 22px · margin-bottom 26px</code></td><td>아래 1px <code>--line</code></td></tr>
+          <tr><td>버튼</td><td><code>6px 12px</code></td><td>아이콘 간격 8px, 아이콘 15px</td></tr>
+          <tr><td>입력 · 셀렉트</td><td><code>9px 12px</code></td><td>테두리 <code>--line-strong</code></td></tr>
+          <tr><td>내비 아이템</td><td><code>5px 8px</code></td><td>아이콘-라벨 10px</td></tr>
+          <tr><td>칩</td><td><code>5px 12px</code></td><td>점 7px, 간격 8px</td></tr>
+          <tr><td>레일 폭</td><td><code>244px</code> / 접힘 <code>62px</code></td><td></td></tr>
+          <tr><td>읽기 폭</td><td><code>clamp(900px, 68vw, 1240px)</code></td><td>컴포저 <code>clamp(600px, 52vw, 860px)</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>그림자</h3>
+    <div class="demo-grid">
+      <div class="panel"><div class="panel-head"><h4>--card-shadow</h4></div><p class="panel-note">카드를 바탕에서 살짝 띄움. 여러 장이 나란히 있어도 한 면처럼 읽히는 정도.</p></div>
+      <div class="panel" style="box-shadow:var(--composer-shadow)"><div class="panel-head"><h4>--composer-shadow</h4></div><p class="panel-note">입력창. 포커스 시 <code>--composer-shadow-focus</code>로 한 단계 진하게.</p></div>
+      <div class="panel" style="box-shadow:0 24px 64px -16px rgba(var(--shadow-rgb),.35)"><div class="panel-head"><h4>overlay</h4></div><p class="panel-note">모달·가이드 창. <code>rgba(var(--shadow-rgb), .35)</code> — 다크에서 shadow-rgb는 검정.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ 모션 ============ -->
+  <section id="motion">
+    <h2>모션</h2>
+    <p class="note">이징은 하나, 지속시간은 셋. 색은 천천히(slow), 누름은 빠르게(fast) — 손가락 아래선 물리적으로, 호버는 페이드로 읽힘.</p>
+    <div class="motion-demo" id="motion">
+      <div><div class="track"><div class="ball" style="transition:left 140ms cubic-bezier(.16,1,.3,1)"></div></div><div class="label">--t-fast 140ms · 누름</div></div>
+      <div><div class="track"><div class="ball" style="transition:left 260ms cubic-bezier(.16,1,.3,1)"></div></div><div class="label">--t-base 260ms · 상태 변화</div></div>
+      <div><div class="track"><div class="ball" style="transition:left 620ms cubic-bezier(.16,1,.3,1)"></div></div><div class="label">--t-slow 620ms · 콘텐츠 등장 · 색</div></div>
+    </div>
+    <div class="row" style="margin-top:12px"><span class="demo"><button type="button" class="ghost" id="play">▶ 재생</button></span><span class="panel-note">--ease: cubic-bezier(0.16, 1, 0.3, 1) · 페이지 전환 560ms · 첫 진입 900ms</span></div>
+  </section>
+
+  <!-- ============ 컴포넌트 ============ -->
+  <section id="components">
+    <h2>컴포넌트</h2>
+    <p class="note">PoC의 실제 CSS 규칙을 그대로 옮긴 미리보기입니다. 호버·포커스(Tab)도 동작합니다.</p>
+    <div class="demo-grid demo">
+      <div class="panel">
+        <div class="panel-head"><h4>버튼</h4></div>
+        <div class="row">
+          <button type="button" class="primary">실행</button>
+          <button type="button" class="ghost">⬇ .html 다운로드</button>
+          <button type="button">기본</button>
+          <button type="button" class="primary" disabled>비활성</button>
+        </div>
+        <p class="panel-note" style="margin-top:12px">primary = 채운 잉크 · ghost = 투명 + <code>--ink-38</code> 테두리 · 기본 = 패널색 + <code>--line</code>. 포커스 링 2px 잉크, offset 2px. 화면당 채운 버튼은 하나.</p>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h4>입력 · 셀렉트</h4></div>
+        <div class="field"><label for="f1">패키지</label><input id="f1" placeholder="ZMM_CBO"></div>
+        <div class="field" style="margin-top:12px"><label>모드</label><button type="button" class="select-button">절약</button><span class="hint">에이전트 1개 · 예상 4~7분</span></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h4>칩 · 세션 상태</h4></div>
+        <div class="row">
+          <span class="chip running"><span class="d"></span>실행 중</span>
+          <span class="chip"><span class="d"></span>대기</span>
+          <span class="chip dead"><span class="d"></span>종료됨</span>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <span class="status" style="color:var(--ok)">Reachable</span>
+          <span class="status" style="color:var(--warn)">Unknown</span>
+          <span class="status" style="color:var(--bad)">Down</span>
+        </div>
+        <p class="panel-note" style="margin-top:12px">상태는 채움/외곽선/흐림으로. 색은 연결 상태 텍스트(11px 대문자)에만.</p>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h4>레일 내비게이션</h4></div>
+        <div class="rail">
+          <div class="group">분석</div>
+          <a class="nav-item" href="#components"><i></i>코드 분석</a>
+          <a class="nav-item active" href="#components"><i></i>패키지 → 프로세스</a>
+          <a class="nav-item" href="#components"><i></i>프로그램 → 명세서</a>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h4>파일 카드</h4></div>
+        <div class="file-card"><span class="ic">X</span><span><div class="n">bpml-20261005-ko.xlsx</div><div class="m">Excel 통합 문서 · 1.2 MB · 2026. 10. 5.</div></span></div>
+        <p class="panel-note" style="margin-top:12px">엑셀만 브랜드 그린 <code>--excel</code> / <code>--excel-wash</code>.</p>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h4>컴포저</h4></div>
+        <div class="composer"><textarea placeholder="SAP에 대해 물어보세요"></textarea><div class="bar"><span>Sonnet 5 · 절약</span><span class="demo"><button type="button" class="primary">보내기</button></span></div></div>
+      </div>
+    </div>
+    <h3>모달 (scrim 위)</h3>
+    <div class="modal-stage">
+      <div class="modal demo">
+        <p class="eyebrow">실행</p>
+        <p class="q">"패키지 → 프로세스" 실행을 닫을까요?</p>
+        <p class="d">프로세스 문서, BPML과 파일이 모두 삭제됩니다. 필요한 파일은 먼저 다운로드하세요.</p>
+        <div class="actions"><button type="button" class="ghost">취소</button><button type="button" class="primary">닫기</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 문서 테마 ============ -->
+  <section id="docs">
+    <h2>문서(HTML 산출물) 테마</h2>
+    <p class="note">명세서·매뉴얼·프로세스 문서의 HTML은 앱과 같은 톤의 별도 팔레트를 씁니다(spec-theme.ts). 순수 무채색 + 다이어그램 전용 변수.</p>
+    <div class="doc-preview">
+      <div class="tb"><strong>ZMMPAEK — End-to-End 비즈니스 프로세스</strong><span class="b fill">편집</span><span class="b out">⬇ 파일 저장</span><span class="b">모두 접기</span></div>
+      <div class="body">
+        <h5>📋 ZMMPAEK — End-to-End 비즈니스 프로세스</h5>
+        <dl class="facts-card"><div><dt>패키지</dt><dd>ZMMPAEK</dd></div><div><dt>모듈</dt><dd>MM</dd></div><div><dt>프로세스 수</dt><dd>11</dd></div><div><dt>생성 일시</dt><dd>2026-10-05</dd></div></dl>
+      </div>
+    </div>
+    <div class="table-wrap" style="margin-top:14px">
+      <table>
+        <thead><tr><th>문서 변수</th><th>라이트</th><th>다크</th><th>용도</th></tr></thead>
+        <tbody>
+          <tr><td><code>--bg / --fg</code></td><td><span class="dot" style="background:#fff"></span>#ffffff / <span class="dot" style="background:#2b2b2b"></span>#2b2b2b</td><td><span class="dot" style="background:#161616"></span>#161616 / <span class="dot" style="background:#e6e6e6"></span>#e6e6e6</td><td>바탕 · 본문</td></tr>
+          <tr><td><code>--muted / --faint</code></td><td>#6b6b6b / #9a9a9a</td><td>#a3a3a3 / #7a7a7a</td><td>보조 · 라벨</td></tr>
+          <tr><td><code>--line / --line-strong</code></td><td>#e4e4e4 / #cfcfcf</td><td>#2e2e2e / #3d3d3d</td><td>표 · 테두리</td></tr>
+          <tr><td><code>--head / --code</code></td><td>#f7f7f7 / #f3f3f3</td><td>#1d1d1d / #232323</td><td>표 머리 · 코드</td></tr>
+          <tr><td><code>--flow-box / --flow-box-line</code></td><td>#ffffff / #d6d6d6</td><td>#1d1d1d / #3a3a3a</td><td>다이어그램 박스</td></tr>
+          <tr><td><code>--flow-term / --flow-on-term</code></td><td>#2b2b2b / #ffffff</td><td>#e6e6e6 / #161616</td><td>사람 액터 · 번호 배지</td></tr>
+          <tr><td><code>--flow-dec / -line / -ink</code></td><td><span class="dot" style="background:#fff8eb"></span>#fff8eb / #e9cf97 / #6f4a00</td><td><span class="dot" style="background:#2a2213"></span>#2a2213 / #6b5423 / #f1cf85</td><td>판단 · 노트</td></tr>
+          <tr><td><code>--flow-bad / -soft / -line</code></td><td><span class="dot" style="background:#b42318"></span>#b42318 / #fef3f2 / #f4c7c2</td><td><span class="dot" style="background:#f97066"></span>#f97066 / #2a1715 / #6b2a24</td><td>오류 · 메시지</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 적용 ============ -->
+  <section id="apply">
+    <h2>sc4sap.dev 적용 가이드</h2>
+    <p class="note">sc4sap.dev는 아이보리·앰버 팔레트이고, PoC는 그 사이트에서 타이포와 모션만 가져왔습니다(팔레트는 의도적으로 가져오지 않음). 사이트를 PoC 톤으로 맞출 때의 매핑입니다.</p>
+    <div class="table-wrap map">
+      <table>
+        <thead><tr><th>sc4sap.dev 역할</th><th>바꿀 PoC 토큰</th><th>메모</th></tr></thead>
+        <tbody>
+          <tr><td>페이지 바탕 (아이보리)</td><td><code>--bg</code></td><td>#f5f6f8 / 다크 #111317</td></tr>
+          <tr><td>카드 · 섹션 면</td><td><code>--panel</code> + <code>--card-shadow</code></td><td>테두리는 <code>--line-soft</code>, 반경 12px</td></tr>
+          <tr><td>교차 섹션 · 띠</td><td><code>--panel-2</code> / <code>--rail-bg</code></td><td>색이 아닌 명도 한 단계로 구분</td></tr>
+          <tr><td>본문 텍스트</td><td><code>--ink</code>, 보조 <code>--ink-55</code>, 힌트 <code>--ink-38</code></td><td>라이트 투명도 0.8 / 0.7 / 0.55 (대비 4.5:1·3:1 확보)</td></tr>
+          <tr><td>강조 · CTA (앰버)</td><td><code>--ink</code> 채움 + <code>--on-ink</code> 글자</td><td>호버 <code>--ink-hover</code>. 화면당 채운 버튼 1개</td></tr>
+          <tr><td>보조 버튼 · 링크 버튼</td><td>ghost 규칙</td><td>투명 + <code>--ink-38</code> 테두리, 호버 시 <code>--panel-2</code></td></tr>
+          <tr><td>앰버 하이라이트 · 배지</td><td>채움/외곽선/굵기</td><td>유채색이 꼭 필요하면 <code>--ok</code>/<code>--warn</code>/<code>--bad</code>만</td></tr>
+          <tr><td>코드 블록</td><td><code>--panel-2</code> + <code>--font-mono</code></td><td>자간 normal</td></tr>
+          <tr><td>내비게이션 바</td><td><code>color-mix(--bg 88%)</code> + blur</td><td>아래 1px <code>--line-soft</code></td></tr>
+          <tr><td>다크 모드</td><td>토큰 교체만</td><td><code>data-theme</code> + 미디어쿼리 가드 그대로 복사</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>체크리스트</h3>
+    <div class="panel">
+      <ol style="margin:0;padding-left:20px;line-height:1.9;color:var(--ink-80)">
+        <li>컴포넌트 CSS에서 hex/rgb 직접 사용 제거 → 전부 토큰 참조로.</li>
+        <li><code>:root</code>에 라이트, <code>[data-theme="dark"]</code>와 <code>@media (prefers-color-scheme: dark) :root:not([data-theme="light"])</code> 두 곳에 다크.</li>
+        <li>채운 요소 위 글자는 흰색 고정 대신 <code>--on-ink</code> (다크에서 흰 버튼 위 흰 글자 방지).</li>
+        <li>그림자는 <code>rgba(var(--shadow-rgb), a)</code> — 다크에서 자동으로 검정.</li>
+        <li>모달 딤은 <code>--scrim</code> (라이트 잉크 35% / 다크 검정 62%).</li>
+        <li>본문 폰트 Pretendard + 자간 -0.03rem, 제목 Schibsted Grotesk -0.02em, 코드 IBM Plex Mono.</li>
+        <li>트랜지션: 색 620ms, 상태 260ms, 누름 140ms, 이징 <code>cubic-bezier(0.16,1,0.3,1)</code>. <code>prefers-reduced-motion</code> 존중.</li>
+        <li>포커스 링은 모든 컨트롤 공통 <code>outline: 2px solid var(--ink); outline-offset: 2px</code>.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- ============ 토큰 코드 ============ -->
+  <section id="tokens">
+    <h2>토큰 코드 (복사용)</h2>
+    <p class="note">그대로 붙여 넣으면 라이트/다크/시스템 세 가지 모두 동작합니다.</p>
+    <div class="demo" style="margin-bottom:8px"><button type="button" class="ghost" id="copy">⧉ 복사</button> <span class="panel-note" id="copied"></span></div>
+<pre class="code" id="token-code">:root {
+  /* surface */
+  --bg: #f5f6f8;  --panel: #ffffff;  --panel-2: #f0f2f5;  --panel-3: #e7eaee;  --rail-bg: #eceef2;
+  --card-shadow: 0 1px 2px rgba(30,36,48,.04), 0 4px 14px rgba(30,36,48,.04);
+  --composer-shadow: 0 1px 2px rgba(30,36,48,.03), 0 6px 18px rgba(30,36,48,.05);
+  --composer-shadow-focus: 0 1px 2px rgba(30,36,48,.04), 0 8px 22px rgba(30,36,48,.07);
+  /* ink */
+  --ink: #2f3540;  --ink-hover: #232831;
+  --on-ink: #ffffff;  --on-ink-soft: rgba(255,255,255,.72);  --on-ink-wash: rgba(255,255,255,.15);
+  --ink-80: rgba(47,53,64,.8);  --ink-55: rgba(47,53,64,.7);  --ink-38: rgba(47,53,64,.55);
+  /* line */
+  --line: rgba(47,53,64,.2);  --line-soft: rgba(47,53,64,.1);  --line-strong: rgba(47,53,64,.34);
+  /* overlay */
+  --scrim: rgba(47,53,64,.35);  --shadow-rgb: 30, 36, 48;
+  /* status */
+  --ok: #15803d;  --warn: #b45309;  --bad: #b91c1c;  --chart-refused: #ca8a04;
+  --excel: #1d6f42;  --excel-wash: rgba(29,111,66,.09);
+  /* type */
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+               "Segoe UI", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --font-display: "Schibsted Grotesk", var(--font-sans);
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", monospace;
+  /* motion */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);  --t-fast: 140ms;  --t-base: 260ms;  --t-slow: 620ms;
+  color-scheme: light;
+  font: 14px/1.55 var(--font-sans);  letter-spacing: -0.03rem;
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+/* dark — 선택했을 때 */
+:root[data-theme="dark"] {
+  --bg: #111317;  --panel: #171a1f;  --panel-2: #1d2127;  --panel-3: #252a31;  --rail-bg: #0c0e11;
+  --card-shadow: 0 8px 22px rgba(0,0,0,.3);
+  --composer-shadow: 0 6px 18px rgba(0,0,0,.28);  --composer-shadow-focus: 0 8px 24px rgba(0,0,0,.36);
+  --ink: #e6e9ee;  --ink-hover: #cfd4db;
+  --on-ink: #111317;  --on-ink-soft: rgba(17,19,23,.72);  --on-ink-wash: rgba(17,19,23,.15);
+  --ink-80: rgba(230,233,238,.8);  --ink-55: rgba(230,233,238,.55);  --ink-38: rgba(230,233,238,.38);
+  --line: rgba(230,233,238,.16);  --line-soft: rgba(230,233,238,.09);  --line-strong: rgba(230,233,238,.28);
+  --scrim: rgba(0,0,0,.62);  --shadow-rgb: 0, 0, 0;
+  --ok: #4ade80;  --warn: #fbbf24;  --bad: #f87171;  --chart-refused: #fbbf24;
+  --excel: #5cc98a;  --excel-wash: rgba(92,201,138,.12);
+  color-scheme: dark;
+}
+/* dark — 아무것도 고르지 않았고 OS가 다크일 때 (위 블록과 같은 값) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { /* …위 dark 값 그대로… */ color-scheme: dark; }
+}</pre>
+  </section>
+
+  <footer>출처: sc4sap-web-poc · web/src/app/globals.css, web/src/lib/spec-theme.ts · 2026-10-05 · v0.5.3</footer>
+</main>
+
+<script>
+(function () {
+  // 테마 토글 (저장은 이 브라우저에만)
+  var KEY = 'sc4sap-guide-theme';
+  var root = document.documentElement;
+  function apply(mode) {
+    if (mode === 'light' || mode === 'dark') root.setAttribute('data-theme', mode); else root.removeAttribute('data-theme');
+    document.querySelectorAll('[data-theme-set]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-theme-set') === mode)); });
+    try { localStorage.setItem(KEY, mode); } catch (e) {}
+    setTimeout(renderSwatches, 30);
+  }
+  var saved = 'system';
+  try { saved = localStorage.getItem(KEY) || 'system'; } catch (e) {}
+  document.querySelectorAll('[data-theme-set]').forEach(function (b) { b.addEventListener('click', function () { apply(b.getAttribute('data-theme-set')); }); });
+
+  var GROUPS = {
+    'sw-surface': [['--bg', '페이지 바탕'], ['--rail-bg', '왼쪽 레일 — 바탕보다 한 단계 아래'], ['--panel', '카드 · 입력 · 모달 면'], ['--panel-2', '호버 · 표 머리 · 코드'], ['--panel-3', '내비 호버 · 눌린 면']],
+    'sw-ink': [['--ink', '유일한 강조색 · 본문 · 채운 버튼', 'on'], ['--ink-hover', '채운 버튼 호버'], ['--ink-80', '라벨 · 패널 헤드'], ['--ink-55', '보조 텍스트 (≥4.5:1)'], ['--ink-38', '힌트 · 비활성 (≥3:1)'], ['--on-ink', '채운 잉크 위 글자/아이콘'], ['--on-ink-soft', '채운 잉크 위 보조 글자']],
+    'sw-line': [['--line', '기본 헤어라인 · 버튼 테두리'], ['--line-soft', '카드 테두리 · 구분선'], ['--line-strong', '입력 · 셀렉트 테두리']],
+    'sw-status': [['--ok', '연결됨 · 성공'], ['--warn', '확인 필요 · 경고'], ['--bad', '끊김 · 오류'], ['--chart-refused', '차트 전용 (거부)'], ['--excel', '엑셀 파일 마크'], ['--excel-wash', '엑셀 아이콘 바탕']],
+    'sw-shadow': [['--scrim', '모달 뒤 딤'], ['--on-ink-wash', '채운 잉크 위 눌림 패치']],
+  };
+  function val(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
+  function renderSwatches() {
+    Object.keys(GROUPS).forEach(function (id) {
+      var box = document.getElementById(id);
+      box.innerHTML = '';
+      GROUPS[id].forEach(function (g) {
+        var el = document.createElement('div');
+        el.className = 'sw';
+        var transparent = /rgba/.test(val(g[0]));
+        var on = g[0] === '--on-ink' || g[0] === '--on-ink-soft' || g[0] === '--on-ink-wash';
+        el.innerHTML = '<div class="chip-color' + (transparent && !on ? ' checker' : '') + (g[2] === 'on' ? ' ink-on' : '') + '" style="' + (on ? 'background:var(--ink)' : '') + '"><div style="position:absolute;inset:0;background:' + (on ? 'transparent' : 'var(' + g[0] + ')') + ';display:flex;align-items:center;justify-content:center;font-weight:600;font-size:13px;color:' + (on ? 'var(' + g[0] + ')' : 'var(--on-ink)') + '">' + (on || g[2] === 'on' ? 'Aa 가나' : '') + '</div></div>' +
+          '<div class="meta"><div class="name">' + g[0] + '</div><div class="val">' + val(g[0]) + '</div><div class="use">' + g[1] + '</div></div>';
+        box.appendChild(el);
+      });
+    });
+  }
+
+  // 라이트/다크 대응표 (고정 값)
+  var MAP = [
+    ['--bg', '#f5f6f8', '#111317', '페이지 바탕'], ['--rail-bg', '#eceef2', '#0c0e11', '레일'], ['--panel', '#ffffff', '#171a1f', '카드 면'],
+    ['--panel-2', '#f0f2f5', '#1d2127', '호버 · 표 머리'], ['--panel-3', '#e7eaee', '#252a31', '눌린 면'],
+    ['--ink', '#2f3540', '#e6e9ee', '강조 · 본문'], ['--ink-hover', '#232831', '#cfd4db', '채운 버튼 호버'],
+    ['--on-ink', '#ffffff', '#111317', '채운 잉크 위 글자'],
+    ['--ink-80', 'ink 80%', 'ink 80%', '라벨'], ['--ink-55', 'ink 70%', 'ink 55%', '보조 텍스트'], ['--ink-38', 'ink 55%', 'ink 38%', '힌트'],
+    ['--line', 'ink 20%', 'ink 16%', '헤어라인'], ['--line-soft', 'ink 10%', 'ink 9%', '카드 테두리'], ['--line-strong', 'ink 34%', 'ink 28%', '입력 테두리'],
+    ['--scrim', 'ink 35%', 'black 62%', '모달 딤'], ['--shadow-rgb', '30,36,48', '0,0,0', '그림자 채널'],
+    ['--ok', '#15803d', '#4ade80', '성공'], ['--warn', '#b45309', '#fbbf24', '경고'], ['--bad', '#b91c1c', '#f87171', '오류'],
+    ['--excel', '#1d6f42', '#5cc98a', '엑셀'],
+  ];
+  var tb = document.querySelector('#map-table tbody');
+  MAP.forEach(function (r) {
+    var tr = document.createElement('tr');
+    var cell = function (v) { return /^#/.test(v) ? '<span class="dot" style="background:' + v + '"></span><code>' + v + '</code>' : '<code>' + v + '</code>'; };
+    tr.innerHTML = '<td><code>' + r[0] + '</code></td><td>' + cell(r[1]) + '</td><td>' + cell(r[2]) + '</td><td>' + r[3] + '</td>';
+    tb.appendChild(tr);
+  });
+
+  // 모션 재생
+  document.getElementById('play').addEventListener('click', function () {
+    document.querySelectorAll('#motion .track').forEach(function (t) { t.classList.toggle('go'); });
+  });
+
+  // 복사
+  document.getElementById('copy').addEventListener('click', function () {
+    var text = document.getElementById('token-code').textContent;
+    var done = function () { document.getElementById('copied').textContent = '복사했습니다'; };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {}); else done();
+  });
+
+  apply(saved);
+})();
+</script>
+</body>
+</html>
