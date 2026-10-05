@@ -26,6 +26,7 @@
  */
 import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { DOC_ICON_SCRIPT, DOC_ICON_STYLE } from "@/lib/doc-icons";
+import { editableSpec } from "@/lib/spec-editor";
 
 /** The app's typeface, from the same jsDelivr stylesheet the app loads. */
 const TYPE_LINK = `<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">`;
@@ -205,6 +206,11 @@ const SCRIPT = `<script id="sc4sap-spec-theme-script">
       label.innerHTML = purpose.querySelector('dt').innerHTML;
       var text = document.createElement('p');
       text.innerHTML = purpose.querySelector('dd').innerHTML;
+      // The edit mode's marks go along, so an edit here saves into the fact.
+      var dtEd = purpose.querySelector('dt').getAttribute('data-ed');
+      var ddEd = purpose.querySelector('dd').getAttribute('data-ed');
+      if (dtEd !== null) label.setAttribute('data-ed', dtEd);
+      if (ddEd !== null) text.setAttribute('data-ed', ddEd);
       lede.appendChild(label);
       lede.appendChild(text);
       purpose.remove();
@@ -537,5 +543,7 @@ export function styledSpec(
       if (start >= 0 && end > at) page = page.slice(0, start) + drawn.svg + page.slice(end + 1);
     }
   }
-  return before(before(page, "head", TYPE_LINK + STYLE + DOC_ICON_STYLE), "body", SCRIPT + DOC_ICON_SCRIPT);
+  return editableSpec(
+    before(before(page, "head", TYPE_LINK + STYLE + DOC_ICON_STYLE), "body", SCRIPT + DOC_ICON_SCRIPT),
+  );
 }

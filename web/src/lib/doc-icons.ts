@@ -118,10 +118,14 @@ export const DOC_ICON_SCRIPT = `<script id="sc4sap-doc-icons-script">
       pattern.lastIndex = 0;
       while ((match = pattern.exec(text))) {
         if (match.index > last) frag.appendChild(document.createTextNode(text.slice(last, match.index)));
-        frag.appendChild(icon(byChar[match[1]]));
+        var ico = icon(byChar[match[1]]);
+        frag.appendChild(ico);
         last = match.index + match[0].length;
         // The space the emoji came with stays as the icon's own margin.
         if (text.charAt(last) === ' ') last += 1;
+        // What it stood for, so an edited page (the spec's edit mode) can
+        // save the emoji back rather than lose it.
+        ico.setAttribute('data-emoji', text.slice(match.index, last));
       }
       if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
       node.parentNode.replaceChild(frag, node);

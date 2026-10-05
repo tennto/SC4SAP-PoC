@@ -1914,6 +1914,13 @@ export function SkillForm({
                       "text/html;charset=utf-8",
                     )
                   }
+                  {...(docKind === "spec"
+                    ? {
+                        doc: "spec" as const,
+                        onSaveEdited: (edited: string) =>
+                          download(editedName(htmlFile.name), edited, "text/html;charset=utf-8"),
+                      }
+                    : {})}
                 />
               )}
 

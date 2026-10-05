@@ -65,6 +65,10 @@ document.currentScript && document.currentScript.remove();
 
 /** Marks a document's "save a copy" among anything else posted to this page. */
 const SAVE_MESSAGE = "sc4sap-preview-save";
+/** This page asking an editable document for itself (the download button). */
+const REQUEST_MESSAGE = "sc4sap-preview-request";
+/** The document's answer that nothing was edited: the original is the file. */
+const CLEAN_MESSAGE = "sc4sap-preview-clean";
 
 /**
  * Added as well to a document with an edit mode of its own — the plugin's
@@ -116,6 +120,7 @@ export function HtmlPreview({
   html,
   onDownload,
   onSaveEdited,
+  doc = "manual",
 }: {
   name: string;
   html: string;
@@ -126,6 +131,8 @@ export function HtmlPreview({
    * step, and the manual prints itself — and the bar says how editing works.
    */
   onSaveEdited?: (html: string) => void;
+  /** Whose edit mode it is: the manual's, or the spec's (`spec-editor.ts`). */
+  doc?: "manual" | "spec";
 }) {
   const { t: messages } = useLocale();
   const t = messages.skillForm;
@@ -159,20 +166,52 @@ export function HtmlPreview({
 
   // The editor's Save, from this frame only.
   const saveEdited = useRef(onSaveEdited);
+  const download = useRef(onDownload);
   useEffect(() => {
     saveEdited.current = onSaveEdited;
-  }, [onSaveEdited]);
+    download.current = onDownload;
+  }, [onSaveEdited, onDownload]);
+  /** The download button's question to the document is waiting for its answer. */
+  const asking = useRef<number | null>(null);
+  const answered = (): boolean => {
+    if (asking.current === null) return false;
+    window.clearTimeout(asking.current);
+    asking.current = null;
+    return true;
+  };
   useEffect(() => {
     if (!editable) return;
     const onMessage = (event: MessageEvent): void => {
       if (event.source !== frame.current?.contentWindow) return;
       const data = event.data as { type?: unknown; html?: unknown } | null;
+      if (data?.type === CLEAN_MESSAGE) {
+        if (answered()) download.current();
+        return;
+      }
       if (data?.type !== SAVE_MESSAGE || typeof data.html !== "string") return;
+      answered();
       saveEdited.current?.(data.html);
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [editable]);
+
+  /**
+   * One download button for a document with an edit mode: it asks the
+   * document for the page as it stands, which answers with the edited copy
+   * (saved as `…-edited.html`) or with word that nothing changed (the
+   * original). A document that does not answer — one saved before this — gets
+   * the original after a moment.
+   */
+  const downloadNow = (): void => {
+    if (!editable || !frame.current?.contentWindow) return onDownload();
+    if (asking.current !== null) return;
+    asking.current = window.setTimeout(() => {
+      asking.current = null;
+      download.current();
+    }, 1500);
+    frame.current.contentWindow.postMessage({ type: REQUEST_MESSAGE }, "*");
+  };
 
   /** Tells the document its zoom; the frame's own origin is opaque, hence "*". */
   const sendZoom = (): void => {
@@ -184,7 +223,7 @@ export function HtmlPreview({
     <div className="skill-doc-box html-preview">
       <div className="skill-doc-bar">
         <span className="skill-doc-kind">
-          {editable ? (
+          {editable && doc === "manual" ? (
             <>
               <Icon name="book-open-text" /> {t.manualPreview}
             </>
@@ -236,7 +275,7 @@ export function HtmlPreview({
               {zoom}%
             </button>
           </div>
-          <button className="ghost skill-doc-save" onClick={onDownload} title={t.saveReport}>
+          <button className="ghost skill-doc-save" onClick={downloadNow} title={t.saveReport}>
             <Icon name="download-simple" /> {t.downloadHtml}
           </button>
         </div>
@@ -245,7 +284,9 @@ export function HtmlPreview({
           Mermaid flowchart, the preview's own listeners) but can reach
           nothing of this app. Popups only so an outside link opens in a new
           tab, which leaves the sandbox rather than inheriting it. */}
-      {editable && <p className="html-preview-note">{t.manualEditHint}</p>}
+      {editable && (
+        <p className="html-preview-note">{doc === "spec" ? t.specEditHint : t.manualEditHint}</p>
+      )}
       <div className="html-preview-viewport">
         <iframe
           ref={frame}
