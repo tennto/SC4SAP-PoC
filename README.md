@@ -3,7 +3,7 @@
 
 | Component | Version |
 |---|---|
-| Web release | v0.5.1 |
+| Web release | v0.5.4 |
 | sc4sap plugin | 0.6.31 |
 | abap-mcp-adt (MCP server) | 4.8.8 |
 
