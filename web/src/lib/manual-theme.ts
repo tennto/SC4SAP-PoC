@@ -79,9 +79,12 @@ h1,h2,h3,h4{letter-spacing:-0.02em;color:var(--fg)}
 h2{font-size:21px;line-height:1.35;font-weight:700;border:0;padding:0;margin:64px 0 16px}
 h3{font-size:16.5px;line-height:1.45;font-weight:650;margin:36px 0 10px}
 h4{font-size:15px;font-weight:650;margin:22px 0 8px}
-p,ul,ol{margin:0 0 14px}
+p,ul,ol{margin:0 0 18px}
 ul,ol{padding-left:1.35em}
-li{margin:0 0 6px}
+li{margin:0 0 9px}
+/* Room to read, as in the spec and the process document. */
+main p{line-height:1.85}
+main li{line-height:1.8}
 li::marker{color:var(--faint)}
 
 /* Cover: the title, then the facts as one panel. Each dt/dd pair is a
@@ -97,7 +100,7 @@ li::marker{color:var(--faint)}
 
 /* Tables: horizontal rules only, the head a quiet band. */
 table{border-collapse:separate;border-spacing:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:10px 0 20px}
-th,td{border:0;border-bottom:1px solid var(--line);padding:10px 14px;line-height:1.55}
+th,td{border:0;border-bottom:1px solid var(--line);padding:10px 14px;line-height:1.65}
 tr:last-child>td,tr:last-child>th{border-bottom:0}
 th{background:var(--head);font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap}
 td{font-size:14px}
@@ -146,11 +149,11 @@ td[data-msg=I]{color:var(--msg-i)}
 .screen{padding:14px;background:#ffffff;border:1px solid var(--line);border-radius:10px}
 .screen figcaption{color:#6b6b6b;font-size:12.5px;margin-top:10px}
 .callouts{gap:12px}
-.callouts>li{grid-template-columns:24px 1fr;gap:10px;font-size:14.5px;line-height:1.6}
+.callouts>li{grid-template-columns:24px 1fr;gap:10px;font-size:14.5px;line-height:1.7;margin-bottom:10px}
 /* The number in its circle, centred both ways: a grid cell the size of the
    circle, a line box no taller than the digits, figures of one width. */
 .num{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;font-size:12px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:0;margin-top:1px}
-.callouts ul{font-size:13.5px;line-height:1.55}
+.callouts ul{font-size:13.5px;line-height:1.65}
 .step-note{font-size:14px;color:var(--muted);margin:14px 0 0}
 .step-note b,.step-note strong{color:var(--fg)}
 /* "Result:" as a label beside its text, the text's second line under the

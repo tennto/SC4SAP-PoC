@@ -59,9 +59,14 @@ h2{font-size:21px;line-height:1.35;font-weight:700;border:0;padding:0;margin:48p
 h3{font-size:16.5px;font-weight:650;margin:32px 0 10px}
 h4{font-size:15px;font-weight:650;margin:24px 0 8px}
 .sec>h2:first-child{margin-top:48px}
-p,ul,ol,blockquote,pre,.table-wrap,figure,details{margin:0 0 14px}
+p,ul,ol,blockquote,pre,.table-wrap,figure,details{margin:0 0 18px}
 ul,ol{padding-left:1.35em}
-li{margin:0 0 6px}
+li{margin:0 0 9px}
+/* Room to read: the page is read as prose as much as looked up. */
+main p{line-height:1.85}
+main li{line-height:1.8}
+main td{line-height:1.65}
+h3{margin-top:38px}
 li::marker{color:var(--faint)}
 a{color:var(--link);text-decoration-color:var(--line-strong);text-underline-offset:3px}
 a:hover{text-decoration-color:currentColor}
