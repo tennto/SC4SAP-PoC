@@ -58,6 +58,9 @@ import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { styledSpec } from "@/lib/spec-theme";
 import { styledManual } from "@/lib/manual-theme";
 import { styledCbo } from "@/lib/cbo-theme";
+import { PROCESS_FILES, processPrompt, type ProcessSurvey } from "@/lib/process-prompt";
+import { styledProcess, type DiagramPng } from "@/lib/process-theme";
+import { processDrawings, type ProcessImages } from "@/lib/process-diagrams";
 import { codeReviewPrompt } from "@/lib/code-review-prompt";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
@@ -445,6 +448,30 @@ function cboOf(values: Record<string, Value>): CboSurvey {
       .filter(Boolean),
     method: pick("Mode") === "Standard" ? "Precise" : "Economy",
     language: (pick("Language") || "Korean") as CboSurvey["language"],
+  };
+}
+
+/** A Package → Process run from its form. */
+function processOf(values: Record<string, Value>): ProcessSurvey {
+  const pick = (label: string): string => {
+    const value = values[label];
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const format = pick("Output format") || "HTML + Excel (xlsx)";
+  const formats: ProcessSurvey["formats"] = [];
+  if (format.includes("Markdown")) formats.push("md");
+  if (format.includes("HTML")) formats.push("html");
+  if (format.includes("Excel")) formats.push("xlsx");
+  return {
+    package: pick("Package").toUpperCase(),
+    module: pick("Module") || "MM",
+    entryPrograms: pick("Entry programs")
+      .split(/[\s,;]+/)
+      .map((name) => name.trim().toUpperCase())
+      .filter(Boolean),
+    method: pick("Mode") === "Standard" ? "Precise" : "Economy",
+    language: (pick("Language") || "Korean") as ProcessSurvey["language"],
+    formats: formats.length ? formats : ["html", "xlsx"],
   };
 }
 
@@ -918,9 +945,53 @@ export function SkillForm({
   // A documents run's files, by kind. The Markdown one, when there is one, is
   // the document the viewer shows; the run's own closing words are only a
   // summary of it.
-  const mdFile = wanted.includes("md")
-    ? (docs?.find((file) => file.name.toLowerCase().endsWith(".md")) ?? null)
-    : null;
+  // A process run has two Markdown files — the document and the BPML — and
+  // keeps the document as Markdown when Excel was the only choice.
+  const mdFile =
+    docKind === "process"
+      ? wanted.includes("md") || !wanted.includes("html")
+        ? (docs?.find((file) => /^process-.*\.md$/i.test(file.name)) ?? null)
+        : null
+      : wanted.includes("md")
+        ? (docs?.find((file) => file.name.toLowerCase().endsWith(".md")) ?? null)
+        : null;
+  const bpmlMdFile =
+    docKind === "process" && wanted.includes("md")
+      ? (docs?.find((file) => /^bpml-.*\.md$/i.test(file.name)) ?? null)
+      : null;
+  // A process run's diagrams, drawn here from its process-images.json, and
+  // the plugin's PNGs of them that a Standard run put in its files.
+  const processImages = useMemo(() => {
+    if (docKind !== "process") return null;
+    const data = docs?.find((file) => file.name === PROCESS_FILES.diagrams);
+    if (!data) return null;
+    try {
+      return JSON.parse(textOf(data)) as ProcessImages;
+    } catch {
+      return null;
+    }
+  }, [docKind, docs]);
+  const diagramPngs = useMemo<DiagramPng[]>(
+    () =>
+      docKind === "process" && docs
+        ? docs
+            .filter((file) => file.mediaType === "image/png" && /^(macro|seq-[^/]+)\.png$/i.test(file.name))
+            .map((file) => ({ name: file.name, base64: file.data }))
+        : [],
+    [docKind, docs],
+  );
+  // The process document's page, then the BPML's, each in the spec's look
+  // with its edit mode.
+  const processPages = useMemo(
+    () =>
+      docKind === "process" && docs
+        ? docs
+            .filter((file) => /^(process|bpml)-.*\.html$/i.test(file.name))
+            .sort((a, b) => Number(/^bpml-/i.test(a.name)) - Number(/^bpml-/i.test(b.name)))
+            .map((file) => ({ file, html: styledProcess(textOf(file), processImages, diagramPngs) }))
+        : [],
+    [docKind, docs, processImages, diagramPngs],
+  );
   const htmlFile =
     docKind === "spec" || docKind === "cbo"
       ? (docs?.find((file) => file.name.toLowerCase().endsWith(".html")) ?? null)
@@ -969,6 +1040,15 @@ export function SkillForm({
   // an SVG says how big it is and stays sharp at any scale.
   const specText = useMemo(() => {
     if (!mdFile || !docs) return null;
+    if (docKind === "process") {
+      // The plugin's diagram PNGs as the drawn SVGs, where there is data for them.
+      const drawings = processImages ? processDrawings(processImages) : new Map();
+      const files = docs.map((file) => {
+        const drawn = file.mediaType === "image/png" ? drawings.get(file.name.replace(/\.png$/i, "")) : undefined;
+        return drawn ? { ...file, mediaType: "image/svg+xml", data: base64Utf8(drawn.svg) } : file;
+      });
+      return withImages(textOf(mdFile), files);
+    }
     const drawn = flow ? flowSvg(flow.spec) : null;
     const files =
       flow && drawn
@@ -979,7 +1059,12 @@ export function SkillForm({
           )
         : docs;
     return withImages(textOf(mdFile), files);
-  }, [mdFile, docs, flow]);
+  }, [mdFile, docs, flow, docKind, processImages]);
+  /** The BPML's Markdown with its flow pictures inside it, for download. */
+  const bpmlMdText = useMemo(
+    () => (bpmlMdFile && docs ? withImages(textOf(bpmlMdFile), docs) : null),
+    [bpmlMdFile, docs],
+  );
   // Restyled, and with the drawn flow, for the preview and the download both.
   const htmlText = useMemo(
     () =>
@@ -1258,6 +1343,17 @@ export function SkillForm({
         void run(null, null, null, null, survey);
         return;
       }
+      // So is the process document: everything it would ask is on the form.
+      if (docKind === "process") {
+        const survey = processOf(values);
+        if (survey.package === "") {
+          setError(t.packageRequired);
+          return;
+        }
+        setError(null);
+        void run(null, null, null, null, null, survey);
+        return;
+      }
       // The survey needs something to be about before it is worth asking.
       if (programOf(values) === "") {
         setError(docKind === "manual" ? t.programRequiredManual : t.programRequired);
@@ -1298,6 +1394,8 @@ export function SkillForm({
     manual: ManualSurvey | null = null,
     /** An Inventory a CBO Package run — see `cbo-prompt.ts`. */
     cbo: CboSurvey | null = null,
+    /** A Package → Process run — see `process-prompt.ts`. */
+    proc: ProcessSurvey | null = null,
   ): Promise<void> {
     if (running || blocked) return;
     setStarting(true);
@@ -1306,6 +1404,26 @@ export function SkillForm({
     heldDocs.delete(slug);
     keepers.get(slug)?.stop();
     try {
+      if (proc) {
+        // Both modes on Sonnet with sub-agents kept off Opus, as the other
+        // document skills. Ceilings well above what ZMMPAEK measured by the\n        // SDK: $7.16 Standard, $1.34 Economy.
+        setWanted(proc.formats);
+        const session = await api.createSession(undefined, undefined, {
+          model: "claude-sonnet-5",
+          economy: true,
+          maxBudgetUsd: proc.method === "Precise" ? 12 : 4,
+          profile: tools,
+          kind: "task",
+          ...(proc.method === "Economy" ? { effort: "medium" as const } : {}),
+        });
+        setSessionId(session.id);
+        await api.sendMessage(session.id, processPrompt(proc, `.sc4sap/out/${session.id}`));
+        keepDocuments(slug, session.id);
+        requestAnimationFrame(() =>
+          result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+        );
+        return;
+      }
       if (cbo) {
         // The index as HTML, with inventory.json beside it. Both modes on
         // Sonnet with sub-agents kept off Opus. Ceilings about twice what
@@ -1936,6 +2054,45 @@ export function SkillForm({
                 />
               ))}
 
+              {processPages.map(({ file, html }) => (
+                <HtmlPreview
+                  key={file.path}
+                  name={file.name}
+                  html={html}
+                  doc="spec"
+                  onDownload={() => download(file.name, html, "text/html;charset=utf-8")}
+                  onSaveEdited={(edited) =>
+                    download(editedName(file.name), edited, "text/html;charset=utf-8")
+                  }
+                />
+              ))}
+
+              {bpmlMdFile && bpmlMdText !== null && (
+                <button
+                  type="button"
+                  className="file-card"
+                  onClick={() => download(bpmlMdFile.name, bpmlMdText)}
+                  title={t.downloadFile}
+                >
+                  <span className="file-card-icon" aria-hidden="true">
+                    <Icon name="markdown-logo" weight="fill" />
+                  </span>
+                  <span className="file-card-body">
+                    <span className="file-card-name">{bpmlMdFile.name}</span>
+                    <span className="file-card-meta">
+                      {t.bpmlMarkdown} · {sizeLabel(bpmlMdFile.size)} ·{" "}
+                      {new Date(bpmlMdFile.createdAt).toLocaleString(locale, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </span>
+                  </span>
+                  <span className="file-card-action" aria-hidden="true">
+                    <Icon name="download-simple" />
+                  </span>
+                </button>
+              )}
+
               {inventoryFile && cboName && (
                 <button
                   type="button"
@@ -2167,6 +2324,8 @@ export function SkillForm({
               ? t.closeBodyManual
               : docKind === "cbo"
                 ? t.closeBodyCbo
+              : docKind === "process"
+                ? t.closeBodyProcess
               : documents
                 ? t.closeBodyDocuments
                 : t.closeBody

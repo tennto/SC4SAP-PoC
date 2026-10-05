@@ -161,8 +161,11 @@ export type Skill = {
    * a cover dialog in both modes, the manual previewed with its edit mode),
    * `cbo` is Inventory a CBO Package (`cbo-prompt.ts`, its index previewed
    * as HTML in the spec's look, with inventory.json beside it).
+   * `process` is Package → Process (`process-prompt.ts`: the process document
+   * and the BPML, in the spec's look with the diagrams drawn by
+   * `process-diagrams.ts`, and the BPML workbook).
    */
-  documents?: "spec" | "manual" | "cbo";
+  documents?: "spec" | "manual" | "cbo" | "process";
 };
 
 export type SkillGroup = {
@@ -533,27 +536,63 @@ export const SKILLS: Skill[] = [
     documents: "manual",
   },
   {
-    // Not yet worked on for model choice: no cost dialog, so no budget and no
-    // economy, and its Opus agents run unchecked. Add both when this skill is
-    // next developed — see docs/model-selection-improvements.md, item 4.
+    // Built out on 2026-10-05, as the other document skills: the plugin's
+    // intake and its two mid-run confirmations (entry points, process groups)
+    // become form fields and "as proposed", the files go to the run's own
+    // folder to be shown and downloaded. Economy is one agent writing one
+    // process.json that this app's scripts turn into every file
+    // (`scripts/process/`); Standard is the plugin's skill. See
+    // `lib/process-prompt.ts`.
     slug: "package-to-process",
     command: "/sc4sap:package-to-process",
     tools: "build",
     title: "Package → Process",
     icon: "flow-arrow",
     summary:
-      "Turns a CBO package into an end-to-end business process document with flowcharts, sequence diagrams and step tables",
+      "Turns a CBO package into an end-to-end business process document with flowcharts, sequence diagrams and step tables, and its BPML",
     group: "analyze",
     status: "ready",
     fields: [
-      { label: "Package", kind: "text", placeholder: "ZMM_CBO" },
-      { label: "Module", kind: "select", options: MODULES.slice(1) },
-      // One choice covers both deliverables — the process document and the
-      // BPML — since plugin 0.6.20. The process document has no Excel form, so
-      // an Excel choice applies to the BPML and the document keeps Markdown.
-      { label: "Deliverable", kind: "select", options: ["Markdown", "HTML", "Markdown + HTML", "Markdown + BPML workbook (xlsx)", "Markdown + HTML + BPML workbook (xlsx)"], hint: "The BPML is the Excel deliverable; the process document comes as Markdown or HTML." },
-      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese", "German"] },
+      { label: "Package", kind: "text", placeholder: "ZMM_CBO", span: "half" },
+      {
+        label: "Entry programs",
+        kind: "text",
+        placeholder: "ZPROGRAM1, ZPROGRAM2",
+        hint: "Optional. Programs a process starts from, beside the ones its transactions start.",
+        span: "half",
+      },
+      {
+        label: "Mode",
+        kind: "select",
+        span: "third",
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy:
+            "One agent groups the programs into processes from a scan of their sources; this app lays out the document and the BPML. Estimated cost: about $0.80–1.50. Estimated time: 4–7 min.",
+          Standard:
+            "The plugin's analyst groups and narrates every process in full from a scan of the sources, interfaces included; this app lays out the document and the BPML. Estimated cost: about $3–6. Estimated time: 20–30 min.",
+        },
+      },
+      // The process document comes as Markdown or HTML; Excel is the BPML
+      // workbook. Every BPML format chosen is made too, as in the plugin.
+      {
+        label: "Output format",
+        kind: "select",
+        span: "third",
+        options: ["HTML + Excel (xlsx)", "HTML", "Markdown", "Markdown + HTML", "Excel (xlsx)", "Markdown + HTML + Excel (xlsx)"],
+        optionHints: {
+          "HTML + Excel (xlsx)": "The process document and the BPML previewed here, and the BPML workbook to download.",
+          HTML: "The process document and the BPML previewed here, saved as .html.",
+          Markdown: "The process document shown here, the BPML as a Markdown file.",
+          "Markdown + HTML": "The document here as Markdown and as HTML previews, saved as either.",
+          "Excel (xlsx)": "The BPML workbook to download; the process document comes as Markdown.",
+          "Markdown + HTML + Excel (xlsx)": "Everything: Markdown, HTML previews and the BPML workbook.",
+        },
+      },
+      { label: "Module", kind: "select", options: MODULES.slice(1), span: "third" },
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"], span: "third" },
     ],
+    documents: "process",
   },
 
   // ---------- build ----------

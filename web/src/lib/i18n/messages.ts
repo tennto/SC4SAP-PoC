@@ -298,6 +298,9 @@ const en = {
     closeBodyCbo:
       "The inventory and its files are deleted. Nothing of this run is kept, so download anything you need first.",
     inventoryJson: "Inventory for the other skills (JSON)",
+    bpmlMarkdown: "BPML (Markdown)",
+    closeBodyProcess:
+      "The process document, the BPML and their files are deleted. Nothing of this run is kept, so download anything you need first — and save any edits you made in them.",
     closeBodyManual:
       "The manual is deleted. Nothing of this run is kept, so download it first — and save any edits you made in it.",
     manualPreview: "Manual",
@@ -1271,6 +1274,9 @@ const ko: Messages = {
     closeBodyCbo:
       "인벤토리와 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하세요.",
     inventoryJson: "다른 스킬이 읽는 인벤토리 (JSON)",
+    bpmlMarkdown: "BPML (Markdown)",
+    closeBodyProcess:
+      "프로세스 문서, BPML과 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하고 편집한 내용도 저장하세요.",
     closeBodyManual:
       "매뉴얼이 삭제됩니다. 이 실행은 어디에도 보관되지 않으니 먼저 다운로드하고, 매뉴얼 안에서 편집했다면 저장해 두세요.",
     manualPreview: "매뉴얼",
@@ -2223,6 +2229,9 @@ const ja: Messages = {
     closeBodyCbo:
       "棚卸しとファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードしてください。",
     inventoryJson: "他のスキルが読む棚卸し (JSON)",
+    bpmlMarkdown: "BPML (Markdown)",
+    closeBodyProcess:
+      "プロセス文書、BPML とファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードし、編集内容も保存してください。",
     closeBodyManual:
       "マニュアルは削除されます。この実行はどこにも保存されないため、先にダウンロードし、マニュアル内で編集した場合は保存しておいてください。",
     manualPreview: "マニュアル",

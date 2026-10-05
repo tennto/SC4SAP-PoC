@@ -290,19 +290,41 @@ const ko: CatalogText = {
         "CBO 패키지를 순서도, 시퀀스 다이어그램, 단계 표가 있는 종단 간 업무 프로세스 문서로 만듭니다",
       fields: {
         Package: { label: "패키지" },
-        Module: { label: "모듈", options: MODULES_KO },
-        Deliverable: {
-          label: "산출물",
-          options: {
-            Markdown: "Markdown",
-            HTML: "HTML",
-            "Markdown + HTML": "Markdown + HTML",
-            "Markdown + BPML workbook (xlsx)": "Markdown + BPML 워크북 (xlsx)",
-            "Markdown + HTML + BPML workbook (xlsx)": "Markdown + HTML + BPML 워크북 (xlsx)",
-          },
-          hint: "BPML이 Excel 산출물이고, 프로세스 문서는 Markdown 또는 HTML로 나옵니다.",
+        "Entry programs": {
+          label: "진입 프로그램",
+          hint: "선택 사항. 트랜잭션이 실행하는 프로그램 외에 프로세스가 시작되는 프로그램입니다.",
         },
-        Language: { label: "언어", options: LANGUAGES_KO },
+        Mode: {
+          label: "모드",
+          options: { Economy: "절약", Standard: "기본" },
+          optionHints: {
+            Economy:
+              "에이전트 1개가 프로그램 소스 스캔 결과로 프로세스를 묶고, 문서와 BPML은 앱이 만듭니다. 예상 소요비용은 약 1,100~2,100원, 예상 소요시간은 4~7분입니다.",
+            Standard:
+              "플러그인 분석 에이전트가 소스 스캔 결과로 인터페이스까지 모든 프로세스를 빠짐없이 묶고 서술하며, 문서와 BPML은 앱이 만듭니다. 예상 소요비용은 약 4,200~8,400원, 예상 소요시간은 20~30분입니다.",
+          },
+        },
+        "Output format": {
+          label: "출력 형식",
+          options: {
+            "HTML + Excel (xlsx)": "HTML + Excel (xlsx)",
+            HTML: "HTML",
+            Markdown: "Markdown",
+            "Markdown + HTML": "Markdown + HTML",
+            "Excel (xlsx)": "Excel (xlsx)",
+            "Markdown + HTML + Excel (xlsx)": "Markdown + HTML + Excel (xlsx)",
+          },
+          optionHints: {
+            "HTML + Excel (xlsx)": "프로세스 문서와 BPML을 여기서 미리 보고, BPML 워크북을 내려받습니다.",
+            HTML: "프로세스 문서와 BPML을 여기서 미리 보고 .html로 저장합니다.",
+            Markdown: "프로세스 문서를 여기서 보고, BPML은 Markdown 파일로 받습니다.",
+            "Markdown + HTML": "문서를 Markdown과 HTML 미리보기로 보고, 어느 쪽으로든 저장합니다.",
+            "Excel (xlsx)": "BPML 워크북을 내려받습니다. 프로세스 문서는 Markdown으로 나옵니다.",
+            "Markdown + HTML + Excel (xlsx)": "전부: Markdown, HTML 미리보기, BPML 워크북.",
+          },
+        },
+        Module: { label: "모듈", options: MODULES_KO },
+        Language: { label: "작성 언어", options: LANGUAGES_KO },
       },
     },
     "create-program": {
@@ -596,19 +618,41 @@ const ja: CatalogText = {
         "CBO パッケージを、フローチャート、シーケンス図、ステップ表を備えたエンドツーエンドの業務プロセス文書にします",
       fields: {
         Package: { label: "パッケージ" },
-        Module: { label: "モジュール", options: MODULES_JA },
-        Deliverable: {
-          label: "成果物",
-          options: {
-            Markdown: "Markdown",
-            HTML: "HTML",
-            "Markdown + HTML": "Markdown + HTML",
-            "Markdown + BPML workbook (xlsx)": "Markdown + BPML ワークブック (xlsx)",
-            "Markdown + HTML + BPML workbook (xlsx)": "Markdown + HTML + BPML ワークブック (xlsx)",
-          },
-          hint: "BPML が Excel の成果物で、プロセス文書は Markdown または HTML で出力されます。",
+        "Entry programs": {
+          label: "エントリプログラム",
+          hint: "任意。トランザクションが起動するプログラムのほかに、プロセスの起点となるプログラムです。",
         },
-        Language: { label: "言語", options: LANGUAGES_JA },
+        Mode: {
+          label: "モード",
+          options: { Economy: "節約", Standard: "標準" },
+          optionHints: {
+            Economy:
+              "エージェント 1 つがプログラムのソーススキャン結果からプロセスをまとめ、文書と BPML はアプリが作成します。予想費用は約 120〜230 円、予想所要時間は 4〜7 分です。",
+            Standard:
+              "プラグインの分析エージェントがソーススキャン結果からインターフェースを含むすべてのプロセスをまとめて記述し、文書と BPML はアプリが作成します。予想費用は約 450〜900 円、予想所要時間は 20〜30 分です。",
+          },
+        },
+        "Output format": {
+          label: "出力形式",
+          options: {
+            "HTML + Excel (xlsx)": "HTML + Excel (xlsx)",
+            HTML: "HTML",
+            Markdown: "Markdown",
+            "Markdown + HTML": "Markdown + HTML",
+            "Excel (xlsx)": "Excel (xlsx)",
+            "Markdown + HTML + Excel (xlsx)": "Markdown + HTML + Excel (xlsx)",
+          },
+          optionHints: {
+            "HTML + Excel (xlsx)": "プロセス文書と BPML をここでプレビューし、BPML ワークブックをダウンロードします。",
+            HTML: "プロセス文書と BPML をここでプレビューし、.html で保存します。",
+            Markdown: "プロセス文書をここで表示し、BPML は Markdown ファイルで受け取ります。",
+            "Markdown + HTML": "文書を Markdown と HTML プレビューで表示し、どちらでも保存できます。",
+            "Excel (xlsx)": "BPML ワークブックをダウンロードします。プロセス文書は Markdown で出力されます。",
+            "Markdown + HTML + Excel (xlsx)": "すべて: Markdown、HTML プレビュー、BPML ワークブック。",
+          },
+        },
+        Module: { label: "モジュール", options: MODULES_JA },
+        Language: { label: "作成言語", options: LANGUAGES_JA },
       },
     },
     "create-program": {

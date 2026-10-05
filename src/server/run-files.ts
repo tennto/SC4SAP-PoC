@@ -43,6 +43,15 @@ const ASSET_DIR = "_assets";
 const IMAGE_SPEC = /(^|\/)_img\/[^/]*image-spec\.json$/;
 
 /**
+ * Package → Process's diagram data (`_img/process-images.json`, the writer's
+ * spec or the app build's), which the page draws the macro flow and the
+ * sequence diagrams from, and the BPML's flow pictures, which its Markdown
+ * links under `_img/bpml-flows-<lang>/`.
+ */
+const PROCESS_DATA = /(^|\/)_img\/process-images\.json$/;
+const BPML_FLOW = /(^|\/)_img\/bpml-flows-[^/]+\/[^/]+\.svg$/;
+
+/**
  * An Inventory a CBO Package run's machine-readable inventory, which the
  * plugin's other skills read — handed over beside its HTML for download.
  */
@@ -102,10 +111,11 @@ export function takeRunFiles(workspace: string, sessionId: string): RunFile[] {
     for (const path of walk(dir)) {
       const parts = path.split("/");
       const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
-      const asset = ext === ".png" && parts.includes(ASSET_DIR);
-      const imageSpec = IMAGE_SPEC.test(path) || INVENTORY.test(path);
+      const picture = ext === ".png" ? "image/png" : ext === ".svg" ? "image/svg+xml" : null;
+      const asset = picture !== null && (parts.includes(ASSET_DIR) || BPML_FLOW.test(path));
+      const imageSpec = IMAGE_SPEC.test(path) || INVENTORY.test(path) || PROCESS_DATA.test(path);
       if (!asset && !imageSpec && parts.some((part) => part.startsWith("_"))) continue;
-      const mediaType = asset ? "image/png" : imageSpec ? "application/json" : HANDED_OVER[ext];
+      const mediaType = asset ? picture! : imageSpec ? "application/json" : HANDED_OVER[ext];
       if (!mediaType) continue;
       const full = join(dir, path);
       const stat = statSync(full);
@@ -145,18 +155,30 @@ const PLUGIN_SCRIPTS = new Set([
   "spec/md-to-html.mjs",
   "spec/render-md-images.mjs",
   "spec/build-spec.mjs",
+  "spec/render-process-images.mjs",
+  "spec/build-bpml.mjs",
   "manual/build-manual.mjs",
 ]);
 
 /** Switches those scripts take that name no file. */
-const SCRIPT_FLAGS = new Set(["--same-version", "--major", "--keep"]);
+const SCRIPT_FLAGS = new Set(["--same-version", "--major", "--keep", "--no-images"]);
+
+/** Package → Process's build takes the formats as one word: `md,html,xlsx`. */
+const FORMATS = /^(md|html|xlsx)(,(md|html|xlsx))*$/;
 
 /**
  * This app's own scripts — see `scripts/`. A run names them relative to its
  * cwd, the workspace, as `../scripts/spec/...` or `../scripts/cbo/...`.
  */
 const APP_SCRIPTS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../scripts");
-const APP_SCRIPTS = new Set(["spec/build-xlsx.mjs", "cbo/objects.mjs", "cbo/build-index.mjs"]);
+const APP_SCRIPTS = new Set([
+  "spec/build-xlsx.mjs",
+  "cbo/objects.mjs",
+  "cbo/build-index.mjs",
+  "process/walk.mjs",
+  "process/scan.mjs",
+  "process/build.mjs",
+]);
 
 /**
  * Where the Agent SDK saves a tool result too large to hand the model —
@@ -215,6 +237,11 @@ export function isOwnRunStep(
     return full.startsWith(`${norm(dir)}/`);
   };
   const self = (path: string): boolean => norm(resolve(workspace, fromBash(path))) === norm(dir);
+  // Where GetProgFullCode's `output: "file"` writes (`.sc4sap/work/<profile>/mcp-output/`).
+  const mcpOutput = (path: string): boolean => {
+    const full = norm(resolve(workspace, fromBash(path)));
+    return full.startsWith(`${norm(resolve(workspace, ".sc4sap/work"))}/`) && full.includes("/mcp-output/");
+  };
   const savedResult = (path: string): boolean => {
     const full = norm(resolve(workspace, fromBash(path)));
     return full.startsWith(`${norm(toolResultsRoot(workspace))}/`) && full.includes("/tool-results/");
@@ -223,7 +250,10 @@ export function isOwnRunStep(
   if (toolName === "Write" || toolName === "Edit") {
     return typeof input.file_path === "string" && inside(input.file_path);
   }
-  if (toolName !== "Bash" || typeof input.command !== "string") return false;
+  // PowerShell too: a run on Windows may reach for it, and the same plain
+  // `node <script> <files>` line means the same in both (measured
+  // 2026-10-05, a process scan raised a dialog only for the shell it chose).
+  if ((toolName !== "Bash" && toolName !== "PowerShell") || typeof input.command !== "string") return false;
 
   // Steps joined by `&&` are each judged on their own, and every one must
   // pass; a trailing stderr merge is harmless. Anything else that chains,
@@ -231,8 +261,55 @@ export function isOwnRunStep(
   // 2026-10-02: a Standard run raised nine dialogs, most of them for its own
   // folder — `cd <workspace> && node …`, `mkdir -p … && ls …`, `rm` of the
   // intermediate Markdown it was told to delete.
-  const steps = input.command.trim().split(/\s+&&\s+/);
+  // A here-document into a file of the run's own: `cat <<'EOF' > <file>`,
+  // the body, `EOF`. With the delimiter quoted the body is data, never
+  // expanded or run, so only the target counts; unquoted (`<<EOF`) a `$(…)`
+  // in it would run, and that still goes to the dialog. After the delimiter
+  // only `echo <plain words>` lines may follow — the analyst ends each part
+  // with `echo OK3`, which raised a dialog for every part on 2026-10-05.
+  // A sub-agent without the Write tool (Package → Process's analyst) writes
+  // its parts this way.
+  // Several in one command are judged one by one: writing four parts per
+  // call instead of one is three fewer turns of the analyst's whole context.
+  if (/^cat\s+<</.test(input.command.trim())) return ownHeredocs(input.command.trim(), workspace);
+  // The same after a `cd` into the run's own folder, where its relative
+  // targets then land (measured 2026-10-05: `cd "<run>/_parts" && cat <<'EOF'
+  // > process-01.json …` for every part).
+  const cdThen = /^cd\s+("[^"\n]+"|'[^'\n]+'|[^\s;&|<>`]+)[ \t]*(?:&&|\r?\n)\s*(cat\s+<<[\s\S]*)$/.exec(input.command.trim());
+  if (cdThen) {
+    const dir = cdThen[1]!.replace(/^["']|["']$/g, "");
+    if (!inside(dir) && !self(dir)) return false;
+    return ownHeredocs(cdThen[2]!, resolve(workspace, fromBash(dir)));
+  }
+  // A line continuation (`\` at the end of a line) is one command, not two:
+  // measured 2026-10-05, a process scan given twenty paths one per line
+  // raised a dialog for its own run.
+  const steps = input.command.trim().replace(/\\\r?\n\s*/g, " ").split(/\s+&&\s+/);
   return steps.length > 0 && steps.every((step) => ownStep(step));
+
+  /** One or more quoted here-documents into the run's own files, with plain `echo` lines between or after. */
+  function ownHeredocs(command: string, base: string): boolean {
+    const lines = command.split(/\r?\n/);
+    const head = /^cat\s+<<-?\s*(['"])([A-Za-z_]\w*)\1\s*>>?\s*("[^"\n]+"|'[^'\n]+'|[^\s;&|<>`]+)\s*$/;
+    const echo = /^echo(\s+[\w .:,-]*)?$/;
+    let blocks = 0;
+    for (let i = 0; i < lines.length; ) {
+      const line = lines[i]!.trim();
+      if (line === "" || echo.test(line)) {
+        i += 1;
+        continue;
+      }
+      const match = head.exec(line);
+      if (!match || !inside(resolve(base, fromBash(match[3]!.replace(/^["']|["']$/g, ""))))) return false;
+      // The body ends at the first delimiter line; what follows is commands again.
+      let end = i + 1;
+      while (end < lines.length && lines[end]!.replace(/^\t+/, "").trimEnd() !== match[2]) end += 1;
+      if (end >= lines.length) return false;
+      blocks += 1;
+      i = end + 1;
+    }
+    return blocks > 0;
+  }
 
   function ownStep(step: string): boolean {
     const command = step.trim().replace(/\s+2>&1$/, "");
@@ -278,8 +355,11 @@ export function isOwnRunStep(
         if (!dir || !(inside(dir) || self(dir))) return false;
         continue;
       }
-      // The CBO list script reads the SDK's saved GetPackageContents result.
-      if (script.endsWith("/cbo/objects.mjs") && index === 0 && savedResult(arg)) continue;
+      // The CBO and process list scripts read the SDK's saved GetPackageContents result.
+      if ((script.endsWith("/cbo/objects.mjs") || script.endsWith("/process/walk.mjs")) && index === 0 && savedResult(arg)) continue;
+      // The process scan reads the sources GetProgFullCode wrote under the MCP output dir.
+      if (script.endsWith("/process/scan.mjs") && mcpOutput(arg)) continue;
+      if (script.endsWith("/process/build.mjs") && index === 2 && FORMATS.test(arg)) continue;
       if (!inside(arg) && !self(arg)) return false;
     }
     return true;
