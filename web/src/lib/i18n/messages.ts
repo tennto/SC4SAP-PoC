@@ -305,9 +305,12 @@ const en = {
       "The manual is deleted. Nothing of this run is kept, so download it first — and save any edits you made in it.",
     manualPreview: "Manual",
     manualEditHint:
-      "Press Edit inside the manual to change it. Save file in the manual, or Download .html here, downloads the edited copy (…-edited.html); edits are not kept on this page.",
+      "Press Edit inside the manual to change it. Save file in the manual downloads the edited copy (…-edited.html); edits are not kept on this page.",
+    flowRedrawFailed: "The redrawn flow could not be carried into the Markdown or Excel file: {error}",
     specEditHint:
-      "Press Edit in the spec's toolbar to change its text and tables. Save file in the spec, or Download .html here, downloads the edited copy (…-edited.html); edits are not kept on this page.",
+      "Press Edit in the spec's toolbar to change its text, tables and flows. Save file in the spec downloads the edited copy (…-edited.html); edits are not kept on this page.",
+    docEditHint:
+      "Press Edit in the document's toolbar to change its text and tables. Save file in the document downloads the edited copy (…-edited.html); edits are not kept on this page.",
     runSummary: "Summary",
     collectingFiles: "Collecting the files…",
     noFiles: "The run finished without writing a file. The summary above is all it produced.",
@@ -1281,9 +1284,12 @@ const ko: Messages = {
       "매뉴얼이 삭제됩니다. 이 실행은 어디에도 보관되지 않으니 먼저 다운로드하고, 매뉴얼 안에서 편집했다면 저장해 두세요.",
     manualPreview: "매뉴얼",
     manualEditHint:
-      "매뉴얼 안의 편집 버튼으로 고칠 수 있습니다. 매뉴얼의 파일 저장이나 이 화면의 .html 다운로드를 누르면 편집본(…-edited.html)이 다운로드되며, 편집 내용은 이 화면에 남지 않습니다.",
+      "매뉴얼 안의 편집 버튼으로 고칠 수 있습니다. 매뉴얼의 파일 저장을 누르면 편집본(…-edited.html)이 다운로드되며, 편집 내용은 이 화면에 남지 않습니다.",
+    flowRedrawFailed: "고친 흐름도를 Markdown · Excel 파일에 반영하지 못했습니다: {error}",
     specEditHint:
-      "명세서 상단 바의 편집 버튼으로 글과 표를 고칠 수 있습니다. 명세서의 파일 저장이나 이 화면의 .html 다운로드를 누르면 편집본(…-edited.html)이 다운로드되며, 편집 내용은 이 화면에 남지 않습니다.",
+      "명세서 상단 바의 편집 버튼으로 글 · 표 · 흐름도를 고칠 수 있습니다. 명세서의 파일 저장을 누르면 편집본(…-edited.html)이 다운로드되며, 편집 내용은 이 화면에 남지 않습니다.",
+    docEditHint:
+      "문서 상단 바의 편집 버튼으로 글과 표를 고칠 수 있습니다. 문서의 파일 저장을 누르면 편집본(…-edited.html)이 다운로드되며, 편집 내용은 이 화면에 남지 않습니다.",
     runSummary: "요약",
     collectingFiles: "파일을 가져오는 중…",
     noFiles: "파일을 만들지 않고 실행이 끝났습니다. 위의 요약이 결과의 전부입니다.",
@@ -2236,9 +2242,12 @@ const ja: Messages = {
       "マニュアルは削除されます。この実行はどこにも保存されないため、先にダウンロードし、マニュアル内で編集した場合は保存しておいてください。",
     manualPreview: "マニュアル",
     manualEditHint:
-      "マニュアル内の編集ボタンで変更できます。マニュアルのファイル保存か、この画面の「.html をダウンロード」を押すと編集版 (…-edited.html) がダウンロードされ、編集内容はこの画面には残りません。",
+      "マニュアル内の編集ボタンで変更できます。マニュアルのファイル保存を押すと編集版 (…-edited.html) がダウンロードされ、編集内容はこの画面には残りません。",
+    flowRedrawFailed: "編集したフロー図を Markdown・Excel ファイルに反映できませんでした: {error}",
     specEditHint:
-      "仕様書上部のバーの編集ボタンで文章と表を変更できます。仕様書のファイル保存か、この画面の「.html をダウンロード」を押すと編集版 (…-edited.html) がダウンロードされ、編集内容はこの画面には残りません。",
+      "仕様書上部のバーの編集ボタンで文章・表・フロー図を変更できます。仕様書のファイル保存を押すと編集版 (…-edited.html) がダウンロードされ、編集内容はこの画面には残りません。",
+    docEditHint:
+      "文書上部のバーの編集ボタンで文章と表を変更できます。文書のファイル保存を押すと編集版 (…-edited.html) がダウンロードされ、編集内容はこの画面には残りません。",
     runSummary: "要約",
     collectingFiles: "ファイルを取得しています…",
     noFiles: "ファイルを作らずに実行が終わりました。上の要約が結果のすべてです。",

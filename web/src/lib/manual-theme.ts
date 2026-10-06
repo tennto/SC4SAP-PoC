@@ -17,12 +17,14 @@
  *   - each step as a card whose head is a quiet caption, not a dark table;
  *   - tables with horizontal rules only; check points as a quiet note;
  *   - the toolbar, contents and buttons as the spec's;
- *   - the process flow drawn as SVG from the manual's own data
- *     (`spec-flow.ts`), as the spec's is.
+ *   - the process flow drawn and edited as the spec's is
+ *     (`spec-flow-page.ts`): laid out as this app lays it out, in the page's
+ *     colours, with its legend, message kinds and an editable title.
  * The callout marks stay the plugin's pink: they point at the screens, and
  * they are the one colour on the page that means "look here".
  */
-import { flowSvg } from "@/lib/spec-flow";
+import { freeFlow, isFreeGraph } from "@/lib/spec-flow";
+import { FLOW_LABELS, FLOW_MANUAL_SCRIPT, FLOW_PAGE_STYLE } from "@/lib/spec-flow-page";
 import { DOC_ICON_SCRIPT, DOC_ICON_STYLE } from "@/lib/doc-icons";
 
 /** The app's typeface, as the spec loads it. */
@@ -33,12 +35,12 @@ const LIGHT =
   "--bg:#ffffff;--fg:#2b2b2b;--muted:#6b6b6b;--faint:#9a9a9a;--line:#e4e4e4;--line-strong:#cfcfcf;--head:#f7f7f7;--card:#f7f7f7;--code:#f3f3f3;--frame:#f7f7f7;--link:#2b2b2b;--accent:#2b2b2b;--accent-ink:#ffffff;" +
   "--warn-bg:#fffaf0;--warn-line:#e9cf97;--flag:#8a5a00;" +
   "--msg-s:#15803d;--msg-w:#c2410c;--msg-e:#b42318;--msg-i:#1d4ed8;" +
-  "--flow-ink:#2b2b2b;--flow-muted:#737373;--flow-bg:#ffffff;--flow-line:#b4b4b4;--flow-box:#ffffff;--flow-box-line:#d6d6d6;--flow-dec:#fff8eb;--flow-dec-line:#e9cf97;--flow-dec-ink:#6f4a00;--flow-term:#2b2b2b;--flow-on-term:#ffffff;--flow-bad:#b42318;--flow-bad-soft:#fef3f2;--flow-bad-line:#f4c7c2";
+  "--flow-ink:#2b2b2b;--flow-muted:#737373;--flow-bg:#ffffff;--flow-line:#b4b4b4;--flow-box:#ffffff;--flow-box-line:#d6d6d6;--flow-dec:#fff8eb;--flow-dec-line:#e9cf97;--flow-dec-ink:#6f4a00;--flow-term:#2b2b2b;--flow-on-term:#ffffff;--flow-bad:#b42318;--flow-bad-soft:#fef3f2;--flow-bad-line:#f4c7c2;--flow-warn:#b54708;--flow-warn-soft:#fffaeb;--flow-warn-line:#fedf89;--flow-ok:#067647;--flow-ok-soft:#ecfdf3;--flow-ok-line:#abefc6;--flow-info:#175cd3;--flow-info-soft:#eff8ff;--flow-info-line:#b2ddff";
 const DARK =
   "--bg:#161616;--fg:#e6e6e6;--muted:#a3a3a3;--faint:#7a7a7a;--line:#2e2e2e;--line-strong:#3d3d3d;--head:#1d1d1d;--card:#1d1d1d;--code:#232323;--frame:#1b1b1b;--link:#e6e6e6;--accent:#e6e6e6;--accent-ink:#161616;" +
   "--warn-bg:#1f1a10;--warn-line:#6b5423;--flag:#f1cf85;" +
   "--msg-s:#4ade80;--msg-w:#fb923c;--msg-e:#f97066;--msg-i:#60a5fa;" +
-  "--flow-ink:#e6e6e6;--flow-muted:#a3a3a3;--flow-bg:#161616;--flow-line:#5c5c5c;--flow-box:#1d1d1d;--flow-box-line:#3a3a3a;--flow-dec:#2a2213;--flow-dec-line:#6b5423;--flow-dec-ink:#f1cf85;--flow-term:#e6e6e6;--flow-on-term:#161616;--flow-bad:#f97066;--flow-bad-soft:#2a1715;--flow-bad-line:#6b2a24";
+  "--flow-ink:#e6e6e6;--flow-muted:#a3a3a3;--flow-bg:#161616;--flow-line:#5c5c5c;--flow-box:#1d1d1d;--flow-box-line:#3a3a3a;--flow-dec:#2a2213;--flow-dec-line:#6b5423;--flow-dec-ink:#f1cf85;--flow-term:#e6e6e6;--flow-on-term:#161616;--flow-bad:#f97066;--flow-bad-soft:#2a1715;--flow-bad-line:#6b2a24;--flow-warn:#fdb022;--flow-warn-soft:#2a1f0d;--flow-warn-line:#6b4b12;--flow-ok:#47cd89;--flow-ok-soft:#0f2a1c;--flow-ok-line:#1f5c3d;--flow-info:#84caff;--flow-info-soft:#102037;--flow-info-line:#1f4a7a";
 
 const MONO = `ui-monospace,"Cascadia Mono",Consolas,monospace`;
 
@@ -169,9 +171,9 @@ body.editing .step-note>[data-k]{display:block;min-height:1.5em}
 .checkpoints li{font-size:14px}
 .checkpoints .src{font:500 11.5px/1.5 ${MONO};letter-spacing:normal;color:var(--faint)}
 
-/* The process flow, drawn from the manual's data. */
-.screen.flow{background:var(--bg);padding:20px;text-align:center}
-.screen.flow>svg{display:block;width:auto;max-width:100%;height:auto;margin:0 auto}
+/* The process flow (spec-flow-page.ts): the page's ground, room round it. */
+.screen.flow-fig{background:var(--bg);padding:20px;text-align:center}
+.screen.flow-fig .flow-canvas>svg{max-width:100%;height:auto}
 
 .doc-end{margin:64px 0 0;padding:28px 0 0;border-top:1px solid var(--line);font-size:13px}
 .doc-end strong{font-size:15px;font-weight:650}
@@ -212,9 +214,32 @@ body.editing table.ed-table[data-frozen]{table-layout:fixed}
 body.editing table.ed-table[data-frozen]>thead>tr>th{width:var(--ed-w)}
 body.editing table.ed-table[data-frozen] td{overflow-wrap:anywhere}
 body.editing td.ed-rowtools>button{vertical-align:middle}
-body.editing .callouts>li>.ed-x{align-self:center}
-body.editing [data-p],body.editing [data-k],body.editing [data-c]{outline:1px dashed color-mix(in srgb,var(--fg) 22%,transparent);outline-offset:3px;border-radius:3px}
-body.editing [data-p]:hover,body.editing [data-k]:hover,body.editing [data-c]:hover{outline-color:color-mix(in srgb,var(--fg) 45%,transparent)}
+/* A callout's delete mark: level with its first line, not its middle. */
+body.editing .callouts>li>.ed-x{align-self:start;margin-top:1px}
+body.editing [data-p],body.editing [data-k],body.editing [data-c],body.editing [data-l]{outline:1px dashed color-mix(in srgb,var(--fg) 22%,transparent);outline-offset:3px;border-radius:3px}
+body.editing [data-p]:hover,body.editing [data-k]:hover,body.editing [data-c]:hover,body.editing [data-l]:hover{outline-color:color-mix(in srgb,var(--fg) 45%,transparent)}
+body.editing [data-l]:focus{outline:2px solid color-mix(in srgb,var(--fg) 70%,transparent);background:color-mix(in srgb,var(--fg) 4%,transparent)}
+/* A list item's tools (▲ ▼ ＋ ✕): at the right end of its line, apart
+   from the text, quiet until the item is pointed at or being edited. */
+body.editing li:has(>.ed-litools){position:relative;padding-right:112px}
+body.editing .ed-litools{position:absolute;top:2px;right:0;display:inline-flex;gap:2px;margin:0;opacity:.45;transition:opacity .15s}
+body.editing li:hover>.ed-litools,body.editing li:focus-within>.ed-litools{opacity:1}
+body.editing .ed-litools button{display:inline-grid;place-items:center;width:22px;height:22px;padding:0;margin:0;font-size:9.5px;line-height:1;color:var(--faint);background:none;border:1px solid transparent;border-radius:6px;cursor:pointer;transition:background .15s,color .15s}
+body.editing .ed-litools button:hover{background:var(--head);color:var(--fg);border-color:var(--line)}
+body.editing .ed-litools button:last-child:hover{color:var(--msg-e)}
+/* An empty caption under a screen: a field that says what it is for,
+   not a bare dashed box. */
+body.editing .screen figcaption>[data-k]:empty{min-width:12em}
+body.editing .screen figcaption>[data-k]:empty::before{color:var(--faint);font-style:normal}
+html:lang(ko) body.editing .screen figcaption>[data-k]:empty::before{content:"그림 설명 (선택)"}
+html:lang(ja) body.editing .screen figcaption>[data-k]:empty::before{content:"図の説明（任意）"}
+html:not(:lang(ko)):not(:lang(ja)) body.editing .screen figcaption>[data-k]:empty::before{content:"Caption (optional)"}
+/* "Add detail" and "add item": a quiet button on a line of its own. */
+body.editing .ed-addin{display:flex;align-items:center;gap:5px;width:max-content;height:24px;margin:8px 0 2px;padding:0 9px;font:inherit;font-size:12px;font-weight:500;color:var(--muted);background:var(--bg);border:1px dashed var(--line-strong);border-radius:7px;cursor:pointer;transition:background .15s,color .15s}
+body.editing .ed-addin:hover{background:var(--head);color:var(--fg);border-style:solid}
+body.editing .ed-list+.ed-addrow{margin:6px 0 16px}
+/* The picker that moves a check point to another scenario. */
+body.editing .ed-pick{height:24px;margin-left:6px;padding:0 6px;font:inherit;font-size:12px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px}
 body.editing .step.ed-current{box-shadow:0 0 0 2px color-mix(in srgb,var(--fg) 70%,transparent)}
 /* While editing, Save is the one filled button; "Done editing" steps back. */
 body.editing .topbar #edit-btn{background:none;color:var(--fg);box-shadow:inset 0 0 0 1px var(--line-strong)}
@@ -271,8 +296,8 @@ body.doc-dirty .topbar #edit-btn:hover{background:var(--head)}
 const SCRIPT = `<script id="sc4sap-manual-theme-script">
 (function () {
   // The edit mode's buttons, as it adds them: the leading glyph in a span.
-  var GLYPH = /^([\\uFF0B\\u2715\\u25B2\\u25BC\\u29C9\\u21BA])\\s?([\\s\\S]*)$/;
-  var BUTTONS = '.ed-addrow,.ed-tools button,.ed-rowtools button,.ed-x';
+  var GLYPH = /^([\\uFF0B\\u2715\\u25B2\\u25BC\\u29C9\\u21BA\\u21C4])\\s?([\\s\\S]*)$/;
+  var BUTTONS = '.ed-addrow,.ed-addin,.ed-tools button,.ed-rowtools button,.ed-litools button,.ed-x';
   function glyphs() {
     document.querySelectorAll(BUTTONS).forEach(function (button) {
       if (button.querySelector('.ed-glyph')) return;
@@ -301,6 +326,33 @@ const SCRIPT = `<script id="sc4sap-manual-theme-script">
     queued = true;
     requestAnimationFrame(function () { queued = false; glyphs(); });
   }).observe(document.body, { subtree: true, childList: true });
+})();
+(function () {
+  // The revision the editor's Save records goes into this table as a row
+  // of the editor's own (plugin 0.6.33): it gets a row index, and its data
+  // is read from its cells, so the rows saved to the manual's revisions
+  // include it. The editor fills the cells after adding the row.
+  var body = document.querySelector('#rev-table.ed-table>tbody');
+  if (!body) return;
+  var append = body.appendChild;
+  var KEYS = ['version', 'date', 'author', 'note'];
+  body.appendChild = function (row) {
+    var out = append.call(body, row);
+    if (row && row.tagName === 'TR' && !row.hasAttribute('data-row')) {
+      row.setAttribute('data-row', '');
+      row.setAttribute('data-recorded', '');
+      Object.defineProperty(row, '_row', {
+        configurable: true,
+        get: function () {
+          var data = {};
+          KEYS.forEach(function (k, i) { data[k] = row.cells[i] ? row.cells[i].textContent.trim() : ''; });
+          return data;
+        },
+        set: function () {},
+      });
+    }
+    return out;
+  };
 })();
 (function () {
   // On entering the edit mode, each table's column widths are measured and
@@ -484,15 +536,6 @@ const SCRIPT = `<script id="sc4sap-manual-theme-script">
     primary.click();
   }
   save.addEventListener('click', run);
-
-  // The preview's own download button asks for the page as it stands: the
-  // edited copy when there is something unsaved, else word to use the
-  // original (HtmlPreview).
-  addEventListener('message', function (e) {
-    if (e.source !== parent || !e.data || e.data.type !== 'sc4sap-preview-request') return;
-    if (dirty) run();
-    else parent.postMessage({ type: 'sc4sap-preview-clean' }, '*');
-  });
 })();
 </script>`;
 
@@ -514,6 +557,8 @@ const GUIDE: Record<string, string[]> = {
     "화면 위 번호는 드래그해서 옮깁니다.",
     "스텝 위 버튼으로 번호를 추가하고, 스텝을 이동 · 복제 · 삭제합니다.",
     "표는 행 끝의 ＋ / ✕로 행을 추가 · 삭제하고, ● 칸은 클릭해 켜고 끕니다.",
+    "목록 항목은 오른쪽의 ▲ ▼ ＋ ✕로 옮기고 추가 · 삭제합니다.",
+    "처리 흐름은 오른쪽 위 [✎ 흐름도 편집]으로 열어 도형을 옮기고, 화살표를 잇고, 단계를 추가 · 삭제합니다.",
     "스텝을 클릭하고 Ctrl+V 하면 그림 대신 실제 캡처 화면이 들어갑니다.",
     "실수했으면 Ctrl+Z(되돌리기)를 누릅니다.",
     "다 고쳤으면 [저장]을 누르고, 받은 파일을 담당 컨설턴트에게 보내 주세요.",
@@ -524,6 +569,8 @@ const GUIDE: Record<string, string[]> = {
     "Drag a number on the screen to move it.",
     "The buttons above a step add callouts and move, duplicate or delete the step.",
     "In tables, ＋ / ✕ at the end of a row add and delete rows; click a ● cell to switch it.",
+    "List items move, add and delete with ▲ ▼ ＋ ✕ on their right.",
+    "Open the process flow with [✎ Edit flow] at its top right to move shapes, draw arrows, and add or delete steps.",
     "Click a step and press Ctrl+V to use a real screenshot instead of the drawing.",
     "Made a mistake? Press Ctrl+Z (Undo).",
     "When you are done, press [Save] and send the file to your consultant.",
@@ -534,6 +581,8 @@ const GUIDE: Record<string, string[]> = {
     "画面上の番号はドラッグで移動します。",
     "ステップ上のボタンで番号を追加し、ステップを移動 · 複製 · 削除します。",
     "表は行末の ＋ / ✕ で行を追加 · 削除し、● の欄はクリックで切り替えます。",
+    "リスト項目は右の ▲ ▼ ＋ ✕ で移動 · 追加 · 削除します。",
+    "処理フローは右上の［✎ フロー編集］で開き、図形の移動、矢印の接続、ステップの追加 · 削除ができます。",
     "ステップをクリックして Ctrl+V で、図の代わりに実際のキャプチャを使えます。",
     "間違えたら Ctrl+Z（元に戻す）を押します。",
     "終わったら［保存］を押し、ファイルを担当コンサルタントに送ってください。",
@@ -596,7 +645,9 @@ function editableRevisions(html: string, source: ManualSource | null): string {
   const section = /<section id="revision"[^>]*>[\s\S]*?<\/section>/.exec(html);
   const sourceTag = MANUAL_SOURCE.exec(html);
   if (!section || !source || !sourceTag) return html;
-  const table = /<table><thead>([\s\S]*?)<\/thead><tbody>([\s\S]*?)<\/tbody><\/table>/.exec(section[0]);
+  // The builder gives it an id since plugin 0.6.33 (`rev-table`), which its
+  // Save looks for to add the revision it records: kept on the new table.
+  const table = /<table(?: id="rev-table")?><thead>([\s\S]*?)<\/thead><tbody>([\s\S]*?)<\/tbody><\/table>/.exec(section[0]);
   if (!table) return html;
   const rows = [...table[2]!.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map((row) =>
     [...row[1]!.matchAll(/<td>([\s\S]*?)<\/td>/g)].map((cell) => cell[1]!),
@@ -614,7 +665,7 @@ function editableRevisions(html: string, source: ManualSource | null): string {
     )
     .join("");
   const edTable =
-    `<table class="ed-table" data-array="revisions" data-cols="${JSON.stringify(cols).replace(/"/g, "&quot;")}">` +
+    `<table class="ed-table" id="rev-table" data-array="revisions" data-cols="${JSON.stringify(cols).replace(/"/g, "&quot;")}">` +
     `<thead>${table[1]}</thead><tbody>${body}</tbody></table>`;
   const newSection = section[0].replace(table[0], edTable);
   const newSource =
@@ -643,42 +694,48 @@ function manualSource(html: string): ManualSource | null {
   }
 }
 
-/** The "process flow" heading in each of the builder's languages. */
-const FLOW_HEADINGS = ["처리 흐름", "Process Flow", "処理フロー"];
-
 /** Inserts `added` just before `</head>`, or at the start when there is none. */
 function inHead(html: string, added: string): string {
   const at = html.toLowerCase().indexOf("</head>");
   return at < 0 ? added + html : html.slice(0, at) + added + html.slice(at);
 }
 
+/** The flow's script, with its labels in. */
+const FLOW_SCRIPT = FLOW_MANUAL_SCRIPT.replace("__FLOW_LABELS__", () => JSON.stringify(FLOW_LABELS));
+
 /**
- * The manual as it is shown and saved: restyled, and with the builder's flow
- * picture replaced by the drawn one. A page that was restyled already — a
- * copy saved from the edit mode — is left as it is.
+ * The editor's starting graph (`<script id="flow-seed">`, which the page's
+ * flow script draws and the edit mode opens on) laid out as this app lays
+ * the flow out, as the spec's is. A flow the reader already edited is kept.
+ */
+function seededFlow(page: string, manual: ManualSource["manual"] | null): string {
+  if (!manual?.processFlow || isFreeGraph(manual.processFlow)) return page;
+  const graph = freeFlow({ lang: manual.lang, processFlow: manual.processFlow });
+  const match = /(<script type="application\/json" id="flow-seed">)([\s\S]*?)(<\/script>)/.exec(page);
+  if (!graph || !match) return page;
+  try {
+    const seed = { ...(JSON.parse(match[2]!) as Record<string, unknown>), graph };
+    const json = JSON.stringify(seed).replace(/</g, "\\u003c");
+    return page.slice(0, match.index) + match[1] + json + match[3] + page.slice(match.index + match[0].length);
+  } catch {
+    return page;
+  }
+}
+
+/**
+ * The manual as it is shown and saved: restyled, with its process flow drawn
+ * and edited as the spec's is. A page that was restyled already — a copy
+ * saved from the edit mode — is left as it is.
  */
 export function styledManual(html: string): string {
   if (html.includes('id="sc4sap-manual-theme"')) return html;
-  let page = html;
   const source = manualSource(html);
   const manual = source?.manual ?? null;
-  const drawn = manual?.processFlow ? flowSvg({ lang: manual.lang, processFlow: manual.processFlow }) : null;
-  if (drawn) {
-    for (const heading of FLOW_HEADINGS) {
-      const marker = `<h3>${heading}</h3><figure class="screen">`;
-      const at = page.indexOf(marker);
-      if (at < 0) continue;
-      const end = page.indexOf("</figure>", at);
-      if (end < 0) break;
-      page =
-        page.slice(0, at) +
-        `<h3>${heading}</h3><figure class="screen flow">${drawn.svg}</figure>` +
-        page.slice(end + "</figure>".length);
-      break;
-    }
-  }
-  // Revisions first: it reads the source the flow step left untouched.
+  let page = seededFlow(html, manual);
   page = editableRevisions(page, source);
   page = withGuide(page, String(manual?.lang ?? ""));
-  return inBody(inHead(page, TYPE_LINK + STYLE + DOC_ICON_STYLE), SCRIPT + DOC_ICON_SCRIPT);
+  return inBody(
+    inHead(page, TYPE_LINK + STYLE + `<style id="sc4sap-manual-flow-style">${FLOW_PAGE_STYLE}</style>` + DOC_ICON_STYLE),
+    SCRIPT + DOC_ICON_SCRIPT + FLOW_SCRIPT,
+  );
 }

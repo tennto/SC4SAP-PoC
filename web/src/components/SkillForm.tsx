@@ -55,6 +55,7 @@ import { ManualSurveyModal } from "@/components/ManualSurveyModal";
 import { CBO_FILES, cboPrompt, type CboSurvey } from "@/lib/cbo-prompt";
 import { HtmlPreview } from "@/components/HtmlPreview";
 import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
+import { useSpecFlowEdits } from "@/hooks/useSpecFlowEdits";
 import { styledSpec } from "@/lib/spec-theme";
 import { styledManual } from "@/lib/manual-theme";
 import { styledCbo } from "@/lib/cbo-theme";
@@ -1035,6 +1036,19 @@ export function SkillForm({
       return null;
     }
   }, [docs]);
+  // Flows the reader redrew in the HTML spec's edit mode, carried into the
+  // Markdown and the Excel file.
+  const flowEdits = useSpecFlowEdits({ docs, flowPng: flow?.flowPng ?? null });
+  /** The workbook, with the process flow as the reader redrew it when they did. */
+  const downloadXlsx = async (file: RunFile): Promise<void> => {
+    const data = await flowEdits.workbook(file);
+    if (data === null) return;
+    download(
+      file.name,
+      bytesOf({ ...file, data }),
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+  };
   // The Markdown's flow as the drawn one, as SVG. Not a PNG: a 2x PNG is
   // twice its size in pixels, and a Markdown viewer shows it at that size;
   // an SVG says how big it is and stays sharp at any scale.
@@ -1050,16 +1064,17 @@ export function SkillForm({
       return withImages(textOf(mdFile), files);
     }
     const drawn = flow ? flowSvg(flow.spec) : null;
-    const files =
-      flow && drawn
-        ? docs.map((file) =>
-            file === flow.flowPng
-              ? { ...file, mediaType: "image/svg+xml", data: base64Utf8(drawn.svg) }
-              : file,
-          )
-        : docs;
+    const files = docs.map((file) => {
+      // A flow redrawn in the HTML spec: the backend's drawing of it.
+      const redrawn = flowEdits.redrawn(file);
+      if (redrawn) return redrawn;
+      if (flow && drawn && file === flow.flowPng) {
+        return { ...file, mediaType: "image/svg+xml", data: base64Utf8(drawn.svg) };
+      }
+      return file;
+    });
     return withImages(textOf(mdFile), files);
-  }, [mdFile, docs, flow, docKind, processImages]);
+  }, [mdFile, docs, flow, docKind, processImages, flowEdits.redrawn]);
   /** The BPML's Markdown with its flow pictures inside it, for download. */
   const bpmlMdText = useMemo(
     () => (bpmlMdFile && docs ? withImages(textOf(bpmlMdFile), docs) : null),
@@ -2032,11 +2047,18 @@ export function SkillForm({
                       "text/html;charset=utf-8",
                     )
                   }
-                  {...(docKind === "spec"
+                  // The CBO inventory has the spec's edit mode too (`styledCbo`),
+                  // so its Save needs the same way out of the frame.
+                  {...(docKind === "spec" || docKind === "cbo"
                     ? {
-                        doc: "spec" as const,
+                        doc: docKind === "cbo" ? ("doc" as const) : ("spec" as const),
                         onSaveEdited: (edited: string) =>
-                          download(editedName(htmlFile.name), edited, "text/html;charset=utf-8"),
+                          download(
+                            editedName(cboName ? `${cboName}.html` : htmlFile.name),
+                            edited,
+                            "text/html;charset=utf-8",
+                          ),
+                        ...(docKind === "spec" ? { onFlow: flowEdits.onFlow } : {}),
                       }
                     : {})}
                 />
@@ -2059,7 +2081,7 @@ export function SkillForm({
                   key={file.path}
                   name={file.name}
                   html={html}
-                  doc="spec"
+                  doc="doc"
                   onDownload={() => download(file.name, html, "text/html;charset=utf-8")}
                   onSaveEdited={(edited) =>
                     download(editedName(file.name), edited, "text/html;charset=utf-8")
@@ -2125,17 +2147,17 @@ export function SkillForm({
                 <button
                   type="button"
                   className="file-card"
-                  onClick={() =>
-                    download(
-                      xlsxFile.name,
-                      bytesOf(xlsxFile),
-                      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    )
-                  }
+                  onClick={() => void downloadXlsx(xlsxFile)}
+                  disabled={flowEdits.workbookBusy}
+                  aria-busy={flowEdits.workbookBusy}
                   title={t.downloadFile}
                 >
                   <span className="file-card-icon" aria-hidden="true">
-                    <Icon name="microsoft-excel-logo" weight="fill" />
+                    <Icon
+                      name={flowEdits.workbookBusy ? "circle-notch" : "microsoft-excel-logo"}
+                      weight="fill"
+                      className={flowEdits.workbookBusy ? "spin" : undefined}
+                    />
                   </span>
                   <span className="file-card-body">
                     <span className="file-card-name">{xlsxFile.name}</span>
@@ -2153,6 +2175,10 @@ export function SkillForm({
                 </button>
               )}
             </div>
+          )}
+
+          {flowEdits.error && (
+            <p className="skill-doc-notice">{t.flowRedrawFailed.replace("{error}", flowEdits.error)}</p>
           )}
 
           {notices.map((notice) => (

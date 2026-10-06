@@ -9,6 +9,7 @@
  *   GET    /sessions/:id/stream   SSE of everything the SDK emits
  *   POST   /sessions/:id/auto-approve  wave SAP reads through for this session
  *   POST   /sessions/:id/files    take the documents the run wrote (then deleted)
+ *   POST   /documents/spec-flows  a spec's workbook with its redrawn process flow in it
  *   GET    /monitor/stream        SSE of every tool call the caller's account runs
  *   GET    /profiles              the SAP systems configured, and which is live
  *   POST   /profiles              add a SAP system and move onto it
@@ -45,6 +46,7 @@ import {
   type ToolProfile,
 } from "./tool-policy.ts";
 import { BODY_LIMIT, validateAttachments } from "./attachments.ts";
+import { specFlowWorkbook, specFlowsError, type SpecFlowsRequest } from "./spec-flows.ts";
 import {
   checkActiveProfile,
   createProfile,
@@ -519,6 +521,21 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       return { files };
     },
   );
+
+  /**
+   * A spec's workbook with its process flow as a reader redrew it in the
+   * HTML page (`spec-flows.ts`). Touches no session and keeps nothing.
+   */
+  app.post<{ Body: SpecFlowsRequest }>("/documents/spec-flows", async (request, reply) => {
+    const error = specFlowsError(request.body);
+    if (error) return reply.code(400).send({ error });
+    try {
+      return await specFlowWorkbook(manager.config.pluginPath, request.body);
+    } catch (err) {
+      request.log.error(err);
+      return reply.code(500).send({ error: err instanceof Error ? err.message : String(err) });
+    }
+  });
 
   /**
    * Stop asking about SAP read-class tools for this session, or start again.

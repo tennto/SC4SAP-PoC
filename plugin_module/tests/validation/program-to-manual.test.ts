@@ -18,6 +18,8 @@ import {
   renderStepScreen,
   nextVersion,
   svgAnchors,
+  noteLines,
+  fieldFigure,
   // @ts-expect-error — plain .mjs script, no type declarations
 } from '../../scripts/manual/build-manual.mjs';
 
@@ -319,6 +321,77 @@ describe('manual builder', () => {
     const outDir = join(home, 'markup');
     const html = readFileSync(buildManual({ manualPath: (() => { const p = join(home, 'markup.json'); writeFileSync(p, JSON.stringify(m)); return p; })(), outDir, cwd: home, verbose: false }).html, 'utf-8');
     expect(html).toContain('<span data-p="intro.purpose"><span class="bl">첫째 <strong>굵게</strong></span><br><span class="bl">둘째 <mark class="em">강조</mark></span></span>');
+  });
+
+  it('renders business rules and check points as editable lists, kept when empty', () => {
+    const m = sample();
+    m.intro.businessRules = ['규칙 하나'];
+    m.intro.unverified = ['규칙 하나'];
+    m.scenarios[0].checkpoints = ['문자열 항목', { text: '출처 있는 항목', source: 'FORM CHECK' }];
+    m.scenarios[1] = { ...m.scenarios[1] ?? m.scenarios[0], checkpoints: [] };
+    const p = join(home, 'lists.json');
+    writeFileSync(p, JSON.stringify(m));
+    const html = readFileSync(buildManual({ manualPath: p, outDir: join(home, 'lists'), cwd: home, verbose: false }).html, 'utf-8');
+    expect(html).toContain('<ul class="ed-list" data-list="intro.businessRules"><li data-i="0"><span data-l="">규칙 하나</span> <span class="flag">확인 필요</span></li></ul>');
+    expect(html).toContain('<ul class="ed-list" data-list="scenarios.0.checkpoints"><li data-i="0"><span data-l="">문자열 항목</span></li><li data-i="1"><span data-l="">출처 있는 항목</span> <span class="src">(FORM CHECK)</span></li></ul>');
+    // an empty list is still on the page (hidden) so the edit mode can add its first item
+    expect(html).toContain('<aside class="checkpoints ed-list-wrap" hidden><h4>※ Check Points</h4><ul class="ed-list" data-list="scenarios.1.checkpoints"></ul></aside>');
+  });
+
+  it('imports the revision a user recorded on save and keeps it when rebuilt in place', () => {
+    const base = join(home, 'rev');
+    mkdirSync(join(base, '_draft'), { recursive: true });
+    const draft = join(base, '_draft', 'ZMMR_GR_3PL-ko.manual.json');
+    writeFileSync(draft, readFileSync(SAMPLE));
+    const first = buildManual({ manualPath: draft, outDir: base, cwd: home, verbose: false });
+    expect(readFileSync(first.html, 'utf-8')).toContain('<table id="rev-table">');
+    expect(readFileSync(first.html, 'utf-8')).toContain('<span data-ver>v1.0</span>');
+    const src = { manual: { ...sample(), edited: { at: 'x' } }, version: '1.1', history: [{ version: '1.1', date: '2026-10-06', author: '홍길동', note: '체크포인트 정리' }] };
+    const edited = join(home, 'rev-edited.html');
+    writeFileSync(edited, `<script type="application/json" id="manual-source">${JSON.stringify(src)}</script>`);
+    const res = importEditedHtml(edited, draft);
+    expect(res.revisions).toMatchObject({ added: ['1.1'] });
+    const again = buildManual({ manualPath: draft, outDir: base, cwd: home, verbose: false, sameVersion: true });
+    expect(again.version).toBe('1.1');
+    const versions = JSON.parse(readFileSync(again.history, 'utf-8')).versions;
+    expect(versions.map((v: { version: string }) => v.version)).toEqual(['1.0', '1.1']);
+    expect(versions[1]).toMatchObject({ author: '홍길동', note: '체크포인트 정리', date: '2026-10-06', source: 'edit' });
+    expect(readFileSync(again.html, 'utf-8')).toContain('체크포인트 정리');
+  });
+
+  it('draws the screens above the field tables and numbers the fields on them', () => {
+    const m = sample();
+    const sel = fieldFigure(m, 'selection', [...m.fields.selection, { name: 'NOT_ON_SCREEN', label: 'x' }], 'fields.selection');
+    expect(sel.html).toContain('class="screen field-fig" data-for="fields.selection" data-prefix="sel"');
+    expect(sel.missing).toEqual(['NOT_ON_SCREEN']);
+    expect(sel.nums.at(-1)).toBe('');
+    expect(sel.nums.filter(Boolean)).toEqual(m.fields.selection.map((_: unknown, i: number) => String(i + 1)));
+    const out = fieldFigure(m, 'output', m.fields.output, 'fields.output');
+    expect(out.html).toContain('data-prefix="col"');
+    expect(JSON.parse(/data-callouts="([^"]*)"/.exec(out.html)![1].replace(/&quot;/g, '"'))[0][1]).toMatch(/^col:/);
+    const p = join(home, 'fieldfig.json');
+    writeFileSync(p, JSON.stringify(m));
+    const html = readFileSync(buildManual({ manualPath: p, outDir: join(home, 'fieldfig'), cwd: home, verbose: false }).html, 'utf-8');
+    expect(html).toContain('<th class="fnum">#</th>');
+    expect(html).toContain('<td class="fnum">1</td>');
+  });
+
+  it('renders step notes one line per item and an empty details list per callout', () => {
+    const m = sample();
+    const st = m.scenarios[0].steps[0];
+    st.note = '첫 줄\n\n- 둘째 줄';
+    st.callouts = [{ ...st.callouts[0], details: ['상세'] }, { ...st.callouts[0], details: undefined }];
+    const p = join(home, 'notes.json');
+    writeFileSync(p, JSON.stringify(m));
+    const html = readFileSync(buildManual({ manualPath: p, outDir: join(home, 'notes'), cwd: home, verbose: false }).html, 'utf-8');
+    expect(html).toContain('<ul class="step-note step-notes"><li><span data-k="note.0">첫 줄</span></li><li><span data-k="note.1"><span class="bl">둘째 줄</span></span></li></ul>');
+    expect(html).toContain('<ul><li><span data-k="callouts.0.details.0">상세</span></li></ul>');
+    expect(html).toMatch(/<span data-k="callouts\.1\.text">(?:(?!<li)[\s\S])*?<\/span><ul><\/ul><\/div><\/li><\/ol>/);
+    expect(html).toContain('window.sc4sapLinkTerms=link');
+    expect(html).toContain("tr.id='msg-'+code"); // message codes link to their row
+    expect(html).toContain('a.msg{');
+    expect(noteLines(['a', ' ', 'b'])).toEqual(['a', 'b']);
+    expect(noteLines(undefined)).toEqual([]);
   });
 
   it('draws a screenshot step without checking its anchors, with badge offsets and positions', () => {

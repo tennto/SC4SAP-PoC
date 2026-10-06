@@ -253,11 +253,15 @@ const SCRIPT = `<script id="sc4sap-cbo-theme-script">
     var entry = title.id && document.querySelector('.toc a[href="#' + CSS.escape(title.id) + '"]');
     if (entry) addIcon(entry, rule);
   }
+  // The revision history is not numbered either, as in the manual: it is
+  // about the document, not part of what it says.
+  var REVISION = /^(개정\\s*이력|revision\\s+history|改訂履歴)$/i;
   var n = 0;
   for (var s = 0; s < sections.length; s++) {
     if (sections[s].classList.contains('cbo-summary')) continue;
     var head = sections[s].querySelector('h2');
     if (!head) continue;
+    if (REVISION.test(words(head))) continue;
     n += 1;
     number(head, n + '.');
     var subs = sections[s].querySelectorAll('h3');
