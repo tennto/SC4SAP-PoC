@@ -259,6 +259,13 @@ export const api = {
     (await request<{ files: RunFile[] }>(`/sessions/${id}/files`, { method: "POST" }))
       .files,
 
+  /**
+   * A spec's workbook with its process-flow picture made from `svg`, the
+   * flow as the reader redrew it in the HTML spec (backend `spec-flows.ts`).
+   */
+  specFlowWorkbook: (body: { xlsx: string; svg: string }): Promise<{ xlsx: string }> =>
+    request("/documents/spec-flows", { method: "POST", body: JSON.stringify(body) }),
+
   /** A transcript-less run's running totals — see `recordRun`. */
   recordRun: (
     id: string,

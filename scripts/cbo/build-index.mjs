@@ -22,9 +22,8 @@
 // Then index.html with the plugin's md-to-html.mjs. Labels in ko / en / ja,
 // from inventory.lang.
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // `--keep`: the agent wrote index.md itself (the plugin's Standard mode, whose
 // own sections are the point of running it). Then only the table of every
@@ -47,6 +46,7 @@ const L = {
     name: "이름", type: "유형", role: "역할", purpose: "용도", refs: "참조", reuse: "재사용 안내", reason: "사유", description: "설명",
     sensitive: "민감 오브젝트", everything: "패키지 전체 오브젝트", frequent: (k) => `자주 쓰는 ${k}`,
     noneFrequent: "패키지 안에서 기준 이상으로 참조되는 오브젝트가 없습니다.", total: (n) => `${n}개`,
+    revision: "개정 이력", version: "버전", date: "일자", author: "작성자", change: "변경 내용", first: "최초 작성",
   },
   en: {
     title: (p) => `${p} CBO inventory`,
@@ -55,6 +55,7 @@ const L = {
     name: "Name", type: "Type", role: "Role", purpose: "Purpose", refs: "References", reuse: "Reuse hint", reason: "Reason", description: "Description",
     sensitive: "Sensitive objects", everything: "Everything in the package", frequent: (k) => `Frequently used ${k.toLowerCase()}`,
     noneFrequent: "No object is referenced inside the package often enough to count as frequently used.", total: (n) => `${n}`,
+    revision: "Revision history", version: "Version", date: "Date", author: "Author", change: "Change", first: "First issue",
   },
   ja: {
     title: (p) => `${p} CBO 棚卸し`,
@@ -63,6 +64,7 @@ const L = {
     name: "名前", type: "種類", role: "役割", purpose: "用途", refs: "参照", reuse: "再利用の目安", reason: "理由", description: "説明",
     sensitive: "機密オブジェクト", everything: "パッケージ内の全オブジェクト", frequent: (k) => `よく使う${k}`,
     noneFrequent: "パッケージ内で基準以上に参照されるオブジェクトはありません。", total: (n) => `${n} 件`,
+    revision: "改訂履歴", version: "版", date: "日付", author: "作成者", change: "変更内容", first: "初版",
   },
 };
 
@@ -88,6 +90,14 @@ const cell = (value) => String(value ?? "").replace(/\r?\n/g, " ").replace(/\|/g
 const code = (value) => (value ? `\`${String(value).replace(/`/g, "")}\`` : " ");
 const table = (heads, rows) =>
   [`| ${heads.join(" | ")} |`, `|${heads.map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r.map(cell).join(" | ")} |`)].join("\n");
+
+/**
+ * The revision history, as the manual has one: the first issue here, and a
+ * row for each Save from the page's edit mode, which asks for the author and
+ * the change (`spec-editor.ts`, by this section's heading).
+ */
+const revisionSection = () =>
+  [`## ${T.revision}`, "", table([T.version, T.date, T.author, T.change], [["v1.0", String(inv.scanned_at ?? "").slice(0, 10), "", T.first]]), ""].join("\n");
 
 const kindOf = (type) => {
   const t = String(type || "").toUpperCase();
@@ -125,6 +135,7 @@ out.push(`- **${T.scanned}**: ${String(inv.scanned_at ?? "").slice(0, 10)}`);
 out.push(`- **${T.sap}**: ${inv.sap_version ?? ""}`);
 out.push(`- **${T.objects}**: ${countLine}`, "");
 
+out.push(revisionSection());
 out.push(`## ${T.summary}`, "", String(inv.summary ?? "").trim() || T.noneFrequent, "");
 
 if (pinned.length) {
@@ -182,13 +193,23 @@ if (keep && existsSync(mdPath)) {
     const sorted = [...everything].sort((a, b) => kindOf(a[0]).localeCompare(kindOf(b[0])) || String(a[1]).localeCompare(String(b[1])));
     page += `\n\n## ${T.everything}\n\n${table([T.type, T.name, T.description], sorted.map(([type, name, description]) => [kindOf(type), code(name), description]))}`;
   }
+  if (!page.includes(`## ${T.revision}`)) {
+    const first = page.search(/^## /m);
+    page = first < 0 ? `${page}\n\n${revisionSection()}` : `${page.slice(0, first)}${revisionSection()}\n${page.slice(first)}`;
+  }
   writeFileSync(mdPath, `${page}\n`, "utf8");
 } else {
   writeFileSync(mdPath, `${out.join("\n").trim()}\n`, "utf8");
 }
-const result = spawnSync(process.execPath, [MD_TO_HTML, mdPath, htmlPath], { encoding: "utf8" });
-if (result.status !== 0) {
-  console.error(`build-index: md-to-html failed: ${result.stderr || result.stdout}`);
+// The converter called in-process, with the page's language: run as a
+// command it reads the language from the file name (`…-ko.md`) only, and
+// `index.md` has none — so every inventory came out as an English page, its
+// toolbar and edit mode in English over Korean text.
+try {
+  const { mdToHtml } = await import(pathToFileURL(MD_TO_HTML).href);
+  writeFileSync(htmlPath, mdToHtml(readFileSync(mdPath, "utf8"), { baseDir: resolve(runDir), lang }), "utf8");
+} catch (error) {
+  console.error(`build-index: md-to-html failed: ${error instanceof Error ? error.message : error}`);
   process.exit(1);
 }
 console.log(

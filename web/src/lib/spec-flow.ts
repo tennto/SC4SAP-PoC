@@ -21,7 +21,11 @@
 
 type NodeType = "start" | "end" | "process" | "decision" | "io";
 
-type FlowNode = { id: string; type: NodeType; label: string; lane?: string };
+/** A message's kind: drawn red, amber, green or blue. Error when not given. */
+export type Tone = "error" | "warning" | "success" | "info";
+const TONES = new Set<Tone>(["error", "warning", "success", "info"]);
+
+type FlowNode = { id: string; type: NodeType; label: string; lane?: string; tone?: Tone };
 type FlowEdge = { from: string; to: string; label?: string };
 export type FlowGraph = { nodes: FlowNode[]; edges: FlowEdge[] };
 
@@ -68,6 +72,7 @@ export function readFlow(spec: ImageSpec): { graph: FlowGraph; linear: boolean }
         type,
         label: typeof node.label === "string" ? node.label : node.id,
         ...(node.lane === "right" ? { lane: "right" } : {}),
+        ...(TONES.has(node.tone as Tone) && node.tone !== "error" ? { tone: node.tone as Tone } : {}),
       });
     }
     const ids = new Set(nodes.map((node) => node.id));
@@ -304,6 +309,23 @@ const C = {
   bad: "var(--flow-bad,#b42318)",
   badSoft: "var(--flow-bad-soft,#fef3f2)",
   badLine: "var(--flow-bad-line,#f4c7c2)",
+  warn: "var(--flow-warn,#b54708)",
+  warnSoft: "var(--flow-warn-soft,#fffaeb)",
+  warnLine: "var(--flow-warn-line,#fedf89)",
+  ok: "var(--flow-ok,#067647)",
+  okSoft: "var(--flow-ok-soft,#ecfdf3)",
+  okLine: "var(--flow-ok-line,#abefc6)",
+  info: "var(--flow-info,#175cd3)",
+  infoSoft: "var(--flow-info-soft,#eff8ff)",
+  infoLine: "var(--flow-info-line,#b2ddff)",
+};
+
+/** A message's colours by its kind: the mark and text, the fill, the outline. */
+const TONE_COLOURS: Record<Tone, { ink: keyof typeof C; soft: keyof typeof C; line: keyof typeof C }> = {
+  error: { ink: "bad", soft: "badSoft", line: "badLine" },
+  warning: { ink: "warn", soft: "warnSoft", line: "warnLine" },
+  success: { ink: "ok", soft: "okSoft", line: "okLine" },
+  info: { ink: "info", soft: "infoSoft", line: "infoLine" },
 };
 
 const FONT = `"Pretendard Variable",Pretendard,"Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif`;
@@ -322,10 +344,11 @@ function shape(node: Placed): string {
     case "io": {
       const cx = x + PAD_X + 7;
       const cy = y + h / 2;
+      const tone = TONE_COLOURS[node.tone ?? "error"];
       return (
-        `<rect x="${x + 0.5}" y="${y + 0.5}" width="${w - 1}" height="${h - 1}" rx="10" style="fill:${C.badSoft};stroke:${C.badLine};stroke-width:1"/>` +
-        `<circle cx="${cx}" cy="${cy}" r="7" style="fill:${C.bad}"/>` +
-        `<path d="M${cx} ${cy - 3.5}V${cy + 0.8}M${cx} ${cy + 3.2}V${cy + 3.4}" style="stroke:${C.badSoft};stroke-width:1.6;stroke-linecap:round"/>`
+        `<rect x="${x + 0.5}" y="${y + 0.5}" width="${w - 1}" height="${h - 1}" rx="10" style="fill:${C[tone.soft]};stroke:${C[tone.line]};stroke-width:1"/>` +
+        `<circle cx="${cx}" cy="${cy}" r="7" style="fill:${C[tone.ink]}"/>` +
+        `<path d="M${cx} ${cy - 3.5}V${cy + 0.8}M${cx} ${cy + 3.2}V${cy + 3.4}" style="stroke:${C[tone.soft]};stroke-width:1.6;stroke-linecap:round"/>`
       );
     }
     default:
@@ -335,7 +358,13 @@ function shape(node: Placed): string {
 
 function text(node: Placed): string {
   const terminal = node.type === "start" || node.type === "end";
-  const color = terminal ? C.onTerm : node.type === "io" ? C.bad : node.type === "decision" ? C.decInk : C.ink;
+  const color = terminal
+    ? C.onTerm
+    : node.type === "io"
+      ? C[TONE_COLOURS[node.tone ?? "error"].ink]
+      : node.type === "decision"
+        ? C.decInk
+        : C.ink;
   const weight = terminal || node.type === "decision" ? 600 : 500;
   const size = terminal ? "12.5px" : `${FONT_SIZE}px`;
   const cx = node.x + node.w / 2 + (node.type === "io" ? ICON / 2 : 0);
@@ -387,11 +416,155 @@ function route(r: Route): string {
   return `<path d="${rounded(r.points)}" style="fill:none;stroke:${C.line};stroke-width:1.25" marker-end="url(#flow-arrow)"/>${label}`;
 }
 
-/** The flow as a standalone SVG document, sized to its content. */
-export function flowSvg(spec: ImageSpec): { svg: string; width: number; height: number } | null {
+/** The flow laid out as this page draws it, or null when there is none. */
+function laidOut(spec: ImageSpec): { nodes: Placed[]; routes: Route[]; edges: FlowEdge[] } | null {
   const read = readFlow(spec);
   if (!read) return null;
-  const { nodes, routes } = read.linear ? layoutLinear(read.graph) : layoutGraph(read.graph);
+  return { ...(read.linear ? layoutLinear(read.graph) : layoutGraph(read.graph)), edges: read.graph.edges };
+}
+
+// ---- Editing --------------------------------------------------------------
+
+/** The plugin's editable form of a flow (`flow-draw.mjs`): every node at its centre. */
+export type FreeGraph = {
+  layout: "free";
+  nodes: { id: string; type: NodeType; label: string; x: number; y: number; tone?: Tone }[];
+  edges: { from: string; to: string; label?: string; fromSide?: Side; toSide?: Side }[];
+};
+type Side = "N" | "E" | "S" | "W";
+
+/** A free graph, already: the shape a flow is saved in once someone has edited it. */
+export function isFreeGraph(flow: unknown): flow is FreeGraph {
+  return Boolean(flow && typeof flow === "object" && (flow as FreeGraph).layout === "free" && Array.isArray((flow as FreeGraph).nodes));
+}
+
+/** Which side of a node a route's end point sits on. */
+function sideOf(node: Placed, [x, y]: [number, number]): Side {
+  const gaps: [Side, number][] = [
+    ["N", Math.abs(y - node.y)],
+    ["S", Math.abs(y - (node.y + node.h))],
+    ["W", Math.abs(x - node.x)],
+    ["E", Math.abs(x - (node.x + node.w))],
+  ];
+  return gaps.reduce((best, next) => (next[1] < best[1] ? next : best))[0];
+}
+
+/**
+ * The flow as the plugin's editor takes it, from the picture this page drew:
+ * the same positions and the same sides for every arrow, so opening the
+ * editor moves nothing. A flow saved from the editor is handed back as it is.
+ */
+export function freeFlow(spec: ImageSpec): FreeGraph | null {
+  if (isFreeGraph(spec.processFlow)) return spec.processFlow;
+  const drawn = laidOut(spec);
+  if (!drawn) return null;
+  const byId = new Map(drawn.nodes.map((node) => [node.id, node]));
+  return {
+    layout: "free",
+    nodes: drawn.nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      label: node.label,
+      ...(node.tone ? { tone: node.tone } : {}),
+      // On the editor's 5px grid, which every drag snaps to: off it, a moved
+      // step could never line up with these again.
+      x: Math.round((node.x + node.w / 2) / 5) * 5,
+      y: Math.round((node.y + node.h / 2) / 5) * 5,
+    })),
+    edges: drawn.edges.map((edge, i) => {
+      const points = drawn.routes[i]!.points;
+      return {
+        from: edge.from,
+        to: edge.to,
+        ...(edge.label ? { label: edge.label } : {}),
+        fromSide: sideOf(byId.get(edge.from)!, points[0]!),
+        toSide: sideOf(byId.get(edge.to)!, points[points.length - 1]!),
+      };
+    }),
+  };
+}
+
+/**
+ * The plugin's flow drawing (`flow-draw.mjs`) in this page's colours.
+ *
+ * It writes its colours as attributes; each one it uses is listed here with
+ * the variable that replaces it. `context` narrows a node's text to the shape
+ * beside it — a decision's text is drawn in the decision's ink, a message's
+ * in red. The HTML spec applies these as CSS (`FLOW_SVG_CSS`), so the dark
+ * theme reaches them; the Markdown's copy has them written in
+ * (`themedFlowSvg`), light.
+ */
+const PLUGIN_COLOURS: { selector: string; prop: "fill" | "stroke"; colour: keyof typeof C; context?: string }[] = [
+  { selector: "rect.fbg", prop: "fill", colour: "bg" },
+  { selector: 'rect[fill="#2E6FB0"]', prop: "fill", colour: "term" },
+  { selector: 'rect[stroke="#24598F"]', prop: "stroke", colour: "term" },
+  { selector: 'polygon[fill="#FFF6D8"]', prop: "fill", colour: "dec" },
+  { selector: 'polygon[stroke="#D9A400"]', prop: "stroke", colour: "decLine" },
+  { selector: 'polygon[fill="#FCE7E4"]', prop: "fill", colour: "badSoft" },
+  { selector: 'polygon[stroke="#C0563E"]', prop: "stroke", colour: "badLine" },
+  { selector: 'rect[fill="#F4F8FC"]', prop: "fill", colour: "box" },
+  { selector: 'rect[stroke="#5A85AE"]', prop: "stroke", colour: "boxLine" },
+  { selector: 'polyline[stroke="#5E7388"]', prop: "stroke", colour: "line" },
+  { selector: 'path[fill="#5E7388"]', prop: "fill", colour: "line" },
+  { selector: 'rect[stroke="#D7DEE6"]', prop: "fill", colour: "bg" },
+  { selector: 'rect[stroke="#D7DEE6"]', prop: "stroke", colour: "bg" },
+  { selector: 'text[fill="#56657A"]', prop: "fill", colour: "muted" },
+  { selector: 'text[fill="#1E7A46"]', prop: "fill", colour: "muted" },
+  { selector: 'text[fill="#B0402F"]', prop: "fill", colour: "muted" },
+  { selector: 'text[fill="#0A4F8C"]', prop: "fill", colour: "ink" },
+  { selector: 'text[fill="#2B3A4A"]', prop: "fill", colour: "ink" },
+  { selector: 'text[fill="#FFFFFF"]', prop: "fill", colour: "onTerm" },
+  { selector: 'text[fill="#2B3A4A"]', prop: "fill", colour: "decInk", context: 'g.fn:has(polygon[fill="#FFF6D8"])' },
+  { selector: 'text[fill="#2B3A4A"]', prop: "fill", colour: "bad", context: 'g.fn:has(polygon[fill="#FCE7E4"])' },
+  // A message's kind, which the page's drawing marks with `data-tone` on the
+  // node and on its legend swatch (`spec-flow-page.ts`).
+  ...(["warning", "success", "info"] as const).flatMap((tone) => {
+    const { ink, soft, line } = TONE_COLOURS[tone];
+    const at = `[data-tone="${tone}"]`;
+    return [
+      { selector: 'polygon[fill="#FCE7E4"]', prop: "fill" as const, colour: soft, context: at },
+      { selector: 'polygon[stroke="#C0563E"]', prop: "stroke" as const, colour: line, context: at },
+      { selector: 'text[fill="#2B3A4A"]', prop: "fill" as const, colour: ink, context: `g.fn${at}:has(polygon[fill="#FCE7E4"])` },
+    ];
+  }),
+];
+
+/** The light value behind a `var(--x,#light)`. */
+const lightOf = (value: string): string => /,([^)]+)\)$/.exec(value)?.[1] ?? value;
+
+/** `PLUGIN_COLOURS` as CSS, for the plugin's drawing inside the HTML spec. */
+export const FLOW_SVG_CSS =
+  `svg.flow-svg{font-family:${FONT}}` +
+  `svg.flow-svg [filter]{filter:none}` +
+  PLUGIN_COLOURS.map(
+    ({ selector, prop, colour, context }) =>
+      `${context ? `svg.flow-svg ${context} ` : "svg.flow-svg "}${selector}{${prop}:${C[colour]}}`,
+  ).join("");
+
+/** The plugin's drawing of a flow with this page's light colours written into it. */
+export function themedFlowSvg(svg: string): string {
+  if (typeof DOMParser === "undefined") return svg;
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  const root = doc.documentElement;
+  if (root.nodeName !== "svg") return svg;
+  root.setAttribute("font-family", FONT);
+  root.querySelectorAll("[filter]").forEach((el) => el.removeAttribute("filter"));
+  // Match on the drawing as it came, then write: one rule must not feed the next.
+  const writes: [Element, string, string][] = [];
+  for (const { selector, prop, colour, context } of PLUGIN_COLOURS) {
+    root.querySelectorAll(context ? `${context} ${selector}` : selector).forEach((el) => {
+      writes.push([el, prop, lightOf(C[colour])]);
+    });
+  }
+  for (const [el, prop, value] of writes) el.setAttribute(prop, value);
+  return new XMLSerializer().serializeToString(root);
+}
+
+/** The flow as a standalone SVG document, sized to its content. */
+export function flowSvg(spec: ImageSpec): { svg: string; width: number; height: number } | null {
+  const drawn = laidOut(spec);
+  if (!drawn) return null;
+  const { nodes, routes } = drawn;
   const xs = [...nodes.map((node) => node.x + node.w), ...routes.flatMap((r) => r.points.map(([x]) => x))];
   const ys = [...nodes.map((node) => node.y + node.h), ...routes.flatMap((r) => r.points.map(([, y]) => y))];
   const minX = Math.min(0, ...routes.flatMap((r) => r.points.map(([x]) => x - 8)));
