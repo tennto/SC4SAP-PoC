@@ -3,6 +3,55 @@
 All notable changes to **SuperClaude for SAP (sc4sap)** will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.34] — 2026-10-06
+
+### Added — `program-to-manual`: numbered screens in the Field Reference
+
+- The Field Reference section now shows the selection screen above the selection-field table and the output grid above the output-column table. Every field the table lists is numbered on the picture, and the same number heads its row in a new `#` column.
+- Numbers follow the table order and are made by the build — `manual.json` needs no new keys. A row's `name` is matched to the drawn screen element (`sel:<name>`, `col:<name>`; "P_DIST2 / P_DIST1" tries each name).
+- Output columns spread over several screens (main grid, popups) get one picture per screen, numbered continuously. Rows whose field is on no drawn screen (Excel columns, fields shown only in a variant) stay unnumbered.
+- In edit mode, adding, deleting or renaming rows renumbers the table and the pictures at once; undo restores them.
+- These pictures are shown at natural size with horizontal scrolling, so wide grids stay readable; in print they fit the page width.
+
+## [0.6.33] — 2026-10-06
+
+### Added — process flows you can redraw in the page (`program-to-manual`, `program-to-spec`)
+
+- The process flow is no longer a fixed picture. In the manual's edit mode, and behind an "✎ Edit flow" button on every flow of a spec HTML (main flow and per-button flows), users:
+  - drag shapes to move them;
+  - drag one of the four dots on a shape onto another shape to draw an arrow (dropping on empty space makes a new step there), or click an arrow and drag its end to reconnect it;
+  - add process / decision / message / start / end steps, change a shape's kind, delete shapes and arrows (Delete key);
+  - double-click a shape or arrow to change its text (e.g. "Yes" / "No" on branches).
+- An edited flow is saved as a **free graph** (`"layout": "free"`, every node keeps its `x`, `y`; arrows keep their sides). The build draws it from those positions (`scripts/spec/flow-draw.mjs`, the same code the page runs), so the PNG, the Excel sheet and the HTML show the user's layout. Flows nobody edited keep the automatic layout.
+- Manual: the flow is part of the manual's edit mode (undo, autosave, Save, `--import`).
+- Spec HTML: `render-md-images.mjs` writes `<flow>.graph.json` next to each flow PNG; `md-to-html.mjs` turns those images into editable figures. Save downloads `…-edited.html`; `node scripts/spec/flow-editor.mjs --import <edited.html> <image-spec.json>` writes only the changed flows back (old file kept as `.bak`).
+
+### Added — `program-to-manual`: more of the manual is editable
+
+- Business rules and each scenario's check points: add, delete and reorder items (▲ ▼ ＋ ✕); ⇄ moves a check point to another scenario. Empty lists stay on the page (hidden outside edit mode) so the first item can be added.
+- Step notes: one line per item, with the same ▲ ▼ ＋ ✕ and "Add note line". The note is still saved as one string.
+- Callout details: add, delete and reorder, also on callouts that had none.
+- An empty result shows a placeholder in edit mode and can be filled in.
+- Empty items are dropped on save.
+
+### Added — `program-to-manual`: cross-links and automatic revision history
+
+- Glossary terms in the prose link to their glossary row (dotted underline, meaning as tooltip), once per step, check-point box or section.
+- Message codes (`E07`, `Q01`, …) link to their row in *Messages and Actions* wherever they appear, check-point sources included; the tooltip shows the message text.
+- Links are rebuilt from the page's own tables when edit mode ends.
+- Saving in edit mode records a revision: a dialog asks for the author (remembered for next time) and a change note, and the page adds version +0.1 to the revision history, the top bar, the cover and the file name (`…-v1.1-…-edited.html`). Saving again in the same session updates that entry. `--import` writes it to `<PROGRAM>-<lang>.history.json`; a `--same-version` build keeps the user's author, date and note.
+
+### Changed — `program-to-spec`: English companion by default
+
+- When the spec language is not English, a new Step 6 writes English twins of every selected format (`-en.md`, `-en.html`, `-en.xlsx`) after the review, the way `program-to-manual` already does. Structure, SAP identifiers and flow layouts are kept; only prose and labels are translated. Say "no English version" to skip it.
+
+## [0.6.32] — 2026-10-02
+
+### Fixed — `trust-session`: no more permission-rule warning at startup
+
+- Permission rules are aligned with Claude Code's path-rule model: `Read(path)` covers all file-reading tools and `Edit(path)` covers all file-editing tools. trust-session now grants only `Read(.sc4sap/**)`, `Read(sc4sap/**)` and `Edit(.sc4sap/**)` (plus `Agent(*)`).
+- The stale `Write(.sc4sap/**)`, `Glob(...)` and `Grep(...)` entries that earlier versions wrote never matched and made Claude Code print a warning at startup. trust-session now removes them automatically; no other rule is touched.
+
 ## [0.6.31] — 2026-09-30
 
 ### Added — `program-to-manual`: edit the finished manual in the page

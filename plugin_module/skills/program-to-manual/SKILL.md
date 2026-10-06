@@ -42,13 +42,14 @@ These were settled when the skill was designed — do not ask the user about the
 |---|---|
 | Unit | One program = one manual (all its screens, options and follow-up screens) |
 | Format | One self-contained `.html`; web document on screen, print CSS = one step per A4 landscape page |
-| Editing | The page has a built-in edit mode (no install, no network): edit text, reorder / duplicate / delete steps, add / delete / drag callouts, add / delete rows of the field, message and glossary tables, paste real screenshots, undo, autosave, save a copy. The copy embeds its manual.json and is imported back (workflow Step 0) |
+| Editing | The page has a built-in edit mode (no install, no network): edit text, reorder / duplicate / delete steps, add / delete / drag callouts, add / delete rows of the field, message and glossary tables; add / delete / reorder items of the business rules, each scenario's check points (⇄ moves one to another scenario), step note lines and callout details; fill an empty result, paste real screenshots, redraw the process flow (drag shapes, draw / reconnect arrows, add / delete steps, change shape kind and text), undo, autosave, save a copy. The copy embeds its manual.json and is imported back (workflow Step 0) |
+| Cross-links | Glossary terms in the prose link to their glossary row (dotted underline, meaning as tooltip; once per step / check-point box / section). Message codes (`E07`, `Q01` …) link to their row in Messages and Actions every time they appear, check-point sources included (tooltip = the message text only). Re-linked when edit mode ends |
 | Screens | Drawn from source with the `program-to-spec` renderer (selection screen, output ALV, **every follow-up screen and popup the scenarios pass through**), inlined as SVG |
 | Callouts | Numbered marks on the drawn screen, tied to screen elements by anchor key; the same numbers head the step's instruction list |
 | Body structure | By usage scenario ("to do X") — radio options, execution modes and buttons that start a distinct task each become a scenario |
 | Business context | Module consultant drafts it; low-confidence items go to a 1–3 question interview |
 | Check points | Derived from source validations, mandatory fields, confirmation popups and irreversible processing (posting, sending); business rules added from the interview |
-| Extra sections | Field reference (selection + output) and Messages & actions |
+| Extra sections | Field reference (selection + output) — the selection screen and the output grids drawn above their tables, each listed field numbered on the picture and in the table's # column (automatic, follows edits) — and Messages & actions |
 | Front / back matter | Cover, revision history (automatic), glossary |
 | Language | One language per manual file (ko / en / ja); mixed prose is rejected by the build check. An English companion is always built as well (Step 8) unless the manual language is English or the user opts out |
 | Cover / footer | Author, team, company, confidentiality notice from the active profile's `config.json` → `manual`, asked once |
