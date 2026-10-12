@@ -38,6 +38,8 @@ if (!inventoryPath || !runDir) {
 
 const MD_TO_HTML = resolve(dirname(fileURLToPath(import.meta.url)), "../../plugin_module/scripts/spec/md-to-html.mjs");
 
+// `revision` is matched by the page's scripts to find the revision history:
+// change it together with REVISION_HEADING in web/src/lib/spec-editor.ts.
 const L = {
   ko: {
     title: (p) => `${p} CBO 인벤토리`,

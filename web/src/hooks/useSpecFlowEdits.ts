@@ -17,15 +17,8 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PageFlow } from "@/components/HtmlPreview";
 import { api } from "@/lib/client";
-import { themedFlowSvg } from "@/lib/spec-flow";
+import { base64Utf8, themedFlowSvg } from "@/lib/spec-flow";
 import type { RunFile } from "@/lib/types";
-
-/** Base64 of a string's UTF-8 bytes — `btoa` alone refuses Hangul. */
-function base64Utf8(text: string): string {
-  let binary = "";
-  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
 
 export function useSpecFlowEdits({
   docs,

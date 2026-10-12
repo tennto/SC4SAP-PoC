@@ -13,6 +13,7 @@
  */
 import { styledSpec } from "@/lib/spec-theme";
 import { DOC_ICON_PATHS } from "@/lib/doc-icons";
+import { REVISION_HEADING } from "@/lib/spec-editor";
 
 /**
  * Section heading → icon, by what the heading says, in ko / en / ja: [icon,
@@ -255,7 +256,7 @@ const SCRIPT = `<script id="sc4sap-cbo-theme-script">
   }
   // The revision history is not numbered either, as in the manual: it is
   // about the document, not part of what it says.
-  var REVISION = /^(개정\\s*이력|revision\\s+history|改訂履歴)$/i;
+  var REVISION = ${REVISION_HEADING};
   var n = 0;
   for (var s = 0; s < sections.length; s++) {
     if (sections[s].classList.contains('cbo-summary')) continue;

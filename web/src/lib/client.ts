@@ -143,6 +143,8 @@ export const api = {
       subagentModel?: "haiku" | "sonnet" | "opus";
       /** An economy code review: one agent, the rule files in its first prompt. */
       reviewRules?: boolean;
+      /** One agent doing the work itself: no sub-agents, no skills. An Economy document run. */
+      solo?: boolean;
       /**
        * What the run may reach for: `analyse` or `build`. Each skill declares
        * its own. Chat leaves it out and gets `ask`, which carries neither
@@ -170,6 +172,7 @@ export const api = {
           ...(spend?.model ? { model: spend.model } : {}),
           ...(spend?.subagentModel ? { subagentModel: spend.subagentModel } : {}),
           ...(spend?.reviewRules ? { reviewRules: true } : {}),
+          ...(spend?.solo ? { solo: true } : {}),
           ...(spend?.kind ? { kind: spend.kind } : {}),
         }),
       })

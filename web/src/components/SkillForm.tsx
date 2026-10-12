@@ -54,12 +54,13 @@ import { manualPrompt, type ManualCover, type ManualSurvey } from "@/lib/manual-
 import { ManualSurveyModal } from "@/components/ManualSurveyModal";
 import { CBO_FILES, cboPrompt, type CboSurvey } from "@/lib/cbo-prompt";
 import { HtmlPreview } from "@/components/HtmlPreview";
-import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
+import { base64Utf8, flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { useSpecFlowEdits } from "@/hooks/useSpecFlowEdits";
 import { styledSpec } from "@/lib/spec-theme";
 import { styledManual } from "@/lib/manual-theme";
 import { styledCbo } from "@/lib/cbo-theme";
 import { PROCESS_FILES, processPrompt, type ProcessSurvey } from "@/lib/process-prompt";
+import { comparePrompt, DEFAULT_DIMENSIONS, DIMENSIONS, type CompareSurvey } from "@/lib/compare-prompt";
 import { styledProcess, type DiagramPng } from "@/lib/process-theme";
 import { processDrawings, type ProcessImages } from "@/lib/process-diagrams";
 import { codeReviewPrompt } from "@/lib/code-review-prompt";
@@ -476,6 +477,30 @@ function processOf(values: Record<string, Value>): ProcessSurvey {
   };
 }
 
+/** A Compare Programs run from its form. */
+function compareOf(values: Record<string, Value>): CompareSurvey {
+  const pick = (label: string): string => {
+    const value = values[label];
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const format = pick("Output format") || "Markdown + HTML";
+  return {
+    programs: [
+      ...new Set(
+        pick("Programs")
+          .split(/[\s,;]+/)
+          .map((name) => name.trim().toUpperCase())
+          .filter(Boolean),
+      ),
+    ],
+    dimensions:
+      pick("Dimensions") === "All" ? Object.keys(DIMENSIONS).map(Number) : DEFAULT_DIMENSIONS,
+    method: pick("Mode") === "Standard" ? "Precise" : "Economy",
+    language: (pick("Language") || "Korean") as CompareSurvey["language"],
+    formats: format === "HTML" ? ["html"] : format === "Markdown" ? ["md"] : ["md", "html"],
+  };
+}
+
 /** `ZMMR00020-v1.0-ko.html` saved from its edit mode: `ZMMR00020-v1.0-ko-edited.html`. */
 const editedName = (name: string): string =>
   /-edited\.html?$/i.test(name) ? name : `${name.replace(/\.html?$/i, "")}-edited.html`;
@@ -514,12 +539,6 @@ function withImages(markdown: string, files: readonly RunFile[]): string {
   return text;
 }
 
-/** Base64 of a string's UTF-8 bytes — `btoa` alone refuses Hangul. */
-function base64Utf8(text: string): string {
-  let binary = "";
-  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
 
 /** 12.3 KB — one decimal under a hundred, none above. */
 function sizeLabel(bytes: number): string {
@@ -994,7 +1013,7 @@ export function SkillForm({
     [docKind, docs, processImages, diagramPngs],
   );
   const htmlFile =
-    docKind === "spec" || docKind === "cbo"
+    docKind === "spec" || docKind === "cbo" || docKind === "compare"
       ? (docs?.find((file) => file.name.toLowerCase().endsWith(".html")) ?? null)
       : null;
   // A manual run's pages: the manual, and its English companion after it.
@@ -1369,6 +1388,17 @@ export function SkillForm({
         void run(null, null, null, null, null, survey);
         return;
       }
+      // And the comparison: the programs, the dimensions and the formats.
+      if (docKind === "compare") {
+        const survey = compareOf(values);
+        if (survey.programs.length < 2 || survey.programs.length > 5) {
+          setError(t.programsRequired);
+          return;
+        }
+        setError(null);
+        void run(null, null, null, null, null, null, survey);
+        return;
+      }
       // The survey needs something to be about before it is worth asking.
       if (programOf(values) === "") {
         setError(docKind === "manual" ? t.programRequiredManual : t.programRequired);
@@ -1411,6 +1441,8 @@ export function SkillForm({
     cbo: CboSurvey | null = null,
     /** A Package → Process run — see `process-prompt.ts`. */
     proc: ProcessSurvey | null = null,
+    /** A Compare Programs run — see `compare-prompt.ts`. */
+    cmp: CompareSurvey | null = null,
   ): Promise<void> {
     if (running || blocked) return;
     setStarting(true);
@@ -1419,6 +1451,29 @@ export function SkillForm({
     heldDocs.delete(slug);
     keepers.get(slug)?.stop();
     try {
+      if (cmp) {
+        // Both modes on Sonnet with sub-agents kept off Opus, as the other
+        // document skills. Ceilings about three times what ZMMR00020 vs
+        // ZMMR00030 measured by the SDK: $0.46 Economy, $1.99 Standard — a
+        // run of five programs dispatches five reviewers.
+        setWanted(cmp.formats);
+        const session = await api.createSession(undefined, undefined, {
+          model: "claude-sonnet-5",
+          economy: true,
+          maxBudgetUsd: cmp.method === "Precise" ? 6 : 1.5,
+          profile: tools,
+          kind: "task",
+          // Economy is one agent: no sub-agent or skill in its context (`solo`).
+          ...(cmp.method === "Economy" ? { effort: "medium" as const, solo: true } : {}),
+        });
+        setSessionId(session.id);
+        await api.sendMessage(session.id, comparePrompt(cmp, `.sc4sap/out/${session.id}`));
+        keepDocuments(slug, session.id);
+        requestAnimationFrame(() =>
+          result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+        );
+        return;
+      }
       if (proc) {
         // Both modes on Sonnet with sub-agents kept off Opus, as the other
         // document skills. Ceilings well above what ZMMPAEK measured by the\n        // SDK: $7.16 Standard, $1.34 Economy.
@@ -1429,7 +1484,7 @@ export function SkillForm({
           maxBudgetUsd: proc.method === "Precise" ? 12 : 4,
           profile: tools,
           kind: "task",
-          ...(proc.method === "Economy" ? { effort: "medium" as const } : {}),
+          ...(proc.method === "Economy" ? { effort: "medium" as const, solo: true } : {}),
         });
         setSessionId(session.id);
         await api.sendMessage(session.id, processPrompt(proc, `.sc4sap/out/${session.id}`));
@@ -1450,7 +1505,7 @@ export function SkillForm({
           maxBudgetUsd: cbo.method === "Precise" ? 3.5 : 2,
           profile: tools,
           kind: "task",
-          ...(cbo.method === "Economy" ? { effort: "medium" as const } : {}),
+          ...(cbo.method === "Economy" ? { effort: "medium" as const, solo: true } : {}),
         });
         setSessionId(session.id);
         await api.sendMessage(session.id, cboPrompt(cbo, `.sc4sap/out/${session.id}`));
@@ -1472,7 +1527,7 @@ export function SkillForm({
           maxBudgetUsd: manual.method === "Precise" ? 5 : 2,
           profile: tools,
           kind: "task",
-          ...(manual.method === "Economy" ? { effort: "medium" as const } : {}),
+          ...(manual.method === "Economy" ? { effort: "medium" as const, solo: true } : {}),
         });
         setSessionId(session.id);
         await api.sendMessage(session.id, manualPrompt(manual, `.sc4sap/out/${session.id}`));
@@ -1495,7 +1550,7 @@ export function SkillForm({
           maxBudgetUsd: survey.method === "Precise" ? 3 : 1.5,
           profile: tools,
           kind: "task",
-          ...(survey.method === "Economy" ? { effort: "medium" as const } : {}),
+          ...(survey.method === "Economy" ? { effort: "medium" as const, solo: true } : {}),
         });
         setSessionId(session.id);
         await api.sendMessage(session.id, specPrompt(survey, `.sc4sap/out/${session.id}`));
@@ -2049,9 +2104,9 @@ export function SkillForm({
                   }
                   // The CBO inventory has the spec's edit mode too (`styledCbo`),
                   // so its Save needs the same way out of the frame.
-                  {...(docKind === "spec" || docKind === "cbo"
+                  {...(docKind === "spec" || docKind === "cbo" || docKind === "compare"
                     ? {
-                        doc: docKind === "cbo" ? ("doc" as const) : ("spec" as const),
+                        doc: docKind === "spec" ? ("spec" as const) : ("doc" as const),
                         onSaveEdited: (edited: string) =>
                           download(
                             editedName(cboName ? `${cboName}.html` : htmlFile.name),
@@ -2352,6 +2407,8 @@ export function SkillForm({
                 ? t.closeBodyCbo
               : docKind === "process"
                 ? t.closeBodyProcess
+              : docKind === "compare"
+                ? t.closeBodyCompare
               : documents
                 ? t.closeBodyDocuments
                 : t.closeBody

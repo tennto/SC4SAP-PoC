@@ -799,6 +799,13 @@ type SessionShape = {
    * review's rule files put in front of its first prompt. See `send`.
    */
   reviewRules?: boolean;
+  /**
+   * One agent that does the work itself: no sub-agent dispatch and no skill,
+   * taken out of its context as for an economy review. The Economy document
+   * runs are this. `Agent` alone is 17,665 tokens, carried by every turn of
+   * a run that never calls it.
+   */
+  solo?: boolean;
   model?: string;
   approval?: ApprovalLevel;
   /**
@@ -1079,6 +1086,7 @@ export class SessionManager {
       options.economy === true,
       options.subagentModel ?? "",
       options.reviewRules === true,
+      options.solo === true,
       options.approval ?? "all",
       options.maxBudgetUsd ?? "",
       // A warm session opened for questions cannot serve a skill run: the
@@ -1131,7 +1139,7 @@ export class SessionManager {
       ...disallowedForProfile(options.profile ?? "ask"),
       // An economy review is one agent reading the source itself: the
       // reviewer dispatch and the plugin skill are what it is instead of.
-      ...(options.reviewRules ? [AGENT_TOOL, "Skill"] : []),
+      ...(options.reviewRules || options.solo ? [AGENT_TOOL, "Skill"] : []),
     ];
 
     const session = query({

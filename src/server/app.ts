@@ -289,6 +289,8 @@ export function buildApp(manager: SessionManager): FastifyInstance {
           subagentModel?: string;
           /** An economy code review — see `SessionShape.reviewRules`. */
           reviewRules?: boolean;
+          /** One agent, no sub-agents or skills — see `SessionShape.solo`. */
+          solo?: boolean;
           /**
            * What the session may reach for: `ask`, `analyse` or `build`.
            * Absent means `ask` — the chat screen, which keeps 26,431 tokens
@@ -353,6 +355,10 @@ export function buildApp(manager: SessionManager): FastifyInstance {
     if (reviewRules !== undefined && typeof reviewRules !== "boolean") {
       return reply.code(400).send({ error: "body.reviewRules must be a boolean" });
     }
+    const solo = request.body?.solo;
+    if (solo !== undefined && typeof solo !== "boolean") {
+      return reply.code(400).send({ error: "body.solo must be a boolean" });
+    }
     const model = request.body?.model;
     if (model !== undefined && !MODELS.some((entry) => entry.id === model)) {
       return reply.code(400).send({ error: "body.model is not one this backend offers" });
@@ -366,6 +372,7 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       economy,
       subagentModel: subagentModel as SubagentModel | undefined,
       reviewRules,
+      solo,
       profile: profile as ToolProfile | undefined,
       effort: effort as EffortLevel | undefined,
       model,
