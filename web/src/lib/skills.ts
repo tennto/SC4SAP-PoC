@@ -164,8 +164,10 @@ export type Skill = {
    * `process` is Package → Process (`process-prompt.ts`: the process document
    * and the BPML, in the spec's look with the diagrams drawn by
    * `process-diagrams.ts`, and the BPML workbook).
+   * `compare` is Compare Programs (`compare-prompt.ts`: the report as
+   * Markdown and as HTML in the spec's look).
    */
-  documents?: "spec" | "manual" | "cbo" | "process";
+  documents?: "spec" | "manual" | "cbo" | "process" | "compare";
 };
 
 export type SkillGroup = {
@@ -413,9 +415,15 @@ export const SKILLS: Skill[] = [
     documents: "cbo",
   },
   {
-    // Not yet worked on for model choice: no cost dialog, so no budget and no
-    // economy, and its Opus agents run unchecked. Add both when this skill is
-    // next developed — see docs/model-selection-improvements.md, item 4.
+    // Built out on 2026-10-12, as the other document skills: the plugin's
+    // intake and its scope stop become form fields, the files go to the run's
+    // own folder to be shown and downloaded. The mode is the spending
+    // decision, as on the other document skills (no cost dialog): both run on
+    // Sonnet with sub-agents kept off Opus. Measured 2026-10-12 on ZMMR00020
+    // vs ZMMR00030 (Korean, default dimensions, md + html): Economy 115 s,
+    // SDK $0.72; Standard 398 s, SDK $1.99 (Sonnet and the Haiku writer, no
+    // Opus); no dialogs. Economy after `scan.mjs --detail` and a `solo`
+    // session: about 95 s, SDK $0.46 with the cache cold and $0.34 warm. See `lib/compare-prompt.ts`.
     slug: "compare-programs",
     command: "/sc4sap:compare-programs",
     tools: "build",
@@ -427,12 +435,41 @@ export const SKILLS: Skill[] = [
     status: "ready",
     fields: [
       { label: "Programs", kind: "textarea", placeholder: "One per line — 2 to 5 of them.", hint: "They should share a business scenario; the divergence is the point." },
-      { label: "Comparison axis", kind: "select", options: ["Module", "Country / localization", "Persona", "Time horizon"] },
-      { label: "Reader", kind: "select", options: ["Functional consultant", "Developer", "Business owner"] },
-      // The skill's Step 2 choice, in its own words: Markdown by default,
-      // `html` adds a single-file copy, `html only` keeps just that.
-      { label: "Output", kind: "select", options: ["Markdown", "Markdown + HTML", "HTML only"], hint: "HTML is one self-contained file — share, mail, print." },
+      {
+        label: "Dimensions",
+        kind: "select",
+        // The skill's default bundle first, as its scope prompt pre-ticks it.
+        options: ["Default", "All"],
+        optionHints: {
+          Default:
+            "Module, organization / country scope, selection screen, business logic, output columns, authorizations, usage timing / persona.",
+          All: "The default seven, plus core data sources, CBO / enhancement usage and country / legal specifics.",
+        },
+      },
+      {
+        label: "Mode",
+        kind: "select",
+        options: ["Economy", "Standard"],
+        optionHints: {
+          Economy:
+            "One agent reads every program through this app's scan and writes the comparison. Estimated cost: about $0.35–0.50. Estimated time: 1.5–2 min.",
+          Standard:
+            "The plugin's full skill: a code reviewer per program, an analyst, a consultant per module when the programs span modules, then a writer. Estimated cost: about $1.70–3.00. Estimated time: 6–10 min.",
+        },
+      },
+      {
+        label: "Output format",
+        kind: "select",
+        options: ["Markdown + HTML", "HTML", "Markdown"],
+        optionHints: {
+          "Markdown + HTML": "The report here and an HTML preview under it, saved as either.",
+          HTML: "Previewed here as it will look, saved as .html.",
+          Markdown: "Shown here as the document, saved as .md.",
+        },
+      },
+      { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"] },
     ],
+    documents: "compare",
   },
 
   // ---------- document ----------

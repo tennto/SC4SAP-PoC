@@ -161,7 +161,7 @@ const PLUGIN_SCRIPTS = new Set([
 ]);
 
 /** Switches those scripts take that name no file. */
-const SCRIPT_FLAGS = new Set(["--same-version", "--major", "--keep", "--no-images"]);
+const SCRIPT_FLAGS = new Set(["--same-version", "--major", "--keep", "--no-images", "--detail"]);
 
 /** Package → Process's build takes the formats as one word: `md,html,xlsx`. */
 const FORMATS = /^(md|html|xlsx)(,(md|html|xlsx))*$/;
@@ -329,7 +329,9 @@ export function isOwnRunStep(
     }
     if (verb === "rm") return paths.length > 0 && paths.every(inside);
     if (verb !== "node") return false;
-    const script = norm(resolve(workspace, rest[0]!));
+    // A Git Bash path counts too (measured 2026-10-12: `node /c/Users/…/md-to-html.mjs`
+    // raised a dialog for the plugin's own converter).
+    const script = norm(resolve(workspace, fromBash(rest[0]!)));
     const plugin = `${norm(pluginPath)}/scripts/`;
     const app = `${norm(APP_SCRIPTS_DIR)}/`;
     const known =

@@ -204,28 +204,33 @@ const ko: CatalogText = {
           placeholder: "한 줄에 하나씩 — 2개에서 5개까지.",
           hint: "같은 업무 시나리오를 공유해야 합니다. 차이점이 비교의 핵심입니다.",
         },
-        "Comparison axis": {
-          label: "비교 축",
-          options: {
-            Module: "모듈",
-            "Country / localization": "국가 / 로컬라이제이션",
-            Persona: "페르소나",
-            "Time horizon": "시간 범위",
+        Dimensions: {
+          label: "비교 차원",
+          options: { Default: "기본 7개", All: "전체 10개" },
+          optionHints: {
+            Default: "모듈, 조직 / 국가 범위, 선택 화면, 업무 로직, 출력 컬럼, 권한, 사용 시점 / 페르소나.",
+            All: "기본 7개에 핵심 데이터 소스, CBO / 인핸스먼트 사용, 국가 / 법적 요건을 더합니다.",
           },
         },
-        Reader: {
-          label: "독자",
-          options: {
-            "Functional consultant": "기능 컨설턴트",
-            Developer: "개발자",
-            "Business owner": "현업 담당자",
+        Mode: {
+          label: "모드",
+          options: { Economy: "절약", Standard: "기본" },
+          optionHints: {
+            Economy:
+              "에이전트 1개가 앱의 소스 스캔으로 모든 프로그램을 읽고 비교 보고서를 씁니다. 예상 소요비용은 약 500~700원, 예상 소요시간은 1분 30초~2분입니다.",
+            Standard:
+              "플러그인 전체 스킬입니다. 프로그램마다 코드 리뷰어, 분석 에이전트, 모듈이 갈리면 모듈별 컨설턴트, 마지막으로 작성 에이전트가 돕니다. 예상 소요비용은 약 2,300~4,100원, 예상 소요시간은 6~10분입니다.",
           },
         },
-        Output: {
-          label: "출력",
-          options: { Markdown: "Markdown", "Markdown + HTML": "Markdown + HTML", "HTML only": "HTML만" },
-          hint: "HTML은 단일 파일로 만들어져 공유, 메일, 인쇄에 바로 쓸 수 있습니다.",
+        "Output format": {
+          label: "출력 형식",
+          optionHints: {
+            "Markdown + HTML": "보고서와 그 아래 HTML 미리보기를 함께 보여주고, 둘 다 저장할 수 있습니다.",
+            HTML: "실제 모양 그대로 미리보기하고, .html로 저장합니다.",
+            Markdown: "이 화면에 문서로 표시하고, .md로 저장합니다.",
+          },
         },
+        Language: { label: "작성 언어", options: LANGUAGES_KO },
       },
     },
     "program-to-spec": {
@@ -532,28 +537,33 @@ const ja: CatalogText = {
           placeholder: "1 行に 1 つ — 2 本から 5 本まで。",
           hint: "同じ業務シナリオを共有している必要があります。違いこそが比較の要点です。",
         },
-        "Comparison axis": {
-          label: "比較軸",
-          options: {
-            Module: "モジュール",
-            "Country / localization": "国 / ローカライズ",
-            Persona: "ペルソナ",
-            "Time horizon": "時間軸",
+        Dimensions: {
+          label: "比較の観点",
+          options: { Default: "標準の 7 つ", All: "全 10 個" },
+          optionHints: {
+            Default: "モジュール、組織 / 国の範囲、選択画面、業務ロジック、出力列、権限、利用時期 / ペルソナ。",
+            All: "標準の 7 つに、主要データソース、CBO / 拡張の利用、国 / 法的要件を加えます。",
           },
         },
-        Reader: {
-          label: "読者",
-          options: {
-            "Functional consultant": "機能コンサルタント",
-            Developer: "開発者",
-            "Business owner": "業務担当者",
+        Mode: {
+          label: "モード",
+          options: { Economy: "節約", Standard: "標準" },
+          optionHints: {
+            Economy:
+              "エージェント 1 つがアプリのソーススキャンで全プログラムを読み、比較レポートを書きます。予想費用は約 50〜70 円、予想所要時間は 1 分半〜2 分です。",
+            Standard:
+              "プラグインのスキル全体です。プログラムごとのコードレビュアー、分析エージェント、モジュールが分かれる場合はモジュール別コンサルタント、最後に作成エージェントが動きます。予想費用は約 230〜410 円、予想所要時間は 6〜10 分です。",
           },
         },
-        Output: {
-          label: "出力",
-          options: { Markdown: "Markdown", "Markdown + HTML": "Markdown + HTML", "HTML only": "HTML のみ" },
-          hint: "HTML は単一ファイルとして生成され、共有・メール・印刷にそのまま使えます。",
+        "Output format": {
+          label: "出力形式",
+          optionHints: {
+            "Markdown + HTML": "レポートとその下の HTML プレビューを表示し、どちらでも保存できます。",
+            HTML: "実際の見た目でプレビューし、.html で保存します。",
+            Markdown: "この画面に文書として表示し、.md で保存します。",
+          },
         },
+        Language: { label: "記述言語", options: LANGUAGES_JA },
       },
     },
     "program-to-spec": {
