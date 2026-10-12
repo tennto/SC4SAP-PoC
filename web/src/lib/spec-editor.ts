@@ -23,6 +23,13 @@
 
 import { FLOW_LABELS, FLOW_PAGE_STYLE, FLOW_PART } from "@/lib/spec-flow-page";
 
+/**
+ * A revision history's heading, numbered or not, in each language — the
+ * words `scripts/cbo/build-index.mjs` writes (`L.revision`). Page scripts
+ * take it as a literal: this edit mode's Save, and the CBO page's numbering.
+ */
+export const REVISION_HEADING = String(/^(\d+[.)]?\s*)?(개정\s*이력|revision\s+history|改訂履歴)$/i);
+
 const LABELS = {
   ko: {
     edit: "편집", done: "편집 종료", save: "파일 저장", undo: "되돌리기", help: "도움말", ok: "확인",
@@ -438,7 +445,7 @@ __FLOW__
   // as a row, the version one tenth up. Saving again in the same session
   // changes that row rather than adding another. A page without one saves
   // as it always did.
-  var REV_HEADING = /^(\d+[.)]?\s*)?(개정\s*이력|revision\s+history|改訂履歴)$/i;
+  var REV_HEADING = ${REVISION_HEADING};
   var revRow = null;
   function revisionTable() {
     var heads = main.querySelectorAll('h2');

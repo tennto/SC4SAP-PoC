@@ -27,6 +27,7 @@
 import { flowSvg, freeFlow, type ImageSpec } from "@/lib/spec-flow";
 import { DOC_ICON_SCRIPT, DOC_ICON_STYLE } from "@/lib/doc-icons";
 import { editableSpec } from "@/lib/spec-editor";
+import { FLOW_LABELS } from "@/lib/spec-flow-page";
 
 /** The app's typeface, from the same jsDelivr stylesheet the app loads. */
 const TYPE_LINK = `<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">`;
@@ -577,10 +578,8 @@ figure figure.flow-fig{margin:0;padding:0;border:0;border-radius:0;background:no
 
 /**
  * The flow editor's "Done" read the same as the edit mode's own ("편집 종료"),
- * one above the other: the flow's says it is finished with this flow.
+ * one above the other: the flow's (`FLOW_LABELS`) says it is finished with this flow.
  */
-const DONE_FLOW: Record<string, string> = { ko: "편집 완료", ja: "編集完了", en: "Done" };
-
 function flowLabels(page: string): string {
   const open = '<script type="application/json" id="flow-editor-labels">';
   const at = page.indexOf(open);
@@ -589,7 +588,7 @@ function flowLabels(page: string): string {
   try {
     const labels = JSON.parse(page.slice(at + open.length, close)) as Record<string, unknown>;
     const lang = /<html[^>]*\slang="([a-z]{2})/i.exec(page)?.[1]?.toLowerCase() ?? "en";
-    labels.doneFlow = DONE_FLOW[lang] ?? DONE_FLOW.en;
+    labels.doneFlow = (FLOW_LABELS[lang as keyof typeof FLOW_LABELS] ?? FLOW_LABELS.en).doneFlow;
     return page.slice(0, at) + open + JSON.stringify(labels).replace(/</g, "\\u003c") + page.slice(close);
   } catch {
     return page;

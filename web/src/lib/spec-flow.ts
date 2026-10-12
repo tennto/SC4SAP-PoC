@@ -541,6 +541,13 @@ export const FLOW_SVG_CSS =
       `${context ? `svg.flow-svg ${context} ` : "svg.flow-svg "}${selector}{${prop}:${C[colour]}}`,
   ).join("");
 
+/** Base64 of a string's UTF-8 bytes — `btoa` alone refuses Hangul. For a drawing kept as a run file. */
+export function base64Utf8(text: string): string {
+  let binary = "";
+  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 /** The plugin's drawing of a flow with this page's light colours written into it. */
 export function themedFlowSvg(svg: string): string {
   if (typeof DOMParser === "undefined") return svg;

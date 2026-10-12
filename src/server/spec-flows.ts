@@ -26,6 +26,15 @@ export type SpecFlowsRequest = {
 
 /** A flow drawing is tens of KB; this is a runaway guard. */
 const MAX_SVG = 2 * 1024 * 1024;
+/**
+ * Anything in an SVG that reaches outside it. The drawing is rendered from a
+ * `file://` page in a headless browser, so an outside reference would draw a
+ * local file (or run a script) into the picture sent back. A flow drawing
+ * only ever points at itself (`url(#…)`, `href="#…"`), and has no style
+ * sheet or escaped CSS, which could spell `url(` another way.
+ */
+const OUTSIDE =
+  /<script|<foreignObject|<iframe|<style|@import|href\s*=\s*(?!["']?#)|url\(\s*(?!["']?#)|style\s*=\s*("[^"]*\\|'[^']*\\)/i;
 /** The picture at twice its size, as the run renders its own (`RENDER_SCALE`). */
 const SCALE = 2;
 
@@ -35,6 +44,7 @@ export function specFlowsError(body: unknown): string | null {
   const { xlsx, svg } = body as Partial<SpecFlowsRequest>;
   if (typeof xlsx !== "string" || xlsx === "") return "xlsx must be the workbook, base64";
   if (typeof svg !== "string" || !/^<svg[\s>]/.test(svg.trim()) || svg.length > MAX_SVG) return "svg must be one SVG document";
+  if (OUTSIDE.test(svg)) return "svg must not reference anything outside itself";
   return null;
 }
 

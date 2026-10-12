@@ -54,7 +54,7 @@ import { manualPrompt, type ManualCover, type ManualSurvey } from "@/lib/manual-
 import { ManualSurveyModal } from "@/components/ManualSurveyModal";
 import { CBO_FILES, cboPrompt, type CboSurvey } from "@/lib/cbo-prompt";
 import { HtmlPreview } from "@/components/HtmlPreview";
-import { flowSvg, type ImageSpec } from "@/lib/spec-flow";
+import { base64Utf8, flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { useSpecFlowEdits } from "@/hooks/useSpecFlowEdits";
 import { styledSpec } from "@/lib/spec-theme";
 import { styledManual } from "@/lib/manual-theme";
@@ -514,12 +514,6 @@ function withImages(markdown: string, files: readonly RunFile[]): string {
   return text;
 }
 
-/** Base64 of a string's UTF-8 bytes — `btoa` alone refuses Hangul. */
-function base64Utf8(text: string): string {
-  let binary = "";
-  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
 
 /** 12.3 KB — one decimal under a hundred, none above. */
 function sizeLabel(bytes: number): string {
