@@ -30,12 +30,12 @@ import { editableSpec } from "@/lib/spec-editor";
 import { FLOW_LABELS } from "@/lib/spec-flow-page";
 
 /** The app's typeface, from the same jsDelivr stylesheet the app loads. */
-const TYPE_LINK = `<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">`;
+export const TYPE_LINK = `<link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">`;
 
-const LIGHT =
+export const LIGHT =
   "--bg:#ffffff;--fg:#2b2b2b;--muted:#6b6b6b;--faint:#9a9a9a;--line:#e4e4e4;--line-strong:#cfcfcf;--head:#f7f7f7;--code:#f3f3f3;--link:#2b2b2b;--card:#f7f7f7;--accent:#383838;--hl:#fff6d6;--frame:#f7f7f7;" +
   "--flow-ink:#2b2b2b;--flow-muted:#737373;--flow-bg:#ffffff;--flow-line:#b4b4b4;--flow-box:#ffffff;--flow-box-line:#d6d6d6;--flow-dec:#fff8eb;--flow-dec-line:#e9cf97;--flow-dec-ink:#6f4a00;--flow-term:#2b2b2b;--flow-on-term:#ffffff;--flow-bad:#b42318;--flow-bad-soft:#fef3f2;--flow-bad-line:#f4c7c2;--flow-warn:#b54708;--flow-warn-soft:#fffaeb;--flow-warn-line:#fedf89;--flow-ok:#067647;--flow-ok-soft:#ecfdf3;--flow-ok-line:#abefc6;--flow-info:#175cd3;--flow-info-soft:#eff8ff;--flow-info-line:#b2ddff";
-const DARK =
+export const DARK =
   "--bg:#161616;--fg:#e6e6e6;--muted:#a3a3a3;--faint:#7a7a7a;--line:#2e2e2e;--line-strong:#3d3d3d;--head:#1d1d1d;--code:#232323;--link:#e6e6e6;--card:#1d1d1d;--accent:#e6e6e6;--hl:#3a3000;--frame:#1b1b1b;" +
   "--flow-ink:#e6e6e6;--flow-muted:#a3a3a3;--flow-bg:#161616;--flow-line:#5c5c5c;--flow-box:#1d1d1d;--flow-box-line:#3a3a3a;--flow-dec:#2a2213;--flow-dec-line:#6b5423;--flow-dec-ink:#f1cf85;--flow-term:#e6e6e6;--flow-on-term:#161616;--flow-bad:#f97066;--flow-bad-soft:#2a1715;--flow-bad-line:#6b2a24;--flow-warn:#fdb022;--flow-warn-soft:#2a1f0d;--flow-warn-line:#6b4b12;--flow-ok:#47cd89;--flow-ok-soft:#0f2a1c;--flow-ok-line:#1f5c3d;--flow-info:#84caff;--flow-info-soft:#102037;--flow-info-line:#1f4a7a";
 

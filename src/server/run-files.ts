@@ -57,6 +57,12 @@ const BPML_FLOW = /(^|\/)_img\/bpml-flows-[^/]+\/[^/]+\.svg$/;
  */
 const INVENTORY = /^inventory\.json$/;
 
+/**
+ * Analyze Code's findings and code changes, checked against the source
+ * (`scripts/review/build.mjs`), which the page builds its HTML and Markdown from.
+ */
+const REVIEW_DATA = /^review-data\.json$/;
+
 /** Ceiling per file. A spec workbook is ~100 KB; this is a runaway guard. */
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
@@ -113,7 +119,8 @@ export function takeRunFiles(workspace: string, sessionId: string): RunFile[] {
       const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
       const picture = ext === ".png" ? "image/png" : ext === ".svg" ? "image/svg+xml" : null;
       const asset = picture !== null && (parts.includes(ASSET_DIR) || BPML_FLOW.test(path));
-      const imageSpec = IMAGE_SPEC.test(path) || INVENTORY.test(path) || PROCESS_DATA.test(path);
+      const imageSpec =
+        IMAGE_SPEC.test(path) || INVENTORY.test(path) || PROCESS_DATA.test(path) || REVIEW_DATA.test(path);
       if (!asset && !imageSpec && parts.some((part) => part.startsWith("_"))) continue;
       const mediaType = asset ? picture! : imageSpec ? "application/json" : HANDED_OVER[ext];
       if (!mediaType) continue;
@@ -178,6 +185,7 @@ const APP_SCRIPTS = new Set([
   "process/walk.mjs",
   "process/scan.mjs",
   "process/build.mjs",
+  "review/build.mjs",
 ]);
 
 /**

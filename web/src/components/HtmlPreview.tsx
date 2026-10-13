@@ -24,6 +24,34 @@ const REMEMBERED = "sc4sap.htmlZoom";
 
 /** Marks this preview's messages among anything else posted to the frame. */
 const ZOOM_MESSAGE = "sc4sap-preview-zoom";
+/** The app's theme, sent to the document — see `THEME_HEAD`. */
+const THEME_MESSAGE = "sc4sap-preview-theme";
+
+/** The app's theme as `<html data-theme>` holds it: `light`, `dark`, or null for the machine's. */
+const appTheme = (): string | null =>
+  typeof document === "undefined" ? null : document.documentElement.getAttribute("data-theme");
+
+/**
+ * The document's theme follows the app's, not only the machine's.
+ *
+ * The documents carry light and dark both, keyed on `data-theme` as the app
+ * is, and without it the frame went by the machine: the app switched to
+ * light on a dark machine showed a dark document in it. The theme is set
+ * before the document draws (no flash of the other one) and changed by
+ * message after, so switching the theme never reloads the document. A
+ * document saved from its edit mode leaves the attribute behind
+ * (`EDIT_HEAD`), so the file still follows whoever opens it.
+ */
+const themeHead = (theme: string | null): string => `<script>
+${theme === "light" || theme === "dark" ? `document.documentElement.setAttribute("data-theme", "${theme}");` : ""}
+addEventListener("message", function (event) {
+  if (event.source !== parent || !event.data || event.data.type !== "${THEME_MESSAGE}") return;
+  var theme = event.data.theme;
+  if (theme === "light" || theme === "dark") document.documentElement.setAttribute("data-theme", theme);
+  else document.documentElement.removeAttribute("data-theme");
+});
+document.currentScript && document.currentScript.remove();
+</script>`;
 
 /**
  * Added to the head of the previewed document only; its look (`styledSpec`)
@@ -107,6 +135,8 @@ const EDIT_HEAD = `<script>
     var blob = this.hasAttribute("download") ? blobs[this.href] : null;
     if (!blob) return click.call(this);
     blob.text().then(function (html) {
+      // The preview's theme is this frame's, not the file's.
+      html = html.replace(/(<html\\b[^>]*?)\\s+data-theme="[^"]*"/i, "$1");
       parent.postMessage({ type: "${SAVE_MESSAGE}", html: html }, "*");
     });
   };
@@ -114,9 +144,9 @@ const EDIT_HEAD = `<script>
 document.currentScript && document.currentScript.remove();
 </script>`;
 
-/** The document with `PREVIEW_HEAD` (and `EDIT_HEAD`) at the start of its head. */
-function framed(html: string, editable: boolean): string {
-  const added = editable ? PREVIEW_HEAD + EDIT_HEAD : PREVIEW_HEAD;
+/** The document with `PREVIEW_HEAD`, the theme (and `EDIT_HEAD`) at the start of its head. */
+function framed(html: string, editable: boolean, theme: string | null): string {
+  const added = PREVIEW_HEAD + themeHead(theme) + (editable ? EDIT_HEAD : "");
   const head = /<head[^>]*>/i.exec(html);
   if (head) {
     const at = head.index + head[0].length;
@@ -175,7 +205,8 @@ export function HtmlPreview({
 
   const frame = useRef<HTMLIFrameElement>(null);
   const editable = onSaveEdited !== undefined;
-  const srcDoc = useMemo(() => framed(html, editable), [html, editable]);
+  // The theme at the time the document is framed; later changes go by message.
+  const srcDoc = useMemo(() => framed(html, editable, appTheme()), [html, editable]);
 
   // The editor's Save, from this frame only.
   const saveEdited = useRef(onSaveEdited);
@@ -213,6 +244,15 @@ export function HtmlPreview({
     frame.current?.contentWindow?.postMessage({ type: ZOOM_MESSAGE, zoom: zoom / 100 }, "*");
   };
   useEffect(sendZoom);
+
+  const sendTheme = (): void => {
+    frame.current?.contentWindow?.postMessage({ type: THEME_MESSAGE, theme: appTheme() }, "*");
+  };
+  useEffect(() => {
+    const watch = new MutationObserver(sendTheme);
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => watch.disconnect();
+  }, []);
 
   return (
     <div className="skill-doc-box html-preview">
@@ -293,8 +333,13 @@ export function HtmlPreview({
           className="html-preview-frame"
           title={name}
           sandbox={`allow-scripts allow-popups allow-popups-to-escape-sandbox${editable ? " allow-modals" : ""}`}
+          // The review's "copy the proposed source" button.
+          allow="clipboard-write"
           srcDoc={srcDoc}
-          onLoad={sendZoom}
+          onLoad={() => {
+            sendZoom();
+            sendTheme();
+          }}
         />
       </div>
     </div>
