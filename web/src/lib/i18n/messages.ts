@@ -296,6 +296,9 @@ const en = {
     programRequiredManual: "Enter the program to write the manual for.",
     packageRequired: "Enter the package to inventory.",
     programsRequired: "Enter 2 to 5 programs to compare, one per line.",
+    objectRequired: "Enter the object to review.",
+    closeBodyReview:
+      "The review and its files are deleted. Nothing of this run is kept, so download anything you need first.",
     closeBodyCompare:
       "The comparison report and its files are deleted. Nothing of this run is kept, so download anything you need first — and save any edits you made in it.",
     closeBodyCbo:
@@ -1278,6 +1281,9 @@ const ko: Messages = {
     programRequiredManual: "매뉴얼을 만들 프로그램을 입력하세요.",
     packageRequired: "인벤토리를 만들 패키지를 입력하세요.",
     programsRequired: "비교할 프로그램을 2개에서 5개까지, 한 줄에 하나씩 입력하세요.",
+    objectRequired: "리뷰할 오브젝트를 입력하세요.",
+    closeBodyReview:
+      "리뷰 보고서와 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하세요.",
     closeBodyCompare:
       "비교 보고서와 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하고 편집한 내용도 저장하세요.",
     closeBodyCbo:
@@ -2239,6 +2245,9 @@ const ja: Messages = {
     programRequiredManual: "マニュアルを作るプログラムを入力してください。",
     packageRequired: "棚卸しするパッケージを入力してください。",
     programsRequired: "比較するプログラムを 2〜5 個、1 行に 1 つずつ入力してください。",
+    objectRequired: "レビューするオブジェクトを入力してください。",
+    closeBodyReview:
+      "レビューレポートとファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードしてください。",
     closeBodyCompare:
       "比較レポートとファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードし、編集内容も保存してください。",
     closeBodyCbo:

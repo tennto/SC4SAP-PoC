@@ -63,7 +63,8 @@ import { PROCESS_FILES, processPrompt, type ProcessSurvey } from "@/lib/process-
 import { comparePrompt, DEFAULT_DIMENSIONS, DIMENSIONS, type CompareSurvey } from "@/lib/compare-prompt";
 import { styledProcess, type DiagramPng } from "@/lib/process-theme";
 import { processDrawings, type ProcessImages } from "@/lib/process-diagrams";
-import { codeReviewPrompt } from "@/lib/code-review-prompt";
+import { reviewBase, reviewPrompt, type ReviewSurvey } from "@/lib/code-review-prompt";
+import { reviewHtml, reviewMarkdown, type ReviewData } from "@/lib/review-doc";
 import { findSkill, type SkillField, type SkillTools } from "@/lib/skills";
 import { useLocale } from "@/lib/i18n/client";
 import type { Locale } from "@/lib/i18n/locale";
@@ -501,6 +502,25 @@ function compareOf(values: Record<string, Value>): CompareSurvey {
   };
 }
 
+/** An Analyze Code run from its form. */
+function reviewOf(values: Record<string, Value>, locale: Locale): ReviewSurvey {
+  const pick = (label: string): string => {
+    const value = values[label];
+    return typeof value === "string" ? value.trim() : "";
+  };
+  const format = pick("Output format") || "Markdown + HTML";
+  return {
+    objectType: pick("Object type") || "Program",
+    objectName: pick("Object name").toUpperCase(),
+    ...(pick("Package") ? { pkg: pick("Package").toUpperCase() } : {}),
+    focus: pick("Review focus") || "All",
+    language: (pick("Language") ||
+      (locale === "en" ? "English" : REPORT_LANGUAGE[locale])) as ReviewSurvey["language"],
+    method: pick("Mode") === "Standard" ? "Precise" : "Economy",
+    formats: format === "HTML" ? ["html"] : format === "Markdown" ? ["md"] : ["md", "html"],
+  };
+}
+
 /** `ZMMR00020-v1.0-ko.html` saved from its edit mode: `ZMMR00020-v1.0-ko-edited.html`. */
 const editedName = (name: string): string =>
   /-edited\.html?$/i.test(name) ? name : `${name.replace(/\.html?$/i, "")}-edited.html`;
@@ -674,9 +694,6 @@ export function SkillForm({
   const [values, setValues] = useState<Record<string, Value>>(() =>
     initial(fields),
   );
-  /** An app-built Economy run on a skill with a Mode field. See `Skill.economyMode`. */
-  const economyReview =
-    findSkill(slug)?.economyMode === "code-review" && values["Mode"] !== "Standard";
   /** The backend session this run is attached to, once it has one. */
   const [sessionId, setSessionId] = useState<string | null>(null);
   /** Opening the session and sending — before the stream can say anything. */
@@ -937,15 +954,26 @@ export function SkillForm({
   // replies set off from it, not as a transcript. The first user row is the
   // prompt the form composed, and stays out as before.
   const firstUser = rows.findIndex((row) => row.kind === "user");
+  const asText = (row: (typeof rows)[number]): string =>
+    row.kind === "user" ? `> **You:** ${row.text.trim().replace(/\n/g, "\n> ")}` : row.text;
   const streamed = rows
     .filter(
       (row, index) =>
         row.kind === "agent" || (followUp && row.kind === "user" && index > firstUser),
     )
-    .map((row) =>
-      row.kind === "user" ? `> **You:** ${row.text.trim().replace(/\n/g, "\n> ")}` : row.text,
-    )
+    .map(asText)
     .join(SEPARATOR);
+  // The rounds after the first, for a document shown in place of the first
+  // round's own words (Analyze Code): the follow-ups go under it.
+  const replyAt = rows.findIndex((row, index) => row.kind === "user" && index > firstUser);
+  const later =
+    followUp && replyAt >= 0
+      ? rows
+          .slice(replyAt)
+          .filter((row) => row.kind === "agent" || row.kind === "user")
+          .map(asText)
+          .join(SEPARATOR)
+      : "";
   // The live stream wins the moment it has anything; the stored copy is only
   // for a session the backend no longer has.
   const answer = streamed || restored || "";
@@ -1112,6 +1140,26 @@ export function SkillForm({
         : null,
     [htmlFile, flow, docKind],
   );
+
+  // Analyze Code's report, built here from the run's review-data.json.
+  const review = useMemo(() => {
+    if (docKind !== "review") return null;
+    const data = docs?.find((file) => file.name === "review-data.json");
+    if (!data) return null;
+    try {
+      const parsed = JSON.parse(textOf(data)) as ReviewData;
+      const base = reviewBase({
+        objectName: parsed.object ?? "",
+        language: reviewOf(values, locale).language,
+      });
+      return { base, html: reviewHtml(parsed), md: reviewMarkdown(parsed) };
+    } catch {
+      return null;
+    }
+  }, [docKind, docs, values, locale]);
+  /** The document the result box shows instead of the run's own words, when there is one. */
+  const docText =
+    docKind === "review" ? (review && wanted.includes("md") ? review.md : null) : specText;
 
   // Anything the run said that was not the answer — "Stopped.", a disconnect.
   const notices = rows.filter((row) => row.kind === "notice");
@@ -1388,6 +1436,26 @@ export function SkillForm({
         void run(null, null, null, null, null, survey);
         return;
       }
+      // The code review: Economy is its own spending decision, as on
+      // Program → Spec; Standard asks for the reviewer's model first.
+      if (docKind === "review") {
+        const survey = reviewOf(values, locale);
+        if (survey.objectName === "") {
+          setError(t.objectRequired);
+          return;
+        }
+        setError(null);
+        if (survey.method === "Economy") {
+          void run(null, null, null, null, null, null, null, survey);
+          return;
+        }
+        if (cost && !spend) {
+          setAskingCost(true);
+          return;
+        }
+        void run(null, spend, null, null, null, null, null, survey);
+        return;
+      }
       // And the comparison: the programs, the dimensions and the formats.
       if (docKind === "compare") {
         const survey = compareOf(values);
@@ -1416,12 +1484,6 @@ export function SkillForm({
       else setAskingSurvey(true);
       return;
     }
-    // An app-built Economy run is its own spending decision, as on
-    // Program → Spec: no dialog.
-    if (economyReview) {
-      void run(context, null);
-      return;
-    }
     if (cost && !spend) {
       pendingContext.current = context;
       setAskingCost(true);
@@ -1443,6 +1505,8 @@ export function SkillForm({
     proc: ProcessSurvey | null = null,
     /** A Compare Programs run — see `compare-prompt.ts`. */
     cmp: CompareSurvey | null = null,
+    /** An Analyze Code run — see `code-review-prompt.ts`. */
+    rev: ReviewSurvey | null = null,
   ): Promise<void> {
     if (running || blocked) return;
     setStarting(true);
@@ -1451,6 +1515,28 @@ export function SkillForm({
     heldDocs.delete(slug);
     keepers.get(slug)?.stop();
     try {
+      if (rev) {
+        // Economy: one agent on Sonnet, the reviewer's rule files in front of
+        // its prompt (`reviewRules`), no sub-agents and no skill to load.
+        // Standard: the plugin's skill, on what the cost dialog chose.
+        setWanted(rev.formats);
+        const effort = findSkill(slug)?.effort;
+        const session = await api.createSession(undefined, undefined, {
+          ...(rev.method === "Economy"
+            ? { model: "claude-sonnet-5", reviewRules: true, maxBudgetUsd: 1.5 }
+            : (how ?? {})),
+          profile: tools,
+          kind: "task",
+          ...(effort ? { effort } : {}),
+        });
+        setSessionId(session.id);
+        await api.sendMessage(session.id, reviewPrompt(rev, `.sc4sap/out/${session.id}`));
+        keepDocuments(slug, session.id);
+        requestAnimationFrame(() =>
+          result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
+        );
+        return;
+      }
       if (cmp) {
         // Both modes on Sonnet with sub-agents kept off Opus, as the other
         // document skills. Ceilings about three times what ZMMR00020 vs
@@ -1567,37 +1653,6 @@ export function SkillForm({
       // prompt forbids filesystem search, and a logged run spent four minutes
       // doing it anyway because `Bash` was in reach. See `Skill.tools`.
       const effort = findSkill(slug)?.effort;
-      if (economyReview) {
-        // One agent on Sonnet, the reviewer's rule files in front of its
-        // prompt (`reviewRules`), no sub-agents and no skill to load.
-        const session = await api.createSession(undefined, undefined, {
-          model: "claude-sonnet-5",
-          profile: tools,
-          kind: "task",
-          reviewRules: true,
-          ...(effort ? { effort } : {}),
-        });
-        setSessionId(session.id);
-        const text = (label: string): string => {
-          const value = values[label];
-          return typeof value === "string" ? value.trim() : "";
-        };
-        await api.sendMessage(
-          session.id,
-          codeReviewPrompt({
-            objectType: text("Object type") || "Program",
-            objectName: text("Object name").toUpperCase(),
-            pkg: text("Package").toUpperCase() || undefined,
-            focus: text("Review focus") || "All",
-            language:
-              text("Language") || (locale === "en" ? "English" : REPORT_LANGUAGE[locale]),
-          }),
-        );
-        requestAnimationFrame(() =>
-          result.current?.scrollIntoView({ block: "start", behavior: "smooth" }),
-        );
-        return;
-      }
       const session = await api.createSession(undefined, undefined, {
         ...(how ?? {}),
         profile: tools,
@@ -1609,7 +1664,7 @@ export function SkillForm({
         session.id,
         composePrompt(
           command,
-          findSkill(slug)?.economyMode ? fields.filter((field) => field.label !== "Mode") : fields,
+          fields,
           values,
           context,
           locale,
@@ -2010,7 +2065,7 @@ export function SkillForm({
                   contain it. */}
               <div className="skill-doc-bar">
                 <span className="skill-doc-kind">
-                  {documents && !specText ? (
+                  {documents && !docText ? (
                     <>
                       <Icon name="note" /> {t.runSummary}
                     </>
@@ -2045,13 +2100,15 @@ export function SkillForm({
                 {/* A documents run saves the spec it wrote, not its closing
                     summary — and only when it wrote one. With Excel chosen
                     there is no Markdown file, and so no button. */}
-                {(!documents || mdFile) && (
+                {(!documents || mdFile || (review && docText)) && (
                   <button
                     className="ghost skill-doc-save"
                     onClick={() =>
-                      mdFile && specText
-                        ? download(mdFile.name, specText)
-                        : download(filenameFor(title), answer)
+                      review && docText
+                        ? download(`${review.base}.md`, review.md)
+                        : mdFile && specText
+                          ? download(mdFile.name, specText)
+                          : download(filenameFor(title), answer)
                     }
                     disabled={running}
                     // The full answer, not the paced one — what is saved is the
@@ -2064,7 +2121,9 @@ export function SkillForm({
               </div>
 
               <div className="skill-doc">
-                <Markdown>{specText ?? paced}</Markdown>
+                <Markdown>
+                  {docText ? (later ? `${docText}${SEPARATOR}---${SEPARATOR}${later}` : docText) : paced}
+                </Markdown>
                 {/* The turn is still going — a tool is running, or more of the
                     report is on its way. Under the document rather than inside
                     it, because it is not part of what was written. */}
@@ -2116,6 +2175,16 @@ export function SkillForm({
                         ...(docKind === "spec" ? { onFlow: flowEdits.onFlow } : {}),
                       }
                     : {})}
+                />
+              )}
+
+              {review && wanted.includes("html") && (
+                <HtmlPreview
+                  name={`${review.base}.html`}
+                  html={review.html}
+                  onDownload={() =>
+                    download(`${review.base}.html`, review.html, "text/html;charset=utf-8")
+                  }
                 />
               )}
 
@@ -2319,6 +2388,10 @@ export function SkillForm({
             };
             setSpend(chosen);
             setAskingCost(false);
+            if (docKind === "review") {
+              void run(null, chosen, null, null, null, null, null, reviewOf(values, locale));
+              return;
+            }
             void run(pendingContext.current, chosen);
             pendingContext.current = null;
           }}
@@ -2409,6 +2482,8 @@ export function SkillForm({
                 ? t.closeBodyProcess
               : docKind === "compare"
                 ? t.closeBodyCompare
+              : docKind === "review"
+                ? t.closeBodyReview
               : documents
                 ? t.closeBodyDocuments
                 : t.closeBody

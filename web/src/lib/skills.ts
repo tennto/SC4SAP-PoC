@@ -132,14 +132,6 @@ export type Skill = {
     subagentPicker?: boolean;
   };
   /**
-   * The form has a Mode field, Economy or Standard, and Economy is built by
-   * this app rather than being the plugin's skill. `code-review`: one agent
-   * reads the source and applies the reviewer's rule files, which the
-   * backend puts in front of its prompt — see `code-review-prompt.ts`.
-   * Economy runs without the cost dialog; Standard is the plugin's skill.
-   */
-  economyMode?: "code-review";
-  /**
    * The skill answers in rounds and asks back.
    *
    * Its report ends with questions, and the reply goes to the same session
@@ -166,8 +158,13 @@ export type Skill = {
    * `process-diagrams.ts`, and the BPML workbook).
    * `compare` is Compare Programs (`compare-prompt.ts`: the report as
    * Markdown and as HTML in the spec's look).
+   * `review` is Analyze Code (`code-review-prompt.ts`: the run leaves
+   * review-data.json, and the page builds the HTML — each code change before
+   * and after, side by side — and the Markdown from it, `review-doc.ts`).
+   * Unlike the others it keeps the cost dialog for Standard and the
+   * follow-up composer.
    */
-  documents?: "spec" | "manual" | "cbo" | "process" | "compare";
+  documents?: "spec" | "manual" | "cbo" | "process" | "compare" | "review";
 };
 
 export type SkillGroup = {
@@ -242,13 +239,14 @@ export const SKILLS: Skill[] = [
   {
     slug: "analyze-code",
     command: "/sc4sap:analyze-code",
-    // `analyse`, not `build`: a review changes nothing. Measured on
-    // 2026-09-27 against ZMMR00020 under `build`, the reviewer could not
-    // resolve its rule files, ran `find` across the home directory for 22
-    // seconds, then read twelve of them with `Bash cat` from a different copy
-    // of the plugin than the one this app ships — `Read` had been refused
-    // outside the workspace, and the shell simply went around it.
-    tools: "analyse",
+    // `build` since 2026-10-13: the review is written to the run's folder and
+    // checked against the source by `scripts/review/build.mjs`, which needs
+    // the shell. It was `analyse` because on 2026-09-27, under `build`, the
+    // reviewer could not resolve its rule files and ran `find` across the
+    // home directory for 22 seconds; the rule files are now handed to both
+    // modes (`reviewRules`, `withPluginRoot`) and the prompts forbid disk
+    // search, as on the other document skills.
+    tools: "build",
     // Measured on 2026-09-27: of the reviewer's 14.5k output tokens about
     // 11k were thinking, and that thinking was most of both the $0.90 it
     // cost and the three minutes it took.
@@ -274,16 +272,27 @@ export const SKILLS: Skill[] = [
         options: ["Economy", "Standard"],
         optionHints: {
           Economy:
-            "One agent reads the source and applies the reviewer's rule files. Estimated cost: about $0.18–0.25. Estimated time: 1–2 min.",
+            "One agent reads the source and applies the reviewer's rule files. Estimated cost: about $0.45–0.65. Estimated time: 2–4 min.",
           Standard:
-            "The plugin's skill with its code reviewer agent. Estimated cost: about $0.35–0.70. Estimated time: about 2 min. Asks for the reviewer's model first.",
+            "The plugin's skill with its code reviewer agent. Estimated cost: about $0.80–1.20. Estimated time: 6–8 min. Asks for the reviewer's model first.",
+        },
+      },
+      {
+        label: "Output format",
+        kind: "select",
+        options: ["Markdown + HTML", "HTML", "Markdown"],
+        optionHints: {
+          "Markdown + HTML":
+            "The report here and an HTML preview under it with each code change before and after, side by side; saved as either.",
+          HTML: "The HTML report previewed here — each code change before and after, side by side — saved as .html.",
+          Markdown: "The report shown here, each code change as a diff, saved as .md.",
         },
       },
       // Asked, not guessed from the screen: a Korean reader on an English
       // screen got an English review, and the other way round.
       { label: "Language", kind: "select", options: ["Korean", "English", "Japanese"] },
     ],
-    economyMode: "code-review",
+    documents: "review",
     cost: {
       note: "The review is dispatched to the plugin's code reviewer, which reads the source and the rule files and writes the findings; the main run, on Sonnet, only formats them. The choice here is the reviewer's model: Haiku for the cheapest pass, Sonnet by default, or Opus for the reviewer the plugin asks for. There is no spending ceiling.",
       defaultBudgetUsd: 0,
