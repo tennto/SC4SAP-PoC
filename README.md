@@ -3,9 +3,9 @@
 
 | Component | Version |
 |---|---|
-| Web release | 0.5.5 |
-| sc4sap plugin | 0.6.34 |
-| abap-mcp-adt (MCP server) | 4.8.8 |
+| Web release | 0.5.10 |
+| sc4sap plugin | 0.6.41 |
+| abap-mcp-adt (MCP server) | 4.8.12 |
 
 ### under active development, not yet at a state we share externally, progress details not published; more information in November 2026
 
