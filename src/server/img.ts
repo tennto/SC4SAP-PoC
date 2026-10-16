@@ -488,10 +488,15 @@ WHERE VCLNAME IN ${l}`))
           await this.countInto(batch, counts);
         } catch {
           // One table the database will not count fails the whole UNION;
-          // count that batch one by one so only the bad table is lost.
+          // count that batch one by one so only the bad table is lost. The
+          // single count is a bare COUNT(*): the MCP blocklist exempts only
+          // aggregate-only projections, and the 'TAB' literal of the batch
+          // form gets tables such as PACT or PAMS_* (caught by the HR
+          // pattern PA*) refused as row extraction.
           for (const t of batch) {
             try {
-              await this.countInto([t], counts);
+              const [row] = await this.sap.sql(`SELECT COUNT(*) AS CNT FROM ${t}`, 1);
+              counts[t] = Number(row?.CNT ?? 0);
             } catch {
               counts[t] = null;
             }
