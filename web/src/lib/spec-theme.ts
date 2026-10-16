@@ -136,6 +136,10 @@ th[aria-sort=descending]::after{content:"↓";opacity:.9}
    after its slashes and commas). */
 td{overflow-wrap:break-word}
 .tbl-tools input,.tbl-tools button{border-radius:8px}
+.tbl-tools button.icon-copy{display:inline-grid;place-items:center;width:30px;height:30px;padding:0}
+.tbl-tools button.icon-copy svg{width:15px;height:15px;fill:currentColor}
+.tbl-tools button.icon-copy.is-done{color:var(--tip)}
+.tbl-tools button.icon-copy.is-failed{color:var(--msg-e,#b42318)}
 a.xref{text-decoration:none}
 a.xref:hover{text-decoration:underline;text-decoration-color:var(--line-strong)}
 
@@ -236,6 +240,16 @@ const SCRIPT = `<script id="sc4sap-spec-theme-script">
   // the page ends first — so a link to one of them was followed and not
   // marked. Here, after the plugin's pass: a heading just jumped to stays
   // current while it is on screen, and at the bottom the last one visible is.
+  // The plugin folds the contents when the page loads under 1100px, and
+  // from 1100px on its summary takes no clicks — so a page that loaded
+  // narrow and then widened kept an empty contents column. The preview's
+  // frame does exactly that: it starts 1px wide. Wide again, it opens.
+  var tocBox = document.querySelector('nav.toc > details');
+  var wide = matchMedia('(min-width: 1100px)');
+  var openWide = function () { if (tocBox && wide.matches) tocBox.open = true; };
+  openWide();
+  if (wide.addEventListener) wide.addEventListener('change', openWide);
+
   var tocLinks = Array.prototype.slice.call(document.querySelectorAll('nav.toc a[href^="#"]'));
   var targetOf = function (a) {
     var raw = a.getAttribute('href').slice(1);
@@ -285,6 +299,30 @@ const SCRIPT = `<script id="sc4sap-spec-theme-script">
       });
     });
   }
+
+  // A table's "Copy TSV" as an icon button. The plugin's copy writes its
+  // result into the button as text ("Copied", "Copy failed") and puts the
+  // label back after a moment; each of those is turned into an icon here.
+  var ICON = {
+    copy: '<svg viewBox="0 0 256 256" aria-hidden="true"><path d="M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z"/></svg>',
+    done: '<svg viewBox="0 0 256 256" aria-hidden="true"><path d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/></svg>'
+  };
+  if (labels.copyTsv) Array.prototype.forEach.call(document.querySelectorAll('.tbl-tools > button'), function (b) {
+    if (b.textContent !== labels.copyTsv) return;
+    var show = function () {
+      if (b.querySelector('svg')) return;
+      var text = b.textContent;
+      var ok = text === labels.copyTsv || text === labels.copied;
+      b.classList.toggle('is-done', text === labels.copied);
+      b.classList.toggle('is-failed', !ok);
+      b.innerHTML = text === labels.copyTsv || !ok ? ICON.copy : ICON.done;
+      b.title = text === labels.copyTsv ? labels.copyTsv : text;
+      b.setAttribute('aria-label', b.title);
+    };
+    b.classList.add('icon-copy');
+    show();
+    new MutationObserver(show).observe(b, { childList: true, characterData: true, subtree: true });
+  });
 
   // Toolbar: one fold toggle, and the contents button marked so it can go
   // where the contents are on screen.

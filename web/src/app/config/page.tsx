@@ -1,25 +1,23 @@
 /**
- * Configuration Setting — the SAP PM SPRO configuration list, browsed in
- * place.
+ * Display IMG — the connected system's SPRO tree, read live.
  *
- * A layout pass. The page is `web/config.html` brought into the app's frame:
- * this file is the guard and the heading, `ConfigBrowser` is the three-pane
- * client island under it, and the rows it draws are a sample from
- * `lib/config-catalog.ts`. Nothing here talks to the backend yet.
+ * This file is the guard and the heading; `ImgBrowser` is the client island
+ * under it and does all the reading, through the backend's `/img/*` routes.
+ * The route stays `/config` so links and favourites made to the old
+ * Configuration Setting page keep working.
  */
 import type { Metadata } from "next";
 import { requireAccount } from "@/lib/auth/session";
 import { readMessages } from "@/lib/i18n/server";
 import { Icon } from "@/components/Icon";
-import { ConfigBrowser } from "@/components/ConfigBrowser";
-import { CONFIG_TOTAL } from "@/lib/config-catalog";
+import { ImgBrowser } from "@/components/ImgBrowser";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await readMessages();
   return { title: `${t.configuration.title} · SC4SAP` };
 }
 
-export default async function ConfigurationPage() {
+export default async function DisplayImgPage() {
   await requireAccount();
   const { t: messages } = await readMessages();
   const t = messages.configuration;
@@ -34,18 +32,16 @@ export default async function ConfigurationPage() {
                 tile pinned to the first of three lines sat off the title's
                 axis. */}
             <h1 className="skill-title">
-              <Icon name="sliders-horizontal" className="skill-title-icon" />
+              <Icon name="tree-structure" className="skill-title-icon" />
               {t.title}
             </h1>
             <p className="page-lede">{t.lede}</p>
           </div>
         </div>
-
-        <span className="badge closed">{t.layoutOnly(CONFIG_TOTAL)}</span>
       </header>
 
       <div className="cfg-frame rise" style={{ "--delay": "110ms" } as React.CSSProperties}>
-        <ConfigBrowser />
+        <ImgBrowser />
       </div>
     </div>
   );

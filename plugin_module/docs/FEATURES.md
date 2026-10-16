@@ -50,7 +50,10 @@
 | `sc4sap:create-program` | Full ABAP program pipeline — Main+Include, OOP/Procedural, ALV, Dynpro, Text Elements, ABAP Unit |
 | `sc4sap:program-to-spec` | Reverse-engineer an ABAP program into a Functional/Technical Spec (Markdown / Excel) |
 | `sc4sap:program-to-manual` | End-user manual for one program (single HTML) — scenario steps on drawn screens with numbered callouts, check points, messages & actions |
-| `sc4sap:compare-programs` | Side-by-side business comparison of 2–5 ABAP programs that split the same scenario by module / country / persona — consultant-facing Markdown report |
+| `sc4sap:compare-programs` | Side-by-side business comparison of 2–5 ABAP programs that split the same scenario by module / country / persona — consultant-facing editable HTML report (verdict matrix, field differences, screens side by side, decision guide; versioned, English companion) |
+| `sc4sap:config-to-document` | One module's configuration documented from the live system (MM first) — single HTML along the IMG tree: real table values on SM30-style screens, customer-changed rows with transports, configuration checks, SAP IMG documentation, consultant notes reviewed by `sap-critic`, in-page edit mode for notes, values and change history (`--import` carries edits into the next version) |
+| `sc4sap:interface-mapping-spec` | Interface mapping specification — one editable HTML page in the template layout (cover, revision history, Source → Target grid with R / MAPPING, response block, conversion rules, extraction SQL, field guide); SAP side from DDIC / RFC signature or a field list / consultant proposal for new interfaces; proposed counterpart side and conversion rules; in-page checks; versioned, English companion |
+| `sc4sap:smartform-preview` | Expected print of a SmartForm as JPG + HTML — windows in mm, SmartStyle fonts, template grids, SE78 graphics, loops with sample rows; invented sample values sized to the DDIC types; cut-off cells and windows reported (read-only) |
 | `sc4sap:analyze-code` | ABAP code analysis (Clean ABAP / performance / security) |
 | `sc4sap:analyze-cbo-obj` | Customer Business Object (CBO) inventory scanner with cross-module gap analysis |
 | `sc4sap:analyze-symptom` | Step-by-step SAP operational error/symptom analysis (dumps, logs, SAP Note candidates) |
@@ -113,6 +116,9 @@ Reverse-engineer an ABAP program into a spec (Markdown/Excel) with Socratic scop
 
 ### `/sc4sap:program-to-manual`
 Writes the manual a business user follows: one scenario per task ("send POs", "check missing receipts"), each step on a drawn picture of the screen — selection screen, output ALV, popups and follow-up screens — with numbered callouts, plus check points taken from the source validations, a field reference, messages with the action to take, a glossary and an automatic revision history. One self-contained HTML file: a web document on screen, one step per A4 landscape page when printed. Author, team, company and the confidentiality notice come from the profile `config.json` → `manual`.
+
+### `/sc4sap:smartform-preview`
+Draws the expected print of a SmartForm without running its print program: `GetSmartFormContent` reads the form, its SmartStyles and its SE78 graphics; the windows are drawn at their mm positions with template grids (borders, shading), loops with sample rows and the graphics at their printed size, then saved as JPG by headless Chrome / Edge. Every `&field&` gets an invented sample value sized to its DDIC type (no business data), so the picture shows the real cut-offs — the report lists the cells and windows whose content does not fit.
 
 ### `/sc4sap:sap-doctor`
 Plugin + MCP + SAP connectivity diagnostics. First thing to run when something's off.
@@ -219,8 +225,8 @@ Cross-skill authoring rules live in `common/` so every skill and agent follows t
 | File | Covers |
 |------|--------|
 | `clean-code.md` + `clean-code-oop.md` + `clean-code-procedural.md` | Clean ABAP standards, split by paradigm |
-| `include-structure.md` | Main program + conditional include set (t/s/c/a/o/i/e/f/_tst) |
-| `oop-pattern.md` | Two-class OOP split (`LCL_DATA` + `LCL_ALV` + `LCL_EVENT`) |
+| `include-structure.md` | Main program + conditional include set (t/s/c/ct/e/o/i/a/f) |
+| `oop-pattern.md` | Two-class OOP split (`LCL_DATA` + `LCL_ALV` in `c`, `LCL_EVENT_ALV` in `e`) |
 | `alv-rules.md` | Full ALV (CL_GUI_ALV_GRID + Docking) vs SALV + SALV-factory fieldcatalog |
 | `text-element-rule.md` | Mandatory Text Elements — two-pass language rule (primary + `'E'` safety-net) |
 | `constant-rule.md` | Mandatory CONSTANTS for non-fieldcatalog magic literals |
@@ -233,7 +239,7 @@ Cross-skill authoring rules live in `common/` so every skill and agent follows t
 | `active-modules.md` | Cross-module integration matrix (MM↔PS, SD↔CO, QM↔PP, …) |
 | `context-loading-protocol.md` | 4-tier on-demand file loading (global → role → triggered → per-task) |
 | `model-routing-rule.md` | Sonnet / Opus / Haiku routing + Response Prefix Convention + Phase Banner Convention. See **[`skill-model-architecture.md`](skill-model-architecture.md)** for per-skill / per-phase model allocation (design intent — frontmatter `model:` is declarative). |
-| `ok-code-pattern.md` | Procedural screen OK_CODE 3-step contract (TOP decl → screen NAME → PAI FORM local routing) |
+| `ok-code-pattern.md` | Screen OK_CODE contract (one TOP variable → screen NAME → PAI dispatch; never CASE sy-ucomm) |
 | `field-typing-rule.md` | DDIC field typing priority (Standard DE → CBO DE → new DE → primitive) |
 | `function-module-rule.md` | FM source convention (inline IMPORTING/EXPORTING/TABLES signature) |
 | `transport-client-rule.md` | Every `CreateTransport` requires explicit client from `sap.env` |

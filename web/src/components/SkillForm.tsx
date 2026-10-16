@@ -57,6 +57,7 @@ import { HtmlPreview } from "@/components/HtmlPreview";
 import { base64Utf8, flowSvg, type ImageSpec } from "@/lib/spec-flow";
 import { useSpecFlowEdits } from "@/hooks/useSpecFlowEdits";
 import { styledSpec } from "@/lib/spec-theme";
+import { styledCompare } from "@/lib/compare-theme";
 import { styledManual } from "@/lib/manual-theme";
 import { styledCbo } from "@/lib/cbo-theme";
 import { PROCESS_FILES, processPrompt, type ProcessSurvey } from "@/lib/process-prompt";
@@ -476,6 +477,49 @@ function processOf(values: Record<string, Value>): ProcessSurvey {
     language: (pick("Language") || "Korean") as ProcessSurvey["language"],
     formats: formats.length ? formats : ["html", "xlsx"],
   };
+}
+
+/**
+ * A document's YAML front matter left out of the Markdown on screen: the
+ * renderer has no front-matter support, so it showed as a paragraph of
+ * `key: value` text above the title. The saved file keeps it.
+ */
+function withoutFrontMatter(text: string): string {
+  return text
+    .replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n/, "")
+    // HTML comments \u2014 the converter's directives (`<!-- layout: side-by-side -->`,
+    // `<!-- audience: technical -->`) \u2014 showed as text: raw HTML is off.
+    .replace(/^[ \t]*<!--[\s\S]*?-->[ \t]*\r?\n?/gm, "")
+    // The converter's inline markup, for the same reason: a matrix cell's
+    // evidence (`<span class="ev">`, a hover note on the HTML page) goes, an
+    // annotation (`<span class="tech">`) keeps its words.
+    .replace(/<span class="ev">[\s\S]*?<\/span>/g, "")
+    .replace(/<span class="tech">([\s\S]*?)<\/span>/g, "$1")
+    // A callout's `[!KIND]` marker as its icon.
+    .replace(/^(>\s*)\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*$/gim, (_m, quote: string, kind: string) =>
+      `${quote}${CALLOUT_MARK[kind.toUpperCase()] ?? ""}`,
+    );
+}
+
+/** A GitHub callout's kind as the icon the document pane draws for it (`doc-icons.ts`). */
+const CALLOUT_MARK: Record<string, string> = {
+  NOTE: "\u2139\ufe0f",
+  TIP: "\ud83d\udca1",
+  IMPORTANT: "\ud83d\udccc",
+  WARNING: "\u26a0\ufe0f",
+  CAUTION: "\ud83d\udea8",
+};
+
+/**
+ * Compare Programs' verdict legend ("범례: ✅ Same · 🔷 Variant · …") on screen
+ * with a bold label, the marks split by bars and a little air between each
+ * mark and its word. The emoji stay; the saved file keeps the line as written.
+ */
+function tidyLegend(text: string): string {
+  return text.replace(/^(범례|Legend|凡例)\s*[:：]\s*(.+)$/im, (all, label: string, rest: string) => {
+    const items = rest.split(/\s+·\s+/).map((item) => item.trim().replace(/^(\S+)\s+/, "$1  "));
+    return items.length < 2 ? all : `**${label}** ${items.join(" | ")}`;
+  });
 }
 
 /** A Compare Programs run from its form. */
@@ -1073,15 +1117,20 @@ export function SkillForm({
     docKind === "cbo" ? (docs?.find((file) => file.name === CBO_FILES.json) ?? null) : null;
   // The flow's data and the plugin's own picture of it, when the run left both:
   // the page draws the flow again from the data (`spec-flow.ts`).
+  // A Compare Programs run has an image-spec per program for its screens and
+  // one for its decision tree: the one with a process flow is the flow's.
   const flow = useMemo(() => {
-    const data = docs?.find((file) => file.name.endsWith("image-spec.json"));
     const png = docs?.find((file) => file.mediaType === "image/png" && file.name === "flow.png");
-    if (!data || !png) return null;
-    try {
-      return { spec: JSON.parse(textOf(data)) as ImageSpec, flowPng: png };
-    } catch {
-      return null;
+    if (!png) return null;
+    for (const data of docs?.filter((file) => file.name.endsWith("image-spec.json")) ?? []) {
+      try {
+        const spec = JSON.parse(textOf(data)) as ImageSpec;
+        if (spec.processFlow) return { spec, flowPng: png };
+      } catch {
+        // Not JSON; the next one may be the flow's.
+      }
     }
+    return null;
   }, [docs]);
   // Flows the reader redrew in the HTML spec's edit mode, carried into the
   // Markdown and the Excel file.
@@ -1133,7 +1182,9 @@ export function SkillForm({
       htmlFile
         ? docKind === "cbo"
           ? styledCbo(textOf(htmlFile))
-          : styledSpec(
+          : docKind === "compare"
+            ? styledCompare(textOf(htmlFile), flow ? { spec: flow.spec, flowPngBase64: flow.flowPng.data } : null)
+            : styledSpec(
               textOf(htmlFile),
               flow ? { spec: flow.spec, flowPngBase64: flow.flowPng.data } : null,
             )
@@ -1924,6 +1975,69 @@ export function SkillForm({
                   </div>
                 );
               }
+              case "list": {
+                // One input per entry — a name per box is harder to get wrong
+                // than names in one block of text — kept as lines in the value.
+                const min = field.min ?? 1;
+                const max = field.max ?? 10;
+                const raw = typeof value === "string" ? value.split("\n") : [];
+                const rows = raw.length >= min ? raw : [...raw, ...Array(min - raw.length).fill("")];
+                const put = (next: string[]) => set(field.label, next.join("\n"));
+                return (
+                  <div className="field-list">
+                    {rows.map((entry, i) => (
+                      // An entry past the minimum was added by hand: it opens
+                      // into the row rather than appearing (`field-list-in`).
+                      <div key={i} className={`field-list-row${i >= min ? " is-added" : ""}`}>
+                        <input
+                          type="text"
+                          placeholder={shown.placeholder}
+                          value={entry}
+                          disabled={started}
+                          spellCheck={false}
+                          aria-label={`${shown.label} ${i + 1}`}
+                          onChange={(event) =>
+                            put(rows.map((old, j) => (j === i ? event.target.value.replace(/\s+/g, "") : old)))
+                          }
+                        />
+                        {rows.length > min && !started && (
+                          <button
+                            type="button"
+                            className="field-list-remove"
+                            aria-label={`${t.listRemove} ${i + 1}`}
+                            title={t.listRemove}
+                            onClick={(event) => {
+                              // Closes before it goes (`field-list-out`); straight
+                              // away when motion is reduced and nothing plays.
+                              const remove = () => put(rows.filter((_, j) => j !== i));
+                              const row = event.currentTarget.closest(".field-list-row");
+                              if (!row || matchMedia("(prefers-reduced-motion: reduce)").matches) return remove();
+                              row.classList.add("is-leaving");
+                              row.addEventListener("animationend", remove, { once: true });
+                            }}
+                          >
+                            <Icon name="x" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {rows.length < max && !started && (
+                      <button
+                        type="button"
+                        className="field-list-add"
+                        onClick={() => put([...rows, ""])}
+                        aria-label={`${t.listAdd} (${rows.length}/${max})`}
+                        title={`${t.listAdd} (${rows.length}/${max})`}
+                      >
+                        {/* The edit mode's own plus ("+ 행 추가"), thin strokes. */}
+                        <svg viewBox="0 0 10 10" aria-hidden="true">
+                          <path d="M5 1V9M1 5H9" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                );
+              }
               case "select":
                 return (
                   <Select
@@ -1952,11 +2066,12 @@ export function SkillForm({
           // buttons cannot be inside — clicking the label would open the list
           // rather than focus it. Those get a plain element and an id the
           // control points at instead.
-          const Tag = field.kind === "select" ? "div" : "label";
+          // A list holds several inputs and buttons, which no one label can.
+          const Tag = field.kind === "select" || field.kind === "list" ? "div" : "label";
 
           return (
             <Tag
-              className={`field field-${field.kind}${field.span ? ` span-${field.span}` : ""}`}
+              className={`field field-${field.kind}${field.kind === "list" ? " field-list-field" : ""}${field.span ? ` span-${field.span}` : ""}`}
               key={field.label}
             >
               <span className="field-label" id={id}>
@@ -2121,8 +2236,12 @@ export function SkillForm({
               </div>
 
               <div className="skill-doc">
-                <Markdown>
-                  {docText ? (later ? `${docText}${SEPARATOR}---${SEPARATOR}${later}` : docText) : paced}
+                <Markdown docIcons={!!docText}>
+                  {docText
+                    ? later
+                      ? `${tidyLegend(withoutFrontMatter(docText))}${SEPARATOR}---${SEPARATOR}${later}`
+                      : tidyLegend(withoutFrontMatter(docText))
+                    : paced}
                 </Markdown>
                 {/* The turn is still going — a tool is running, or more of the
                     report is on its way. Under the document rather than inside

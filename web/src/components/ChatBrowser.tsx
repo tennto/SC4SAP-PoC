@@ -197,47 +197,50 @@ export function ChatBrowser({
       </div>
 
       {/* The count, or — while selecting — what is ticked and what can be
-          done with it, on the same line so the list does not jump. */}
+          done with it, on the same line so the list does not jump.
+
+          Both faces stay mounted, stacked in one cell, and the class picks
+          which one shows. Swapping one for the other in the tree left nothing
+          to animate the leaving face with, so entering and leaving select mode
+          was a cut; `inert` keeps the hidden face out of the tab order and away
+          from the pointer while it fades. */}
       <div className={`browser-bar${selecting ? " is-selecting" : ""}`}>
-        {selecting ? (
-          <>
-            <label className="browser-check">
-              <input
-                type="checkbox"
-                checked={allPicked}
-                onChange={() =>
-                  setPicked(allPicked ? new Set() : new Set(pickable.map((item) => item.id)))
-                }
-              />
-              <span>{picked.size > 0 ? t.selectedCount(picked.size) : t.selectAll}</span>
-            </label>
-            <div className="browser-bar-actions">
-              <button type="button" className="ghost" onClick={stopSelecting}>
-                {t.cancel}
-              </button>
-              <button
-                type="button"
-                className="browser-delete"
-                disabled={picked.size === 0}
-                onClick={() => {
-                  onDeleteMany(shown.filter((item) => picked.has(item.id)));
-                  stopSelecting();
-                }}
-              >
-                <Icon name="trash" /> {t.deleteSelected}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="browser-count">{t.count(shown.length)}</p>
-            {pickable.length > 0 && (
-              <button type="button" className="browser-select" onClick={() => setSelecting(true)}>
-                {t.select}
-              </button>
-            )}
-          </>
-        )}
+        <div className="browser-bar-face is-count" inert={selecting}>
+          <p className="browser-count">{t.count(shown.length)}</p>
+          {pickable.length > 0 && (
+            <button type="button" className="browser-select" onClick={() => setSelecting(true)}>
+              {t.select}
+            </button>
+          )}
+        </div>
+        <div className="browser-bar-face is-picking" inert={!selecting}>
+          <label className="browser-check">
+            <input
+              type="checkbox"
+              checked={allPicked}
+              onChange={() =>
+                setPicked(allPicked ? new Set() : new Set(pickable.map((item) => item.id)))
+              }
+            />
+            <span>{picked.size > 0 ? t.selectedCount(picked.size) : t.selectAll}</span>
+          </label>
+          <div className="browser-bar-actions">
+            <button type="button" className="ghost" onClick={stopSelecting}>
+              {t.cancel}
+            </button>
+            <button
+              type="button"
+              className="browser-delete"
+              disabled={picked.size === 0}
+              onClick={() => {
+                onDeleteMany(shown.filter((item) => picked.has(item.id)));
+                stopSelecting();
+              }}
+            >
+              <Icon name="trash" /> {t.deleteSelected}
+            </button>
+          </div>
+        </div>
       </div>
 
       {shown.length === 0 && (
@@ -275,22 +278,25 @@ export function ChatBrowser({
                 }}
               >
                 {/* A tick box in place of the kind icon while selecting, and on
-                    hover otherwise — pressing it starts a selection. */}
-                <span
-                  className={`browser-tick${ticked ? " is-on" : ""}${item.stored ? "" : " is-off"}`}
-                  role="checkbox"
-                  aria-checked={ticked}
-                  aria-label={item.title ?? t.newConversation}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (!item.stored) return;
-                    if (!selecting) setSelecting(true);
-                    toggle(item.id);
-                  }}
-                >
-                  {ticked && <Icon name="check" />}
+                    hover otherwise — pressing it starts a selection. The two
+                    share one slot so either can fade over the other. */}
+                <span className="browser-slot">
+                  <Icon name={kindIcon(item.kind)} className="row-kind" />
+                  <span
+                    className={`browser-tick${ticked ? " is-on" : ""}${item.stored ? "" : " is-off"}`}
+                    role="checkbox"
+                    aria-checked={ticked}
+                    aria-label={item.title ?? t.newConversation}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (!item.stored) return;
+                      if (!selecting) setSelecting(true);
+                      toggle(item.id);
+                    }}
+                  >
+                    {ticked && <Icon name="check" />}
+                  </span>
                 </span>
-                <Icon name={kindIcon(item.kind)} className="row-kind" />
                 <div className="browser-row-text">
                   <RowTitle
                     item={item}

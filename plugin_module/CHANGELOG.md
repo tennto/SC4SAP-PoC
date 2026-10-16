@@ -3,6 +3,137 @@
 All notable changes to **SuperClaude for SAP (sc4sap)** will be documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.6.41] — 2026-10-16
+
+### Added — `smartform-preview`
+
+- New skill `/sc4sap:smartform-preview`: the expected print of a SmartForm as a JPG plus the HTML it is drawn from, without a print program or test data. Windows at their mm positions, SmartStyle paragraph and character formats, template grids with borders and shading, loops and tables with sample rows, SE78 graphics (logos, signatures) at their printed size, `Page 1 of 1`.
+- Every `&field&` gets an invented sample value: `scripts/smartform/build-preview.mjs symbols` lists where each symbol prints (window, font size, cell width, inside a loop) with the type it is declared with; the skill reads the field types from the DDIC and writes `values.json` with values that fit them (one value per sample row inside loops). Business data is never read.
+- `build` writes the HTML, saves the JPG with headless Chrome / Edge / Chromium and reports cut-off cells and overflowing windows — drawn cut off, as SAP prints them — plus everything it could only approximate (field conditions, alternatives, address nodes, dynamic graphic keys).
+- ABAP: FM `ZMCP_SSF_CONTENT` and dispatcher action `SSF_CONTENT` (`abap/zmcp_ssf_content.abap`, `abap/zmcp_adt_dispatch_ssf_content_branch.abap`, install steps in `abap/README.md`). Read-only; needs MCP server with `GetSmartFormContent`.
+
+## [0.6.40] — 2026-10-16
+
+### Added — `config-to-document`
+
+- What the customer BAdI implementations do: the extraction reads every implementing class (and the Z includes it branches into, two levels deep) and splits it per method — code or empty, size, the function modules, tables read and changed, classes and includes it calls. The module consultant writes a summary and one line per method with code, `sap-critic` checks them against the source, one revision (`scripts/config/badi-notes.mjs`, prompt § 6). The BAdI card shows them under each implementation with the method table and the source (folded).
+- IMG activities that only open SE18 / SE19 name their BAdIs in the documentation, not in `CUS_ACTEXT`: those names count when the system knows them as a BAdI, so implementations such as invoice-verification BAdIs appear on their activity.
+- Value lists per column: the ⓘ popup and the column meanings list the values a column can take with SAP's text — the domain's fixed values, else the keys of its check table with the text of its language-keyed text table (TVFK → TVFKT), never a user-name column; up to 300 values.
+- What each fixed value of a column does: `scripts/config/values.mjs` batches the domains behind the shown columns (fixed values with the document-language and English SAP text, F1, rows using each value), the module consultant writes one line per value (`DOMAIN:VALUE = meaning`), `sap-critic` corrects, and the reviewed meanings go to a knowledge base shared by every module and system (`~/.sc4sap/kb/values/<lang>.json`). The value list in the ⓘ popup shows them in a "Meaning" column; a document-language SAP text that is a mistranslation, a literal rendering or untranslated is called out there. The snapshot keeps the English domain texts for this (`domainsEn`).
+
+### Fixed — `config-to-document`
+
+- Customer rows were under-counted on busy tables: the customer transport keys (E071K) of a table were read once, up to 5000 rows, so on per-plant tables (storage locations, order type parameters …) rows changed by later requests were not marked as customer rows. The keys are now read in pages by request number.
+- The extraction's read cache (`_cache.json`) is written one entry per line: with the transport keys read in full it grew past the longest string `JSON.stringify` can build, and the run ended without writing the snapshot. A cache from an earlier version is still read.
+- Tables still cut after the full read are read completely in more cases: a text table read in two languages is split per language first (movement type texts stopped half-way through the Y range), and a table whose first key has no fixed values or a check table larger than 1000 rows (routes, route stages, message texts) is read in pages in key order instead of staying at 5000 rows.
+
+- Tables with more rows than `--max-rows` are no longer cut at 1000 rows: on a system with many plants the per-plant tables (order type parameters, BOM application, move times …) lost most plants. Such a table is now read again up to the 5000-row read cap and split by its key fields when it reaches it; text tables keyed by language are read in the document language and English only, which keeps the snapshot small. `--no-full` keeps the old limit.
+- `notes-lint.mjs` no longer flags "N rows, customer changes M" sentences ("28행이며 고객 변경 행은 5건") as a wrong customer count: a customer word after a clause connector belongs to the next count.
+- `notes-lint.mjs` also reads a zero customer count ("105건, customer row 0건", "1건, customerRows 0") and "고객 … 없음" as "no customer rows" instead of a wrong customer count.
+- `sap-critic` can read includes (`GetInclude`): reviewing a BAdI implementation or a user exit, it had to take the writer's word for code that branches into a Z include.
+- The consultant notes' input carried only the first 1000 characters of the SAP IMG documentation, which cut 40 % of the activities (a whole standard procedure could be missing); it now carries up to 6000 characters (99 % of the documents complete).
+- Enhancement-based BAdI implementations show their creator, date and implementing class: the enhancement header keeps them in a serialized field, so they are read from the transport that first recorded the enhancement (E071/E070) and the class from that request.
+- The IMG link in the overview's BAdI table opens the activity instead of jumping back to the overview; the BAdI card's filter column has its own label (it showed the table search label) and dates read YYYY-MM-DD.
+
+## [0.6.39] — 2026-10-16
+
+### Added — `config-to-document`: column meanings
+
+- Every value-table column gets its business meaning: an ⓘ on the column header (tap on a phone) and a folded "column meanings" list above the table, with the SAP F1 text of the data element next to it.
+- The extractor reads the F1 documentation of every column's data element (`fieldDocs`); `--field-docs` adds it to an existing snapshot without reading the configuration again.
+- New `scripts/config/fields.mjs`: batches of 100 data elements (label, domain values, F1 text, where used, samples), written by the module consultant and corrected by `sap-critic` (prompt § 5, no web research), then kept in `~/.sc4sap/kb/fields/<lang>.json` — shared by every module, so a later module writes only the data elements it does not share.
+- `--full-tables "<T1>,<T2>"` reads the named tables up to the read cap instead of `--max-rows`; a capped table is split by its next key fields, and `config-checks.json` `reads` without a condition are read like activity tables (DDIC fields, customer transports).
+- BAdI customer implementations: an IMG activity that is a BAdI (`CUS_ACTEXT`) shows a card with the customer implementations of this system — classic (`SXC_EXIT` / `SXC_ATTR` / `SXC_CLASS`) and enhancement-based (`BADIIMPL_ENH`) — and an active implementation marks the activity customized; the overview lists every BAdI with customer implementations. `--badi` adds them to an existing snapshot.
+- Case flows and screen drawings open in a lightbox with zoom (−, +, fit, close).
+- SD: `configs/SD/config-checks.json` reads the SD condition tables the checks need; corrected SD pricing transactions (V/06, V/07, V/08, OVKK).
+
+### Fixed — `config-to-document`
+
+- View selection conditions on the same field are OR-ed and NUMC values compared as numbers, so views such as output-function or billing-plan variants no longer show 0 rows.
+- On a phone the top bar stays on one line (title shortened, system line hidden).
+- A browser that cannot unpack the page shows why instead of a blank page.
+- `extract-customizations.mjs` read no BAdIs at all: the catalog heading "BAdIs" was not recognised as the BAdI section. A tool reply flagged `isError` now counts as a failure (listed under `unavailable`), `GetEnhancementSpot` gets its correct argument name, and enhancement-based implementations are read once from `BADIIMPL_ENH` and merged.
+- `ZMCP_ADT_DISPATCH` (ECC) `TABLE_READ` allows the BAdI repository tables `SXS_ATTR`, `SXC_EXIT`, `SXC_ATTR`, `SXC_CLASS`, `ENHHEADER` — update the function module from `abap/zmcp_adt_dispatch_ecc.abap` to see classic BAdI implementations; until then they show as not readable.
+- An unknown option to `extract-config.mjs` stops the run instead of being ignored.
+- SAP documentation drops `<GL:…>` / `<LS:…>` link tags.
+
+## [0.6.38] — 2026-10-15
+
+### Added — `interface-mapping-spec`: interface mapping specifications
+
+- New skill `/sc4sap:interface-mapping-spec`: one editable HTML page per interface in the classic mapping-specification layout — cover, revision history, header, systems, Source → Target field grid with conversion-rule (R) and MAPPING columns, an optional response block for synchronous interfaces, conversion rules, extraction condition, remarks and the field guide (ⓘ tooltips). Output: `interfaces/<IF_ID>/<IF_ID>-v<n>-<lang>.html` under the profile artifact base, with an English companion.
+- Built for new interfaces: four scenario presets (master data outbound, transaction outbound, inbound into SAP, query) fill the header and the response block; the SAP side comes from a `TABLE-FIELD` / data-element list, from the module consultant's proposal (checked against DDIC), from an Excel paste or an empty grid — or is read from an existing table, DB view, structure (proxy) or function module signature (TABLES parameters named as outputs go to the response block).
+- Fields are grouped by the unit they travel in: ▸ group rows per side with name, PARAMETER / STRUCTURE / TABLE and occurrence; a row's Table column holds only the source DDIC table, and the systems' Structure / occurrence is the summary of the groups. Source and target sides have their own colours.
+- Proposals: the counterpart side (same names, DB types, MAPPING 1:1), DDIC types shown as DB types (the DDIC type in the tooltip), conversion rules from the field types (dates, times, leading zeros / ALPHA, currency amounts, quantities and units), IF ID numbering from a project pattern. Proposals are marked until edited or confirmed.
+- In-page checks: empty required items, MAPPING to a missing row, unknown rule ids, size truncation, type-family and key mismatches, unmapped target fields.
+- Edit mode with nothing installed: code lists as drop-downs, rows and groups added / moved / deleted with MAPPING following the renumbering, Excel paste, undo, browser autosave; Save adds the revision row (author, change, approver) and raises the version. `import` takes the page back and fills hand-typed SAP fields from DDIC; `refresh` reads SAP again, keeps what the user wrote and marks added / changed / removed fields; `fields` hands the SAP-side field list to `/sc4sap:create-object`.
+- Cover, document-number pattern, ID pattern and code lists per project in `interfaces/project.json`.
+
+## [0.6.37] — 2026-10-15
+
+### Added — `config-to-document`: edit mode covers the views
+
+- Edit mode now also edits each view card: its title, the value-table cells (rows added or deleted) and the change-history rows (added, edited, deleted). Edited views get the "Edited · author · date" badge, so readers see where the page differs from the system.
+- A drawn SM30 screen (overview or detail) can be replaced by a real screenshot in edit mode — button, or click the drawing and Ctrl+V — and switched back to the drawing; captures wider than 1800 px are scaled down, only `data:image/…` sources are drawn.
+- Editable table cells stay table cells (the value table, comparison and criteria tables no longer collapse into one column in edit mode).
+- `--import` carries view edits into `notes/edits.json` (`views`, newer edit wins, null removes); the next build replaces the view's values, title and history, redraws its SM30 screen from the edited rows and recounts the activity's rows.
+
+## [0.6.36] — 2026-10-15
+
+### Added — `config-to-document`: module configuration from the live system
+
+- New skill `/sc4sap:config-to-document` (MM first): one HTML file along the module's IMG tree — per IMG activity the real table values drawn on an SM30-style screen, rows changed by customer transports with their transport history, configuration checks (`configs/<MODULE>/config-checks.json`), SAP's IMG documentation, and consultant notes written by the module consultant agent and reviewed by `sap-critic`. Output: `config-docs/<MODULE>/<MODULE>-config-v<n>-<lang>.html` under the profile artifact base.
+- Reference panel per IMG activity, written by the consultant agent and reviewed by `sap-critic`: SAP documentation summarised in the document language, 2–3 setup cases with flow diagrams and which one the system follows, comparison table, decision checklist, decision criteria, and sources limited to official SAP documentation (SAP Help Portal, SAP Notes / KBAs, SAP Learning — anything else is refused on save).
+- The notes scope (customized / all with values / all / none) is asked on every run with its batch count and measured cost; reviewed activities are not rewritten.
+- Names SAP has no text for in the document language (IMG folders, activity titles, field labels) are translated once by the consultant agent, reviewed, and reused by later runs.
+- Number range activities show their intervals (NRIV) on an SNUM-style screen; view variants (`VV_*`) resolve to their base table and selection condition.
+- Edit mode in the page: the consultant notes and the reference panel become editable plain text (list items added or deleted, notes added to an activity without them, sources deleted) while the value tables stay read-only; undo, browser autosave with "continue editing", an "Edited" badge per note. "Save" downloads the page with the edits embedded; `build-config-doc.mjs --import <file>` merges them into `notes/edits.json` so every later version keeps them. Edits never enter the knowledge base.
+- Knowledge base of reviewed notes (`notes.mjs kb`): the system-independent part of every reviewed note is kept under `~/.sc4sap/kb/config/<MODULE>/<lang>/`; later runs — the same or another system — write only the system part of those activities, with no web research.
+- Cheaper reviews: a verified-source cache (`notes-sources.mjs`) hands earlier-accepted official pages to the writer and lets the reviewer skip re-opening them; `notes-lint.mjs` checks a batch before review at no token cost — count statements against the snapshot (customer transports only, truncated tables flagged), every named transaction resolved against TSTC / the IMG, check findings the notes leave out.
+- Tables capped at the 5000-row `TABLE_READ` limit are read again per value of their first key field, so output determination (usage B) rows are no longer cut off behind pricing rows.
+
+### Fixed — `config-to-document`
+
+- Customer rows count customer transports only (`<SID>K` + 6 characters); SAP delivery records (`SAPK…`, command files such as `P30A_C_SFC`, `/SPE/100_CUST`) are no longer counted as customer changes.
+- View conditions on blank values (`INAKTIV = ' '`) match empty fields.
+
+### Fixed — screen drawings
+
+- ALV cells cut a value wider than its column with "…" instead of drawing it over the next column; `config-to-document` sizes each column to its longest shown value (80–240 px). Measured on a full MM document: 288 drawings had overlapping or spilling texts before, none after.
+
+### Changed — MCP pin
+
+- `abap-mcp-adt-powerup` pin `bbb2e98` (4.8.9) → `1af0724` (4.8.12 + legacy `TABLE_READ` passes every table to `ZMCP_ADT_DISPATCH`, which decides by delivery class).
+
+### Added — model routing for Opus 5.5 and a Haiku checker
+
+- `common/model-routing-rule.md` rewritten for the Opus 5.5 / Sonnet 5.5 / Haiku 5.5 tiers with effort per agent role, an escalation pattern and a fan-out table; HUD pricing for the 5.5 models.
+- New agent `sap-checker` (Haiku, read-only) for narrow scout / verify / detect jobs with a line-oriented output contract.
+- `create-program`: Phase 1A DDIC scout, Phase 4 verification by checker, Phase 6 detect-judge behind a golden-set gate; the reviewer stays read-only.
+- `analyze-code`: a size scout first; large objects go through checker detection over five rule groups and an Opus judge, and every finding gets a Haiku evidence check (unconfirmed ones are listed separately).
+- `compare-programs` facts scouts and the CBO stocking walk / scout / finalize fan-out (`analyze-cbo-obj`, `package-to-process`) use the checker as well.
+
+### Added — editable reports
+
+- `program-to-spec`: versioned spec pages with an in-page editor; `html-to-md.mjs` turns an edited page back into Markdown (untouched blocks byte-exact) and imports it as the next version with history.
+- `compare-programs`: one editable, versioned HTML report with an English companion — fact card, decision guide, verdict matrix with evidence, field presence, both programs' screens side by side, message texts quoted from T100 / the text pool — plus an optional Excel copy (`md-to-xlsx.mjs`).
+
+### Added — other
+
+- CBO reference graph (`scripts/graph/`): ABAP statement lexer, edge extraction (include, calls, submits, reads, writes, types, uses) with evidence lines, and queries (callers, reach, impact, flow, components).
+- `package-to-process`: multi-profile output paths, `_state/` checkpoints with resume, parallel narrative and render steps.
+- Conventions: include names without underscores plus a `{PROG}ct` test include, tabstrip screens, the OK_CODE contract, an ALV framework option in `sap-option`, ABAP 7.40 SP05 / SP08 feature gates.
+- ECC ABAP: usage FMs `ZMCP_WL_TCODE_USAGE` / `ZMCP_WL_JOB_USAGE` (back MCP `GetTcodeUsage` / `GetJobUsage`); `ZMCP_ADT_DISPATCH` gets a real `DYNPRO_INSERT`, the 7.40 `TR_KEY` for `CUA_WRITE`, and `TSTC` / `TSTCP` / `DD03L` / `DD04L` reads.
+- Screen renderer draws the common SAP toolbar icons (list, convert, release, history, …).
+- `.mjs` files check out with LF line endings; homepage links point at sc4sap.dev.
+
+### Changed — `ZMCP_ADT_DISPATCH` `TABLE_READ` (ECC)
+
+- Reads customizing and system tables by delivery class (C, G, E, S) plus a fixed list of repository tables (CMOD, TSTC, DDIC metadata, transport keys); application data and credential tables are still refused.
+- Fields inside a `.INCLUDE` can be selected.
+
 ## [0.6.35] — 2026-10-07
 
 ### Added — customization extraction: VOFM routines

@@ -21,7 +21,7 @@ export type SkillStatus = "ready" | "blocked";
 
 export type SkillGroupId = "analyze" | "build" | "system";
 
-export type SkillFieldKind = "text" | "textarea" | "select" | "toggle";
+export type SkillFieldKind = "text" | "textarea" | "select" | "toggle" | "list";
 
 export type SkillField = {
   label: string;
@@ -47,6 +47,12 @@ export type SkillField = {
    * screen far more often than it is a string someone can retype.
    */
   images?: boolean;
+  /**
+   * A `list` field: one input per entry, from `min` of them up to `max`, added
+   * with a button. Its value is the entries one per line, as a textarea's.
+   */
+  min?: number;
+  max?: number;
 };
 
 /**
@@ -443,7 +449,7 @@ export const SKILLS: Skill[] = [
     group: "analyze",
     status: "ready",
     fields: [
-      { label: "Programs", kind: "textarea", placeholder: "One per line — 2 to 5 of them.", hint: "They should share a business scenario; the divergence is the point." },
+      { label: "Programs", kind: "list", min: 2, max: 5, placeholder: "Program name (e.g. ZMMR00020)", hint: "They should share a business scenario; the divergence is the point." },
       {
         label: "Dimensions",
         kind: "select",

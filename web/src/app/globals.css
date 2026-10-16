@@ -1840,23 +1840,68 @@ body.is-dragging-chat * {
   font-size: 13px;
 }
 
+/* Entering and leaving select mode, on the bar and on every row's tick at
+   once. Between the two shared durations on purpose: `--t-fast` made the
+   tick boxes blink rather than arrive, and `--t-base` held a whole column of
+   them in mid-fade for long enough to read as lag. */
+.browser {
+  --t-select: calc((var(--t-fast) + var(--t-base)) / 2);
+}
+
 /* The line above the list: the count and Select, or — while selecting — the
-   tick-all box and the actions. One fixed height either way. */
+   tick-all box and the actions. One fixed height either way. Both faces sit
+   in the same grid cell, so the panel behind them can ease in while one face
+   fades out and the other in. */
 .browser-bar {
-  display: flex;
+  display: grid;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   min-height: 34px;
   margin: 16px 0 4px;
   padding: 0 2px 0 4px;
   border-radius: 8px;
+  box-shadow: 0 0 0 1px transparent;
+  transition:
+    background-color var(--t-select) var(--ease),
+    box-shadow var(--t-select) var(--ease),
+    padding var(--t-select) var(--ease);
 }
 
 .browser-bar.is-selecting {
   background: var(--panel);
   box-shadow: 0 0 0 1px var(--line-soft);
   padding: 0 6px 0 10px;
+}
+
+.browser-bar-face {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition:
+    opacity var(--t-select) var(--ease),
+    transform var(--t-select) var(--ease),
+    visibility 0s linear;
+}
+
+/* The face not in use waits a few pixels off the line — the count above it,
+   the actions below — so entering select mode rolls the bar up and leaving
+   rolls it back down: one line turning over rather than two swapping.
+   `visibility` waits for the fade to end, so the hidden face is not read out
+   or found by search once it is gone. */
+.browser-bar.is-selecting > .is-count,
+.browser-bar:not(.is-selecting) > .is-picking {
+  opacity: 0;
+  transform: translateY(4px);
+  visibility: hidden;
+  transition:
+    opacity var(--t-select) var(--ease),
+    transform var(--t-select) var(--ease),
+    visibility 0s linear var(--t-select);
+}
+
+.browser-bar.is-selecting > .is-count {
+  transform: translateY(-4px);
 }
 
 .browser-bar-actions {
@@ -1950,17 +1995,37 @@ body.is-dragging-chat * {
   border-radius: 8px;
 }
 
-.browser-row > .row-kind {
+/* The kind icon and the tick box share one 16px cell, stacked rather than
+   swapped. With `display` flipping between them there was no frame in which
+   both existed, so select mode arrived as a cut down the whole column; here
+   one fades and shrinks out while the other slides and grows in. */
+.browser-slot {
   flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+.browser-slot > * {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--t-select) var(--ease),
+    transform var(--t-select) var(--ease),
+    background-color var(--t-select) var(--ease),
+    border-color var(--t-select) var(--ease);
+}
+
+.browser-slot > .row-kind {
   font-size: 16px;
   color: var(--ink-38);
 }
 
 /* The tick box shares the kind icon's place: hidden until the row is pointed
-   at, then shown in its stead; always shown while selecting. */
+   at, then shown in its stead; always shown while selecting. Hidden by
+   opacity, so it also takes no clicks until it is there to be seen. */
 .browser-tick {
-  flex: none;
-  display: none;
+  display: grid;
   place-items: center;
   width: 16px;
   height: 16px;
@@ -1970,6 +2035,9 @@ body.is-dragging-chat * {
   color: var(--on-ink);
   font-size: 11px;
   cursor: pointer;
+  opacity: 0;
+  transform: translateX(-4px) scale(0.7);
+  pointer-events: none;
 }
 
 .browser-tick.is-on {
@@ -1983,12 +2051,25 @@ body.is-dragging-chat * {
 
 .browser-row:hover .browser-tick,
 .browser-row.is-selecting .browser-tick {
-  display: grid;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
-.browser-row:hover > .row-kind,
-.browser-row.is-selecting > .row-kind {
-  display: none;
+.browser-row:hover .browser-slot > .row-kind,
+.browser-row.is-selecting .browser-slot > .row-kind {
+  opacity: 0;
+  transform: scale(0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-bar,
+  .browser-bar-face,
+  .browser-bar.is-selecting > .is-count,
+  .browser-bar:not(.is-selecting) > .is-picking,
+  .browser-slot > * {
+    transition: none;
+  }
 }
 
 .browser-row.is-picked {
@@ -2701,6 +2782,50 @@ body.is-dragging-chat * {
 
 .markdown > :last-child {
   margin-bottom: 0;
+}
+
+/* A run's document: its emoji as the app's icons (`rehypeDocIcons`), in the
+   tones the HTML page gives them. */
+.markdown .doc-ico {
+  display: inline-block;
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0 0.3em 0 0;
+  vertical-align: -0.16em;
+  color: var(--ink-55);
+}
+
+.markdown .doc-ico > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+
+.markdown .doc-ico.t-accent {
+  color: var(--ink);
+}
+
+.markdown .doc-ico.t-good {
+  color: var(--ok);
+}
+
+.markdown .doc-ico.t-warn {
+  color: var(--warn);
+}
+
+.markdown .doc-ico.t-bad {
+  color: var(--bad);
+}
+
+/* Compare Programs' verdict colours, as the HTML page has them: a variant
+   blue, an open question purple. */
+.markdown .doc-ico.t-note {
+  color: #0969da;
+}
+
+.markdown .doc-ico.t-ask {
+  color: #8250df;
 }
 
 .markdown p,
@@ -3657,6 +3782,452 @@ body.is-dragging-chat * {
 
 .field-images.is-locked .field-images-foot {
   color: var(--ink-55);
+}
+
+/* A list field (Compare Programs' programs): a row of its own across the
+   form, one input per entry side by side, the add button after the last one;
+   a remove button inside each entry past the minimum. */
+.fields > .field-list-field {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.field-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.field-list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 220px;
+  max-width: 100%;
+}
+
+.field-list-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* An entry added or removed by hand opens and closes in the row, so the add
+   button beside it slides over instead of jumping. */
+.field-list-row.is-added {
+  animation: field-list-in var(--t-base) var(--ease) both;
+}
+
+.field-list-row.is-leaving {
+  overflow: hidden;
+  pointer-events: none;
+  animation: field-list-out var(--t-fast) var(--ease) both;
+}
+
+@keyframes field-list-in {
+  from {
+    width: 0;
+    opacity: 0;
+    margin-right: -8px;
+  }
+}
+
+@keyframes field-list-out {
+  to {
+    width: 0;
+    opacity: 0;
+    margin-right: -8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-list-row.is-added,
+  .field-list-row.is-leaving {
+    animation: none;
+  }
+}
+
+.field-list-row:has(.field-list-remove) input {
+  padding-right: 34px;
+}
+
+.field-list-row .field-list-remove {
+  position: absolute;
+  right: 3px;
+}
+
+.field-list-remove {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-55);
+  cursor: pointer;
+}
+
+.field-list-remove:hover {
+  border-color: var(--line);
+  color: var(--bad);
+}
+
+/* Add: the edit mode's thin plus on its own, no box round it; a soft
+   round wash on hover says it can be pressed. */
+.field-list-add {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-55);
+  cursor: pointer;
+  transition:
+    color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+
+.field-list-add svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.field-list-add:hover {
+  background: var(--line-soft);
+  color: var(--ink);
+}
+
+.field-list-add:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The activity panel's trend button, beside ‹ 26/09 ›, and its dialog. */
+.panel-head-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trend-open {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: -4px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+
+.trend-open:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+  background: var(--bg);
+}
+
+.trend-open:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Wide enough that the chart reads at a glance and a tip at either end
+   stays inside. It rises into place and sinks back out, a little slower
+   than a question dialog: it is something to look at, not to answer. */
+.modal.trend-modal {
+  width: min(860px, 100%);
+  max-height: none;
+  overflow: visible;
+  gap: 18px;
+  padding: 26px 28px;
+  animation: trend-in 320ms var(--ease) both;
+}
+
+.modal-backdrop.leaving .modal.trend-modal {
+  animation: trend-out 200ms var(--ease) both;
+}
+
+@keyframes trend-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+}
+
+@keyframes trend-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.trend-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.trend-sub {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-55);
+}
+
+.trend-close {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.trend-close:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* The headline: three figures in a row, the six months' total first. */
+.trend-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+
+.trend-figures > div {
+  padding: 12px 14px;
+  background: var(--panel);
+}
+
+.trend-figures dt {
+  font-size: 11.5px;
+  color: var(--ink-55);
+}
+
+.trend-figures dd {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* Text keeps the text colours: the arrow says up or down, the colour only
+   repeats it. */
+.trend-figures dd.is-up {
+  color: var(--warn);
+}
+
+.trend-figures dd.is-down {
+  color: var(--ok);
+}
+
+.trend-chart {
+  position: relative;
+  color: var(--ink);
+}
+
+.trend-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.trend-grid line {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+
+.trend-grid text,
+.trend-month {
+  font-size: 11px;
+  fill: var(--ink-55);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Drawn left to right as the dialog opens (`pathLength="1"`, so the dash
+   is the whole line whatever its length); the area fills in behind it and
+   each point lands as the line reaches it. */
+.trend-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  animation: trend-draw 1100ms cubic-bezier(0.45, 0, 0.2, 1) 380ms both;
+}
+
+.trend-area {
+  animation: trend-fade 800ms var(--ease) 700ms both;
+}
+
+.trend-dot {
+  fill: var(--panel);
+  stroke: currentColor;
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: r var(--t-fast) var(--ease);
+  animation: trend-dot-in 260ms var(--ease) both;
+}
+
+@keyframes trend-dot-in {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+
+.trend-value {
+  animation: trend-fade 300ms var(--ease) 1480ms both;
+}
+
+.trend-dot.is-current,
+.trend-dot.is-active {
+  fill: currentColor;
+}
+
+.trend-cross {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.trend-value {
+  font-size: 12px;
+  font-weight: 650;
+  fill: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-hit {
+  fill: transparent;
+  cursor: crosshair;
+  outline: none;
+}
+
+.trend-tip {
+  position: absolute;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 2px;
+  min-width: 132px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--card-shadow);
+  font-size: 12px;
+  color: var(--ink-55);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.trend-tip.is-start {
+  transform: translateX(-14px);
+}
+
+.trend-tip.is-end {
+  transform: translateX(calc(-100% + 14px));
+}
+
+.trend-tip strong {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-55);
+}
+
+.trend-tip-value {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-wait {
+  position: absolute;
+  inset: 18px 20px 34px 56px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, transparent, var(--line-soft), transparent);
+  background-size: 200% 100%;
+  animation: trend-shimmer 1.2s linear infinite;
+}
+
+@keyframes trend-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes trend-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes trend-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trend-line,
+  .trend-area,
+  .trend-dot,
+  .trend-value,
+  .trend-wait,
+  .modal.trend-modal,
+  .modal-backdrop.leaving .modal.trend-modal {
+    animation: none;
+  }
 }
 
 .field-images-add {
@@ -9378,12 +9949,22 @@ button.mon-switch.is-on {
   }
 }
 
-/* ---------- configuration setting ----------
-   `web/config.html` in the app's frame: the IMG tree, the article, the
-   reference panel. The page keeps the app's heading and hands everything
-   under it to the browser, which fills the rest of the column and scrolls
-   its three panes on their own. The page itself does not scroll, the way
-   the HTML's body did not. */
+/* ---------- display IMG ----------
+   The connected system's SPRO tree beside the activity it opens on. The page
+   keeps the app's heading and hands everything under it to the browser,
+   which fills the rest of the column: a bar for the module and its status,
+   then the tree and the reading pane, each scrolling on its own. The page
+   itself does not scroll.
+
+   A dense tool, so it runs one step under the app's reading size: 13px text,
+   30px controls. Numbers follow one rule: a count that sits beside its label
+   takes the label's size (so the two share a baseline), and a count standing
+   alone in a column is 11.5px. It is scanned more than read, and a tree of two thousand
+   rows at body size is a tree nobody can see the shape of.
+
+   Status is the one place colour carries meaning here, and only one colour:
+   configured is a filled `--ok` dot, empty an outlined ring, not checkable a
+   short dash. A reader scans the tree for the green, the rest stays ink. */
 
 .page.config {
   display: flex;
@@ -9402,782 +9983,1709 @@ button.mon-switch.is-on {
   display: flex;
 }
 
-.cfg {
-  position: relative;
+/* The three states, one hue each, from the theme's own status tokens so they
+   hold in dark mode too: configured green, not checkable amber, empty plain
+   grey. Empty and not checkable used to be two greys that a reader could not
+   tell apart in the bars. */
+.img {
+  --img-folder: #c99a2e;
+  --img-set: var(--ok);
+  --img-empty: var(--ink-38);
+  --img-unknown: var(--warn);
   flex: 1;
-  min-height: 0;
   min-width: 0;
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--panel);
+  box-shadow: var(--card-shadow);
+  font-size: 13px;
   overflow: hidden;
 }
 
-.cfg.is-ref-open {
-  grid-template-columns: 320px minmax(0, 1fr) 360px;
+.img-muted {
+  color: var(--ink-55);
+  font-size: 12px;
 }
 
-/* ----- tree ----- */
+.img-empty {
+  margin: 0;
+  padding: 16px 14px;
+  color: var(--ink-55);
+  font-size: 12.5px;
+}
 
-.cfg-side {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-right: 1px solid var(--line);
+/* ----- controls, one size down from the app's ----- */
+
+.img .img-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
   background: var(--panel);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.cfg-search {
-  padding: 12px;
+.img .img-btn .ph {
+  font-size: 14px;
+}
+
+.img .img-btn:hover:not(:disabled) {
+  border-color: var(--ink-55);
+  background: var(--panel-2);
+}
+
+.img .img-btn.is-primary {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+.img .img-btn.is-primary:hover:not(:disabled) {
+  background: var(--ink-hover);
+}
+
+.img .img-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink-55);
+}
+
+.img .img-icon-btn .ph {
+  font-size: 15px;
+}
+
+.img .img-icon-btn:hover:not(:disabled) {
+  border-color: var(--line);
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.img .img-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--ink-55);
+  font-size: 12.5px;
+}
+
+.img .img-link:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.img .img-link .ph {
+  font-size: 13px;
+}
+
+.img-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink-55);
+  transition: border-color var(--t-base) var(--ease), box-shadow var(--t-base) var(--ease);
+}
+
+.img-search > .ph {
+  font-size: 14px;
+}
+
+.img-search:focus-within {
+  border-color: var(--ink-55);
+  box-shadow: 0 0 0 3px var(--line-soft);
+}
+
+.img-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.img-search input::placeholder {
+  color: var(--ink-38);
+  font-size: 12px;
+}
+
+.img-count {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel-3);
+  color: var(--ink-80);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.img .img-clear {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-55);
+}
+
+.img .img-clear .ph {
+  font-size: 12px;
+}
+
+.img .img-clear:hover:not(:disabled) {
+  background: var(--panel-3);
+  color: var(--ink);
+}
+
+/* ----- status marks ----- */
+
+.img-dot {
+  flex: none;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.img-dot.is-set {
+  background: var(--img-set);
+}
+
+.img-dot.is-empty {
+  border: 1.5px solid var(--img-empty);
+}
+
+/* A glyph, not a box: sized so its circle matches the dots beside it. */
+.img-dot.is-unknown {
+  display: inline-grid;
+  place-items: center;
+  width: 11px;
+  height: 11px;
+  margin-inline: -2px;
+  border-radius: 0;
+  color: var(--img-unknown);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.img-dot.is-unchecked {
+  border: 1.5px dashed var(--line-strong);
+}
+
+/* The working mark, as the chat and the setup wizard draw it: the
+   thinking-orbs canvas, in a box of its own size so nothing shifts while it
+   mounts. 20px beside a line of text, 64px alone in the empty pane. */
+.img-orb {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+}
+
+.img-orb.is-large {
+  width: 64px;
+  height: 64px;
+}
+
+.img-bar {
+  display: flex;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--panel-3);
+}
+
+.img-bar .is-set {
+  background: var(--img-set);
+}
+
+.img-bar .is-empty {
+  background: color-mix(in srgb, var(--img-empty) 70%, transparent);
+}
+
+/* Yellow mixed into the panel rather than the amber token: the token is a
+   dark amber in the light theme, legible as a glyph but brown as a fill.
+   Mixed with the panel it is a pale yellow on white and a muted one on dark. */
+.img-bar .is-unknown {
+  background: color-mix(in srgb, #f2b705 55%, var(--panel));
+}
+
+/* ----- top bar ----- */
+
+.img-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
 }
 
-.cfg-search-box {
+.img-picker {
+  position: relative;
+}
+
+.img .img-picker-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  max-width: 300px;
+  padding: 0 9px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.img .img-picker-button:hover:not(:disabled),
+.img .img-picker-button.is-open {
+  border-color: var(--ink-55);
+}
+
+.img-picker-icon {
+  color: var(--ink-55);
+  font-size: 14px;
+}
+
+.img-picker-value {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.img-picker-value.is-placeholder {
+  color: var(--ink-55);
+  font-weight: 500;
+}
+
+.img-picker-caret {
+  color: var(--ink-55);
+  font-size: 12px;
+  transition: transform var(--t-base) var(--ease);
+}
+
+.img-picker-button.is-open .img-picker-caret {
+  transform: rotate(180deg);
+}
+
+.img-picker-pop {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 320px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16);
+  animation: select-list-in var(--t-base) var(--ease) both;
+}
+
+.img-picker-pop ul {
+  max-height: 340px;
+  margin: 6px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.img .img-picker-pop li button {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-  color: var(--ink-38);
-}
-
-.cfg-search-box:focus-within {
-  border-color: var(--ink);
-  color: var(--ink);
-}
-
-.cfg-search-box input {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 0;
-  font: inherit;
-  color: var(--ink);
-  background: none;
+  width: 100%;
+  padding: 6px 9px;
   border: 0;
-  outline: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-80);
+  font-size: 12.5px;
+  text-align: left;
 }
 
-.cfg-search-box input::placeholder {
-  font-size: 12px;
-  color: var(--ink-38);
-}
-
-/* The module picker, under the search. Set like a form field: the label on
-   its own line with the count at the far end, the select full width under
-   it — a label beside a select this wide left the select cramped and the
-   count orphaned between them. */
-.cfg-module {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 4px 8px;
-  margin-top: 10px;
-}
-
-.cfg-module-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-55);
-}
-
-.cfg-module .cfg-search-count {
-  justify-self: end;
-}
-
-.cfg-module .select {
-  grid-column: 1 / -1;
+.img-option-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-width: 0;
 }
 
-.cfg-search-count {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-38);
-}
-
-.cfg-tools {
-  display: flex;
-  gap: 2px;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--line);
-}
-
-.cfg-tools button {
-  padding: 4px 8px;
-  font-size: 12px;
+.img-option-text small {
   color: var(--ink-55);
+  font-size: 11px;
 }
 
-.cfg-tools button[aria-current="true"] {
+.img .img-picker-pop li button.is-active {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.img .img-picker-pop li button[aria-selected="true"] {
   color: var(--ink);
   font-weight: 600;
 }
 
-.cfg-tree {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 6px 8px 20px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--ink-38) transparent;
+.img .img-picker-pop li button .ph {
+  font-size: 13px;
 }
 
-.cfg-tree ul {
+.img-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+
+/* Label and count on one baseline: the bold count's box is taller than the
+   label's, so centring the boxes left the digits sitting low. The dot alone
+   is centred, against the line. */
+.img-legend {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--ink-55);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.img-legend .img-dot {
+  align-self: center;
+}
+
+.img-legend b {
+  color: var(--ink);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The state legend, shown on hover or keyboard focus of the info button. */
+.img-tip {
+  position: relative;
+  display: inline-flex;
+}
+
+.img .img-tip .img-icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
+/* A light card like the app's other popovers: one row per state, its mark
+   in the same place the tree draws it, so the legend reads as a key. */
+.img-tip-body {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 10px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  /* As wide as the longest line, so each state's note stays on one line;
+     capped for narrow windows, where it wraps rather than overflows. */
+  width: max-content;
+  max-width: min(520px, calc(100vw - 48px));
+  padding: 12px 16px 13px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16);
+  color: var(--ink-80);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+
+/* The caret, pointing at the info button. */
+.img-tip-body::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.img-tip-title {
+  color: var(--ink-55);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.img-tip-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.img-tip-row .img-dot {
+  margin-top: 5px;
+}
+
+.img-tip-row .img-dot.is-unknown {
+  margin-top: 3px;
+}
+
+.img-tip-row > span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.img-tip-row b {
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* The dash of a count not taken yet, with its reason on hover. Drawn by CSS
+   rather than the browser's own title tooltip, which takes a second to
+   appear and was easy to miss. Shown on a disabled toggle too: the toggle
+   ignores the pointer, the dash inside it does not. */
+.img-unchecked {
+  position: relative;
+  color: var(--ink-38);
+  font-weight: 400;
+  cursor: help;
+  pointer-events: auto;
+}
+
+.img-unchecked::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  left: 50%;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--ink);
+  box-shadow: 0 6px 18px rgba(var(--shadow-rgb), 0.18);
+  color: var(--on-ink);
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -3px);
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+
+.img-unchecked:hover::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.img .img-seg button:disabled {
+  pointer-events: none;
+}
+
+.img-tip:hover .img-tip-body,
+.img-tip:focus-within .img-tip-body {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.img-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.img-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink-80);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.img-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 12px 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bad) 7%, transparent);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.img-error > .ph {
+  color: var(--bad);
+  font-size: 16px;
+}
+
+.img-error > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* ----- body: tree + reading pane ----- */
+
+.img-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 356px minmax(0, 1fr);
+}
+
+.img-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: color-mix(in srgb, var(--panel-2) 45%, var(--panel));
+}
+
+.img-side-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.img-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A segmented control: three states of one choice, with their counts. */
+.img-seg {
+  display: inline-flex;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--panel-3);
+}
+
+.img .img-seg button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink-80);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.img .img-seg button[aria-checked="true"] .img-seg-count {
+  color: var(--ink-80);
+}
+
+.img .img-seg button[aria-checked="true"] {
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.12);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.img .img-seg button:hover:not(:disabled):not([aria-checked="true"]) {
+  color: var(--ink);
+}
+
+.img-seg-count {
+  color: var(--ink-55);
+  font-size: inherit;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.img-tools {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.img-tree {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 6px 24px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.img-tree ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.cfg-node-row,
-.cfg-leaf-row {
+.img .img-folder,
+.img .img-leaf {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 5px 8px;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  color: var(--ink-80);
-  background: none;
+  min-height: 27px;
+  padding: 3px 8px;
   border: 0;
   border-radius: 6px;
-  cursor: pointer;
-}
-
-.cfg-node.is-root > .cfg-node-row {
-  margin-top: 2px;
-  font-weight: 600;
+  background: none;
   color: var(--ink);
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: left;
+  transition: background-color var(--t-fast) var(--ease);
 }
 
-.cfg-node-row:hover,
-.cfg-leaf-row:hover {
-  background: var(--panel-2);
+.img .img-folder:hover,
+.img .img-leaf:hover:not(.is-active) {
+  background: var(--panel-3);
 }
 
-.cfg-twist {
-  display: inline-grid;
-  place-items: center;
-  width: 14px;
-  font-size: 10px;
+.img .img-folder:active,
+.img .img-leaf:active {
+  transform: none;
+}
+
+.img-folder {
+  font-weight: 500;
+}
+
+/* A folder scrolled to from the overview stops a little below the edge. */
+.img-tree li[data-node] {
+  scroll-margin-top: 6px;
+}
+
+/* One pulse on the folder an overview row jumped to, in the app's ink: the
+   accent everywhere else, and not a status colour, which green would read as. */
+.img .img-folder.is-flash {
+  animation: img-flash 1.5s var(--ease) 1;
+}
+
+@keyframes img-flash {
+  0%,
+  35% {
+    background: color-mix(in srgb, var(--ink) 10%, transparent);
+    box-shadow: inset 2px 0 0 var(--ink);
+  }
+
+  100% {
+    background: transparent;
+    box-shadow: inset 2px 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .img .img-folder.is-flash {
+    animation-duration: 0.01s;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+  }
+}
+
+.img-twist {
+  flex: none;
+  width: 12px;
   color: var(--ink-38);
+  font-size: 10px;
   transition: transform var(--t-fast) var(--ease);
 }
 
-.cfg-node.is-open > .cfg-node-row .cfg-twist {
+.img-folder[aria-expanded="true"] .img-twist {
   transform: rotate(90deg);
 }
 
-.cfg-node-label {
+.img-folder-icon {
+  flex: none;
+  color: var(--img-folder);
+  font-size: 14px;
+}
+
+.img-folder-text,
+.img-leaf-text {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.cfg-count {
-  margin-left: auto;
-  padding: 0 7px;
-  font-size: 11px;
-  font-weight: 500;
+.img-folder-count {
+  flex: none;
+  color: var(--ink-38);
+  font-size: 11.5px;
+  font-weight: 400;
   font-variant-numeric: tabular-nums;
-  color: var(--ink-55);
-  background: var(--panel-2);
-  border-radius: 999px;
 }
 
-.cfg-leaf-row {
-  align-items: flex-start;
+.img .img-leaf {
+  color: var(--ink-80);
+}
+
+.img-leaf .img-dot {
+  margin: 0 3px 0 5px;
+}
+
+/* The open activity, in the same ink tint and edge bar as the folder flash:
+   one way of saying "this one" across the tree. A tint rather than a filled
+   row keeps its status mark in its own colour. */
+.img .img-leaf.is-active,
+.img .img-leaf.is-active:hover {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--ink);
   color: var(--ink);
-}
-
-.cfg-leaf-row.active {
-  background: var(--panel-3);
   font-weight: 600;
 }
 
-.cfg-leaf-dot {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  margin-top: 7px;
-  border-radius: 50%;
-  background: var(--ink-38);
-}
-
-.cfg-leaf-row.active .cfg-leaf-dot {
-  background: var(--ink);
-}
-
-.cfg-leaf-main {
+.img-skeleton {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  gap: 12px;
+  padding: 12px 10px;
 }
 
-.cfg-leaf-label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.img-skeleton span {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--panel-3);
+  animation: img-pulse 1.4s ease-in-out infinite;
 }
 
-.cfg-check {
-  display: inline-grid;
-  place-items: center;
-  font-size: 11px;
-  color: var(--ok);
+@keyframes img-pulse {
+  50% {
+    opacity: 0.45;
+  }
 }
 
-.cfg-leaf-sub {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--ink-38);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* ----- reading pane ----- */
 
-/* ----- main ----- */
-
-.cfg-main {
+.img-main {
   min-width: 0;
   min-height: 0;
+  padding: 20px 26px 40px;
   overflow: auto;
-  padding: 26px 32px 56px;
-  background: var(--bg);
   scrollbar-width: thin;
-  scrollbar-color: var(--ink-38) transparent;
 }
 
-.cfg-overview h2,
-.cfg-detail h2 {
-  margin: 0 0 12px;
-  font-size: 22px;
-  line-height: 1.3;
-  font-weight: 700;
+/* Moving between pages of the pane. A new page rises in over a few pixels and
+   fades up, at a pace between `--t-fast` and `--t-base` (about 200ms): quick
+   enough to keep up with a reader stepping down the tree, slow enough not to
+   read as a cut. The old page is not faded out; while the next activity's
+   screens are being read it stays in place, dimmed a little to say the click
+   was taken, so the pane never empties or changes height in between. */
+.img {
+  /* Long enough to be seen as a change of page: at 200ms with a 6px rise
+     the swap read as a cut. */
+  --img-swap: 320ms;
 }
 
-.cfg-lead {
-  max-width: 78ch;
-  margin: 0 0 16px;
-  color: var(--ink-55);
+.img-pane {
+  animation: img-pane-in var(--img-swap) var(--ease) backwards;
+  transition: opacity var(--t-fast) var(--ease);
 }
 
-.cfg-flow {
+.img-pane.is-holding {
+  opacity: 0.45;
+}
+
+/* Screens read after the page is already up land in the space the loading
+   row held, so they only fade; a rise there would shift the page under the
+   reader's eye. */
+.img-arrive {
+  animation: img-fade-in var(--img-swap) var(--ease) backwards;
+}
+
+@keyframes img-pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes img-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Without motion a new page still fades in, which moves nothing; only the
+   rise goes. */
+@media (prefers-reduced-motion: reduce) {
+  .img-pane {
+    animation-name: img-fade-in;
+  }
+}
+
+.img-loading {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 26px;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 400px;
+  margin: 10vh auto 0;
+  text-align: center;
 }
 
-.cfg-flow a {
-  padding: 4px 11px;
+.img-loading h2 {
+  margin: 8px 0 0;
+  font-size: 15px;
+}
+
+.img-loading p {
+  margin: 0;
+}
+
+.img-phase {
+  color: var(--ink-80);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The reading pane's content sits centred in the pane, so a wide screen
+   frames it rather than leaving it against the tree. */
+.img-overview,
+.img-detail,
+.img-start {
+  max-width: 1080px;
+  margin-inline: auto;
+}
+
+/* The start screen: nothing is read until a module is chosen. The modules
+   in use come first as cards, every other one as a compact list. */
+.img-start {
+  padding-top: 4vh;
+}
+
+.img-start h2 + .img-notice {
+  margin-top: 16px;
+}
+
+.img-start h2 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.img-start h3 {
+  margin: 22px 0 8px;
+  color: var(--ink-55);
+  font-size: 11px;
   font-weight: 600;
-  color: var(--ink);
-  text-decoration: none;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.cfg-flow a:hover {
-  border-color: var(--ink);
+.img-start-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
 }
 
-.cfg-area {
-  margin-bottom: 26px;
-}
-
-.cfg-area h3 {
-  display: flex;
+.img .img-start-cards button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  margin: 0 0 4px;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.cfg-step {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--on-ink);
-  background: var(--ink);
-  border-radius: 6px;
-}
-
-.cfg-area-count {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--ink-38);
-}
-
-.cfg-area-desc {
-  margin: 0 0 12px;
-  font-size: 13px;
-  color: var(--ink-55);
-}
-
-.cfg-acards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
-}
-
-.cfg-acard {
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  text-align: left;
 }
 
-.cfg-acard > b {
+.img .img-start-cards button:hover:not(:disabled) {
+  border-color: var(--ink-55);
+  background: var(--panel-2);
+}
+
+.img-start-code {
+  display: inline-grid;
+  place-items: center;
+  min-width: 34px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.img-start-name {
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.img-start-cards .ph {
+  color: var(--ink-38);
+  font-size: 14px;
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.img-start-cards button:hover .ph {
+  color: var(--ink);
+  transform: translateX(2px);
+}
+
+.img-start-all {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 2px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.img .img-start-all button {
+  width: 100%;
+  padding: 5px 8px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-80);
+  font-size: 12.5px;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.img .img-start-all button:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
+.img-overview .eyebrow {
+  margin: 0;
+}
+
+.img-overview h2,
+.img-detail h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 4px 0 4px;
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.3;
+}
+
+.img-lead {
+  margin: 0 0 16px;
+  color: var(--ink-80);
+  font-size: 13px;
+}
+
+/* A plain notice: nothing in this module, or nothing configured in it. A
+   neutral panel rather than a warning colour, because an empty module is a
+   fact about the system, not a fault. */
+.img-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.img-notice > .ph {
+  flex: none;
+  margin-top: 1px;
+  color: var(--ink-55);
+  font-size: 20px;
+}
+
+.img-notice b {
+  display: block;
+  color: var(--ink);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.img-notice p {
+  margin: 3px 0 0;
+  color: var(--ink-80);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.img-notice.is-compact {
+  padding: 10px 14px;
+}
+
+.img-notice.is-compact > .ph {
+  font-size: 17px;
+}
+
+.img-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.img-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.img-stats b {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.img-stats span {
+  color: var(--ink-55);
+  font-size: 11.5px;
+}
+
+.img-stats .is-set b {
+  color: var(--img-set);
+}
+
+.img-stats .is-unknown b {
+  color: var(--img-unknown);
+}
+
+.img-stats .is-empty b {
+  color: var(--ink-55);
+}
+
+/* The three notes in a row, a bar between them, so each reads on its own. */
+.img-help {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+  margin: 8px 0 22px;
+  color: var(--ink-55);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.img-help span + span::before {
+  content: "|";
+  margin: 0 10px;
+  color: var(--line-strong);
+}
+
+.img-help b {
+  margin-right: 6px;
+  color: var(--ink-80);
+  font-weight: 600;
+}
+
+.img-overview h3,
+.img-screen h3 {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
-  font-size: 13.5px;
-  font-weight: 700;
+  margin: 0 0 8px;
+  color: var(--ink-55);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.cfg-acard > b .cfg-count {
-  margin-left: 0;
+.img-areas {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line-soft);
+  list-style: none;
 }
 
-.cfg-subs {
+.img .img-areas button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 88px;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 8px 6px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.img .img-areas button:hover {
+  background: var(--panel-2);
+}
+
+.img-area-count {
+  color: var(--ink-55);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.img-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 18px 0 0;
+  color: var(--ink-55);
+  font-size: 11.5px;
+}
+
+/* activity */
+
+.img-detail-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
 }
 
-.cfg-subs button {
+/* A text button, set apart by weight and full ink rather than by a box: it
+   is the way back, and the crumbs beside it are only where you are. */
+.img .img-back {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 9px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--ink-80);
-  background: var(--panel-2);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.cfg-subs button:hover {
-  border-color: var(--ink-38);
-  color: var(--ink);
-}
-
-.cfg-subs button .cfg-count {
-  margin-left: 0;
-  padding: 0 5px;
-  background: var(--panel);
-}
-
-.cfg-legend {
-  margin: 30px 0 0;
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--ink-38);
-}
-
-.cfg-empty {
-  margin: 0;
-  font-size: 13px;
-  color: var(--ink-38);
-}
-
-/* ----- detail ----- */
-
-.cfg-detail {
-  max-width: 880px;
-}
-
-.cfg-topbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
-}
-
-.cfg-topbar button {
-  padding: 5px 10px;
-  font-size: 13px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-}
-
-.cfg-topbar .cfg-ref-toggle {
-  margin-left: auto;
-}
-
-.cfg-topbar .cfg-ref-toggle[aria-pressed="true"] {
-  border-color: var(--ink);
-  color: var(--ink);
-}
-
-.cfg-navtree {
-  margin-bottom: 14px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-
-.cfg-nt {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--ink-55);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cfg-nt.is-leaf {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.cfg-nt-branch {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--ink-38);
-}
-
-.cfg-nt-ico {
-  display: inline-block;
-  flex: none;
-  width: 14px;
-  height: 11px;
-  border: 1px solid var(--ink-38);
-  border-radius: 2px;
-  background: var(--panel-2);
-}
-
-.cfg-nt.is-leaf .cfg-nt-ico {
-  background: var(--ink);
-  border-color: var(--ink);
-}
-
-.cfg-detail h2 {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
-
-.cfg-no {
-  font-size: 13px;
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-38);
-}
-
-.cfg-req {
-  padding: 2px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-}
-
-.cfg-req.is-req {
-  color: var(--on-ink);
-  background: var(--ink);
-  border-color: var(--ink);
-}
-
-.cfg-req.is-opt {
-  color: var(--ink-55);
-  background: var(--panel-2);
-}
-
-.cfg-tcs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 18px;
-}
-
-.cfg-tc {
-  padding: 5px 11px;
-  font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  background: var(--panel-2);
-  border: 1px solid transparent;
-  border-radius: 6px;
-}
-
-.cfg-tc.is-spro {
-  color: var(--ink-55);
-  background: transparent;
-  border-color: var(--ink-38);
-  border-style: dashed;
-}
-
-.cfg-card {
-  margin-bottom: 14px;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-}
-
-.cfg-card h3 {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0 0 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-55);
-}
-
-.cfg-card p {
-  margin: 0;
-  font-size: 14px;
-  line-height: 1.65;
-}
-
-.cfg-tag {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--ink-38);
-}
-
-.cfg-rel {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cfg-rel button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 6px 8px;
-  font: inherit;
-  font-size: 13px;
-  text-align: left;
-  color: var(--ink);
-  background: none;
+  padding: 3px 2px;
   border: 0;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.cfg-rel button:hover {
-  background: var(--panel-2);
-}
-
-.cfg-rel .cfg-tc {
-  flex: none;
-  padding: 2px 8px;
-  font-size: 11px;
-}
-
-.cfg-rel-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cfg-rel-why {
-  flex: none;
-  font-size: 11px;
-  color: var(--ink-38);
-}
-
-.cfg-shots {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 14px;
-}
-
-.cfg-shot {
-  margin: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--panel-2);
-}
-
-.cfg-shot-ph {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  aspect-ratio: 16 / 9;
-  padding: 16px;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink);
   font-size: 12.5px;
-  text-align: center;
-  color: var(--ink-38);
+  font-weight: 600;
 }
 
-.cfg-shot-ph .ph {
-  font-size: 26px;
-  margin-bottom: 4px;
-}
-
-.cfg-shot-ph b {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--ink-55);
-}
-
-.cfg-kv {
-  display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 6px 14px;
-  margin: 0;
+.img .img-back .ph {
   font-size: 13px;
+  transition: transform var(--t-fast) var(--ease);
 }
 
-.cfg-kv dt {
-  padding-top: 2px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+.img .img-back:hover .ph {
+  transform: translateX(-2px);
+}
+
+.img-detail-bar .img-crumbs {
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
+
+.img-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  color: var(--ink-55);
+  font-size: 11.5px;
+}
+
+.img-crumbs span + span::before {
+  content: "›";
+  margin-right: 4px;
   color: var(--ink-38);
 }
 
-.cfg-kv dd {
-  margin: 0;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.cfg-kv dd.mono {
-  font-family: var(--font-mono);
+.img-sub {
+  margin: 0 0 14px;
+  color: var(--ink-55);
   font-size: 12px;
 }
 
-/* ----- references ----- */
+.img-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-80);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+}
 
-.cfg-ref {
-  display: none;
-  min-height: 0;
-  overflow: auto;
-  padding: 16px 18px 40px;
-  border-left: 1px solid var(--line);
+.img-pill.is-set {
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
+  background: color-mix(in srgb, var(--ok) 9%, transparent);
+  color: var(--ok);
+}
+
+.img-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  margin: 0 0 22px;
+  padding: 11px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.img-facts > div {
+  min-width: 0;
+}
+
+.img-facts .is-wide {
+  flex-basis: 100%;
+}
+
+.img-facts dt {
+  margin-bottom: 3px;
+  color: var(--ink-55);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.img-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.img-facts .mono,
+.img-obj .mono {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.img-obj {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 3px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
   background: var(--panel);
-  scrollbar-width: thin;
-  scrollbar-color: var(--ink-38) transparent;
 }
 
-.cfg.is-ref-open .cfg-ref:not([hidden]) {
-  display: block;
+.img-obj-type {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--panel-3);
+  color: var(--ink-80);
+  font-size: 10px;
+  font-weight: 700;
 }
 
-.cfg-ref-head {
+.img-obj-count {
+  color: var(--ink-55);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.img-obj-count.is-set {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.img-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+  color: var(--ok);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.img-screen-loading {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
-}
-
-.cfg-ref-head h3 {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  padding: 32px 0;
   color: var(--ink-55);
+  font-size: 12.5px;
 }
 
-.cfg-ref-close {
-  margin-left: auto;
-  padding: 4px 6px;
+/* ----- the SAP GUI frame ----------
+   The mock frame `web/config.html` drew, in normal flow and at the size SAP
+   GUI itself runs — 12px — and in SAP GUI's blue (the Blue Crystal family):
+   it is a picture of another program, so it keeps that program's colours in
+   both of this app's themes. The blue is what makes it read as SAP at a
+   glance, among the app's greys. */
+
+.sapw {
+  --sap-line: #9db4cc;
+  --sap-ink: #1b3550;
+  --sap-head: #cbdcec;
+  overflow: hidden;
+  border: 1px solid #7f9cbb;
+  border-radius: 8px;
+  background: #f4f8fc;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 6px 18px rgba(16, 52, 92, 0.1);
+  color: var(--sap-ink);
+  font-family: "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", Arial, sans-serif;
+  font-size: 12px;
+  color-scheme: light;
 }
 
-.cfg-ref-chk {
+.sapw-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 4px 10px;
+  background: #1f4e79;
+  color: #eaf2fa;
+  font-size: 12px;
+}
+
+.sapw-cmd {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 0 0 14px;
-  padding: 8px 10px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ok);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel-2);
+  gap: 16px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--sap-line);
+  background: linear-gradient(#e9f1f9, #d9e6f2);
 }
 
-.cfg-ref-chk .ph {
-  flex: none;
+.sapw-okcode {
+  width: 190px;
+  padding: 1px 7px;
+  border: 1px solid #8aa6c3;
+  border-radius: 3px;
+  background: #fff;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.sapw-icons {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #3e6187;
   font-size: 14px;
-  line-height: 1;
 }
 
-.cfg-ref h4 {
-  margin: 18px 0 6px;
-  padding-bottom: 4px;
-  font-size: 12.5px;
+.sapw-icons .is-ok {
+  color: #2e8b57;
+}
+
+.sapw-icons .is-nav {
+  color: #c28a12;
+}
+
+.sapw-icons .is-cancel {
+  color: #c0392b;
+}
+
+.sapw-icons .ph:nth-child(5),
+.sapw-icons .ph:nth-child(7) {
+  margin-right: 8px;
+}
+
+.sapw-title {
+  padding: 8px 12px 7px;
+  background: #f4f8fc;
+  /* Black, as SAP GUI draws the screen title. */
+  color: #000;
+  font-size: 15px;
   font-weight: 700;
-  border-bottom: 1px solid var(--line);
+}
+
+.sapw-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 10px;
+  border-top: 1px solid #dbe6f1;
+  border-bottom: 1px solid var(--sap-line);
+  background: #dfeaf5;
+}
+
+.sapw-toolbar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid #a9bfd6;
+  border-radius: 3px;
+  background: linear-gradient(#ffffff, #eef4fa);
+  color: #2a4866;
+  font-size: 11.5px;
+}
+
+.sapw-toolbar .ph {
+  color: #3e6187;
+  font-size: 12px;
+}
+
+.sapw-body {
+  min-width: 0;
+  padding: 12px 12px 8px;
+  background: #f4f8fc;
+}
+
+.sapw-scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.sapw-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #fff;
+}
+
+.sapw-table th,
+.sapw-table td {
+  height: 22px;
+  padding: 0 7px;
+  overflow: hidden;
+  border: 1px solid #b9cbde;
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sapw-table th {
+  height: 24px;
+  background: var(--sap-head);
+  color: #163a5f;
+  font-weight: 700;
+}
+
+.sapw-table .sapw-sel {
+  width: 16px;
+  padding: 0;
+  background: var(--sap-head);
+}
+
+.sapw-table td.is-key {
+  background: #e6eff8;
+  color: #10304f;
+}
+
+.sapw-table tr.alt td:not(.sapw-sel):not(.is-key) {
+  background: #f3f8fd;
+}
+
+.sapw-pos {
+  display: flex;
+  gap: 28px;
+  margin-top: 8px;
+  color: #4f6d8c;
+  font-size: 11.5px;
+}
+
+.sapw-status {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--sap-line);
+  background: #dfeaf5;
+  color: #1e6b3a;
+  font-size: 11.5px;
+}
+
+.sapw-status.is-warn {
+  color: #b0433a;
+}
+
+.sapw-status i {
+  flex: none;
+  color: #4f6d8c;
+  font-style: normal;
+}
+
+.sapw-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--sap-line);
+  background: #f4f8fc;
+}
+
+.img .sapw-tabs button {
+  padding: 4px 10px;
+  border: 1px solid var(--sap-line);
+  border-bottom: 0;
+  border-radius: 4px 4px 0 0;
+  background: #dfeaf5;
+  color: var(--sap-ink);
+  font-size: 11.5px;
+}
+
+.img .sapw-tabs button[aria-selected="true"] {
+  background: #fff;
+  font-weight: 700;
+}
+
+.sapw-split {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+}
+
+.sapw-dialog {
+  padding: 12px 8px;
+  border-right: 1px solid var(--sap-line);
+  background: #fff;
+}
+
+.sapw-dialog b {
+  display: block;
+  margin: 0 0 6px 4px;
+  color: #1f4e79;
+  font-size: 11.5px;
+}
+
+.sapw-dialog ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.img .sapw-dialog button {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  width: 100%;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--sap-ink);
+  font-size: 11.5px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.img .sapw-dialog button:hover {
+  background: #eaf2fa;
+}
+
+.img .sapw-dialog button[aria-current="true"] {
+  background: #cfe0f1;
+  font-weight: 700;
+}
+
+.sapw-folder {
+  flex: none;
+  margin-top: 1px;
+  color: #d4a72c;
+  font-size: 13px;
 }
 
 /* ----- narrow ----- */
 
-@media (max-width: 1200px) {
-  .cfg.is-ref-open {
-    grid-template-columns: 280px minmax(0, 1fr);
+@media (max-width: 1100px) {
+  .img-body {
+    grid-template-columns: 300px minmax(0, 1fr);
   }
 
-  /* No room for a third column: the references become a drawer over the
-     article, the way the HTML slid its panel in. */
-  .cfg.is-ref-open .cfg-ref:not([hidden]) {
-    position: absolute;
-    inset: 0 0 0 auto;
-    width: min(380px, 90%);
-    box-shadow: -8px 0 24px rgba(var(--shadow-rgb), 0.12);
+  .img-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .img .img-areas button {
+    grid-template-columns: minmax(0, 1fr) 88px;
+  }
+
+  .img-areas .img-bar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .sapw-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sapw-dialog {
+    border-right: 0;
+    border-bottom: 1px solid var(--sap-line);
   }
 }
 
-@media (max-width: 900px) {
-  .cfg,
-  .cfg.is-ref-open {
+@media (max-width: 800px) {
+  .img-body {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 38%) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 40%) minmax(0, 1fr);
   }
 
-  .cfg-side {
+  .img-side {
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 
-  .cfg-main {
-    padding: 18px 16px 40px;
+  .img-main {
+    padding: 16px 14px 32px;
+  }
+
+  .img-check {
+    margin-left: 0;
   }
 }
 

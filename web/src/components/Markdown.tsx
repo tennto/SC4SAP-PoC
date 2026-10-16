@@ -31,6 +31,7 @@ import { highlight, highlighter, langFor, loadedHighlighter } from "@/lib/highli
 import { DragScrollBar } from "@/components/DragScrollBar";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n/client";
+import { DOC_ICON_PATHS, EMOJI } from "@/lib/doc-icons";
 
 /** The text inside a fence, which react-markdown hands over as nested nodes. */
 function textOf(node: ReactNode): string {
@@ -339,9 +340,63 @@ function trimStreamingTail(text: string): string {
   return text;
 }
 
+const ICON_TONE = new Map(EMOJI.map(([emoji, icon, tone]) => [emoji, { icon, tone }]));
+const EMOJI_RE = new RegExp(
+  `(${EMOJI.map(([e]) => e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\uFE0F?`,
+  "gu",
+);
+/**
+ * A document's emoji as the app's icons, in the tones its HTML page gives
+ * them (`doc-icons.ts`). A rehype step over the parsed tree: text only,
+ * never code; the Markdown itself is not touched.
+ */
+function rehypeDocIcons() {
+  type Node = { type: string; tagName?: string; value?: string; children?: Node[]; properties?: Record<string, unknown> };
+  const icon = (emoji: string): Node => {
+    const hit = ICON_TONE.get(emoji)!;
+    return { type: "element", tagName: "doc-icon", properties: { icon: hit.icon, tone: hit.tone }, children: [] };
+  };
+  const split = (text: string): Node[] => {
+    const out: Node[] = [];
+    let last = 0;
+    for (const m of text.matchAll(EMOJI_RE)) {
+      if (m.index > last) out.push({ type: "text", value: text.slice(last, m.index) });
+      out.push(icon(m[1]!));
+      last = m.index + m[0].length;
+      if (text[last] === " ") last += 1;
+    }
+    if (last < text.length) out.push({ type: "text", value: text.slice(last) });
+    return out;
+  };
+  const walk = (node: Node): void => {
+    if (!node.children) return;
+    node.children = node.children.flatMap((child) => {
+      if (child.type === "element") {
+        if (child.tagName !== "code" && child.tagName !== "pre") walk(child);
+        return [child];
+      }
+      return child.type === "text" && child.value ? split(child.value) : [child];
+    });
+  };
+  return (tree: Node) => walk(tree);
+}
+
+/** One icon of `rehypeDocIcons`, drawn as the page draws it: Phosphor, inline. */
+function DocIcon({ icon, tone }: { icon?: string; tone?: string }) {
+  const path = icon ? DOC_ICON_PATHS[icon] : undefined;
+  if (!path) return null;
+  return (
+    <span className={`doc-ico t-${tone ?? "plain"}`} aria-hidden="true">
+      {/* A constant of this app (`doc-icons.ts`), never document text. */}
+      <svg viewBox="0 0 256 256" dangerouslySetInnerHTML={{ __html: path }} />
+    </span>
+  );
+}
+
 export function Markdown({
   children,
   streaming = false,
+  docIcons = false,
 }: {
   children: string;
   /**
@@ -350,18 +405,25 @@ export function Markdown({
    * trailing newline.
    */
   streaming?: boolean;
+  /** A run's document: emoji as the app's icons, open questions highlighted (`rehypeDocIcons`). */
+  docIcons?: boolean;
 }) {
   const body = streaming ? trimStreamingTail(children) : children;
   return (
     <div className="markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={docIcons ? [rehypeDocIcons] : []}
         // A picture carried inside the document itself — a spec's rendered
         // screens — is let through; every other URL gets the default checks.
         urlTransform={(url) =>
           url.startsWith("data:image/") ? url : defaultUrlTransform(url)
         }
         components={{
+          // `rehypeDocIcons`' own element; not a tag react-markdown knows.
+          ...({
+            "doc-icon": ({ icon, tone }: { icon?: string; tone?: string }) => <DocIcon icon={icon} tone={tone} />,
+          } as object),
           table: ({ node, children: cells }) => (
             <DataTable node={node}>{cells}</DataTable>
           ),

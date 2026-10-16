@@ -210,7 +210,7 @@ const ko: CatalogText = {
       fields: {
         Programs: {
           label: "프로그램",
-          placeholder: "한 줄에 하나씩 — 2개에서 5개까지.",
+          placeholder: "프로그램명 (예: ZMMR00020)",
           hint: "같은 업무 시나리오를 공유해야 합니다. 차이점이 비교의 핵심입니다.",
         },
         Dimensions: {
@@ -552,7 +552,7 @@ const ja: CatalogText = {
       fields: {
         Programs: {
           label: "プログラム",
-          placeholder: "1 行に 1 つ — 2 本から 5 本まで。",
+          placeholder: "プログラム名 (例: ZMMR00020)",
           hint: "同じ業務シナリオを共有している必要があります。違いこそが比較の要点です。",
         },
         Dimensions: {

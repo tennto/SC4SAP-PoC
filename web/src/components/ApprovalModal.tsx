@@ -141,7 +141,11 @@ export function ApprovalModal({
           <strong>
             {request.displayName ?? request.title ?? request.toolName}
           </strong>
-          {!isQuestion && <code className="modal-tool">{request.toolName}</code>}
+          {/* The tool's own name, only when the title is something else: a
+              second "Bash" in a box beside the title "Bash" said nothing. */}
+          {!isQuestion &&
+            (request.displayName ?? request.title ?? request.toolName).toLowerCase() !==
+              request.toolName.toLowerCase() && <code className="modal-tool">{request.toolName}</code>}
         </header>
 
         {request.description && (

@@ -101,6 +101,16 @@ body.editing [data-ed]:not(table):not(ul):not(ol),body.editing table[data-ed] td
    text, inside the cell's padding — never over the cell's edge or its
    neighbours'. */
 body.editing table[data-ed] td:not(.ed-rowtools),body.editing table[data-ed] th:not(.ed-rowtools){outline-offset:-7px;border-radius:10px}
+/* A paragraph's or list item's box sat 3px off its text, top and bottom:
+   room inside it instead, taken back out of its margins (the theme's 18px
+   under a paragraph, 9px under a list item), so nothing moves. An inline
+   span's padding does not move anything to begin with. */
+body.editing p[data-ed],body.editing blockquote[data-ed]{padding-block:4px;margin-top:-4px;margin-bottom:14px;outline-offset:2px}
+body.editing :is(ul,ol)[data-ed] li[contenteditable=true]{padding-block:3px;margin-top:-3px;margin-bottom:6px;outline-offset:1px}
+body.editing :is(ul,ol)[data-ed] span[contenteditable=true]{padding-block:4px;outline-offset:2px}
+/* A header cell is a line shorter than a body cell: the same inset left its
+   box a sliver round the label. */
+body.editing table[data-ed] th:not(.ed-rowtools){outline-offset:-3px;border-radius:7px}
 /* Columns hold the widths they had when editing began, so typing in a
    cell does not reflow the table (the script measures them). */
 body.editing table[data-ed][data-frozen]{table-layout:fixed}
@@ -413,7 +423,7 @@ __FLOW__
   // What the page's scripts put inside a unit, taken back out.
   function clean(el) {
     var copy = el.cloneNode(true);
-    Array.prototype.forEach.call(copy.querySelectorAll('.ed-rowtools, button, .cbo-no'), function (n) { n.remove(); });
+    Array.prototype.forEach.call(copy.querySelectorAll('.ed-rowtools, button, .cbo-no, .cmp-empty'), function (n) { n.remove(); });
     Array.prototype.forEach.call(copy.querySelectorAll('.doc-ico'), function (n) {
       n.replaceWith(document.createTextNode(n.getAttribute('data-emoji') || ''));
     });
@@ -426,6 +436,8 @@ __FLOW__
     all.forEach(function (n) {
       n.removeAttribute('contenteditable');
       if (n.tagName === 'TH') { n.removeAttribute('tabindex'); n.removeAttribute('aria-sort'); }
+      // A Compare Programs verdict cell is a picker while editing (compare-theme.ts).
+      if (n.tagName === 'TD') { n.removeAttribute('tabindex'); n.removeAttribute('aria-haspopup'); }
       if (n.tagName === 'TR') { n.removeAttribute('style'); n.removeAttribute('hidden'); }
       if (n.classList) {
         ['id', 'num', 'sortable'].forEach(function (c) { if (n.tagName === 'TD' || n.tagName === 'TH') n.classList.remove(c); });

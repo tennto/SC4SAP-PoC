@@ -14,6 +14,7 @@
  * change of month cross-fades inside it, so nothing below moves.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityTrend } from "@/components/ActivityTrend";
 import { Icon } from "@/components/Icon";
 import { useLocale } from "@/lib/i18n/client";
 import { localeTag } from "@/lib/i18n/locale";
@@ -59,6 +60,7 @@ export function ActivityPanel({
   const inflight = useRef(new Map<string, Promise<MonthSpend["totals"]>>());
   const [, rerender] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [trend, setTrend] = useState(false);
 
   const load = useCallback((key: string): Promise<MonthSpend["totals"]> => {
     if (cache.current.has(key)) return Promise.resolve(cache.current.get(key)!);
@@ -112,6 +114,18 @@ export function ActivityPanel({
         <h2>
           <Icon name="pulse" /> {t.activity}
         </h2>
+        <div className="panel-head-tools">
+        {/* The months before this one, as a line: the figure below is one month. */}
+        <button
+          type="button"
+          className="trend-open"
+          onClick={() => setTrend(true)}
+          aria-label={t.trendButton}
+          title={t.trendButton}
+          aria-haspopup="dialog"
+        >
+          <Icon name="chart-line" />
+        </button>
         <nav className="month-nav" aria-label={t.monthNav}>
           <button
             type="button"
@@ -139,7 +153,16 @@ export function ActivityPanel({
             <Icon name="caret-right" />
           </button>
         </nav>
+        </div>
       </div>
+      {trend && (
+        <ActivityTrend
+          currentMonth={currentMonth}
+          firstMonth={firstMonth}
+          load={load}
+          onClose={() => setTrend(false)}
+        />
+      )}
 
       {/* One slot, one height, for the figure and for its absence. Keyed on
           the month so each change fades in rather than snapping. */}
