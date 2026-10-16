@@ -495,16 +495,17 @@ export function isSapReadTool(toolName: string): boolean {
  * every session the web app opens.
  *
  *   all    — every gated call is put to the reader. The original behaviour.
- *   writes — reads go through, writes ask: SAP reads of every class but row
- *            extraction, the agent's own read tools, and a shell command
- *            that only looks. Anything that changes a file or the SAP system,
- *            or leaves the machine, still asks.
+ *   writes — reads go through, writes ask: SAP reads of every class, row
+ *            extraction included (row-capped; the blocklist hook and the
+ *            MCP server still refuse the tables they refuse), the agent's
+ *            own read tools, and a shell command that only looks. Anything
+ *            that changes a file or the SAP system, or leaves the machine,
+ *            still asks.
  *   never  — nothing asks. For a PoC on the operator's own machine; SAP
  *            write tools are still out of the model's reach altogether.
  *
  * The question tool is outside all three — it is the model asking, not the
- * model wanting — and so is a row-extraction read under `writes`, because
- * pulling table rows is the one read the blocklist was built around.
+ * model wanting.
  */
 export type ApprovalLevel = "all" | "writes" | "never";
 
@@ -600,8 +601,12 @@ export function allowedByLevel(
   if (level === "all") return false;
   if (level === "never") return true;
   if (toolName.startsWith(SAP_TOOL_PREFIX)) {
+    // Row extraction is a read too (decided 2026-10-17: every read goes
+    // through under `writes`). The tables it may touch are still the
+    // plugin's blocklist hook's and the MCP server's call, and the session
+    // caps the rows (`capRows`) before it lets one through.
     const cls = classifySapTool(toolName.slice(SAP_TOOL_PREFIX.length));
-    return cls === "read" || cls === "other";
+    return cls === "read" || cls === "other" || cls === "row-extraction";
   }
   if (LOCAL_READ_TOOLS.has(toolName)) return true;
   if (toolName === "Bash") {

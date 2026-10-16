@@ -19,6 +19,7 @@ export const DOC_ICON_PATHS: Record<string, string> = {
   "package": "<path d=\"M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32l80.34,44-29.77,16.3-80.35-44ZM128,120,47.66,76l33.9-18.56,80.34,44ZM40,90l80,43.78v85.79L40,175.82Zm176,85.78h0l-80,43.79V133.82l32-17.51V152a8,8,0,0,0,16,0V107.55L216,90v85.77Z\"/>",
   "square": "<path d=\"M208,32H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32Zm0,176H48V48H208V208Z\"/>",
   "check-circle": "<path d=\"M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z\"/>",
+  "diamond": "<path d=\"M235.33,116.72,139.28,20.66a16,16,0,0,0-22.56,0l-96,96.06a16,16,0,0,0,0,22.56l96.05,96.06h0a16,16,0,0,0,22.56,0l96.05-96.06a16,16,0,0,0,0-22.56ZM128,224h0L32,128,128,32,224,128Z\"/>",
   "file-text": "<path d=\"M213.66,82.34l-56-56A8,8,0,0,0,152,24H56A16,16,0,0,0,40,40V216a16,16,0,0,0,16,16H200a16,16,0,0,0,16-16V88A8,8,0,0,0,213.66,82.34ZM160,51.31,188.69,80H160ZM200,216H56V40h88V88a8,8,0,0,0,8,8h48V216Zm-32-80a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,136Zm0,32a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h64A8,8,0,0,1,168,168Z\"/>",
   "flag": "<path d=\"M42.76,50A8,8,0,0,0,40,56V224a8,8,0,0,0,16,0V179.77c26.79-21.16,49.87-9.75,76.45,3.41,16.4,8.11,34.06,16.85,53,16.85,13.93,0,28.54-4.75,43.82-18a8,8,0,0,0,2.76-6V56A8,8,0,0,0,218.76,50c-28,24.23-51.72,12.49-79.21-1.12C111.07,34.76,78.78,18.79,42.76,50ZM216,172.25c-26.79,21.16-49.87,9.74-76.45-3.41-25-12.35-52.81-26.13-83.55-8.4V59.79c26.79-21.16,49.87-9.75,76.45,3.4,25,12.35,52.82,26.13,83.55,8.4Z\"/>",
   "folder": "<path d=\"M216,72H131.31L104,44.69A15.86,15.86,0,0,0,92.69,40H40A16,16,0,0,0,24,56V200.62A15.4,15.4,0,0,0,39.38,216H216.89A15.13,15.13,0,0,0,232,200.89V88A16,16,0,0,0,216,72ZM40,56H92.69l16,16H40ZM216,200H40V88H216Z\"/>",
@@ -40,8 +41,8 @@ export const DOC_ICON_PATHS: Record<string, string> = {
   "x-circle": "<path d=\"M165.66,101.66,139.31,128l26.35,26.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z\"/>",
 };
 
-/** Emoji → icon, and the tone it is drawn in. */
-const EMOJI: [string, string, string][] = [
+/** Emoji → icon, and the tone it is drawn in. The Markdown view uses it too (`Markdown.tsx`). */
+export const EMOJI: [string, string, string][] = [
   ["📌", "push-pin", "accent"],
   ["📍", "push-pin", "accent"],
   ["⚠", "warning", "warn"],
@@ -75,7 +76,13 @@ const EMOJI: [string, string, string][] = [
   ["🎯", "target", "plain"],
   ["🚀", "rocket", "plain"],
   ["🚩", "flag", "warn"],
-  ["❓", "question", "plain"],
+  ["❓", "question", "ask"],
+  // Compare Programs' verdicts: a variant is a blue diamond, an open question purple.
+  ["🔷", "diamond", "note"],
+  ["🔹", "diamond", "note"],
+  ["🔶", "diamond", "accent"],
+  ["🔸", "diamond", "accent"],
+  ["💠", "diamond", "note"],
   ["➡", "arrow-right", "plain"],
   ["▶️", "arrow-right", "plain"],
 ];
@@ -87,10 +94,13 @@ h1 .doc-ico,h2 .doc-ico,h3 .doc-ico,h4 .doc-ico{margin-right:0.42em}
 .toc .doc-ico{margin-right:0.38em}
 h1 .doc-ico,h2 .doc-ico,h3 .doc-ico,h4 .doc-ico{margin-right:0.42em}
 .toc .doc-ico{margin-right:0.38em}
+.doc-ico.tight{margin-right:0}
 .doc-ico.t-accent{color:var(--fg,#2b2b2b)}
 .doc-ico.t-good{color:var(--msg-s,#15803d)}
 .doc-ico.t-warn{color:#b45309}
 .doc-ico.t-bad{color:var(--msg-e,#b42318)}
+.doc-ico.t-note{color:var(--note,#0969da)}
+.doc-ico.t-ask{color:var(--important,#8250df)}
 </style>`;
 
 export const DOC_ICON_SCRIPT = `<script id="sc4sap-doc-icons-script">
@@ -133,6 +143,9 @@ export const DOC_ICON_SCRIPT = `<script id="sc4sap-doc-icons-script">
         // What it stood for, so an edited page (the spec's edit mode) can
         // save the emoji back rather than lose it.
         ico.setAttribute('data-emoji', text.slice(match.index, last));
+        // Right before a closing mark — "(❓)", "❓." — the icon's margin read
+        // as a stray space.
+        if (/^[)\\]}.,:;!?]/.test(text.slice(last))) ico.classList.add('tight');
       }
       if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
       node.parentNode.replaceChild(frag, node);

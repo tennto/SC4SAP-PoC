@@ -71,7 +71,8 @@ figure:has(svg.flow-svg){background:var(--bg)}
 .flow-fig:not(:has(>.flow-edit-btn)) .fe-tools{padding-right:0}
 .flow-fig .fe-tools button,.flow-fig .fe-tools select{height:26px;padding:0 7px;font:inherit;font-size:12px;line-height:24px;border-radius:6px}
 .flow-fig.fe-on>.flow-edit-btn{top:14px;right:16px;height:26px;padding:0 10px;font-size:12px;line-height:24px}
-.flow-fig .fe-tools .fe-sep{flex-basis:100%;height:0;margin:0}
+.flow-fig .fe-tools{align-items:center}
+.flow-fig .fe-tools .fe-sep{flex:none;width:1px;height:18px;margin:0 6px;background:var(--line)}
 .flow-fig .fe-tools .fe-hint{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:11.5px;line-height:1.6;color:var(--faint)}
 .flow-fig .fe-hint kbd{font:inherit;font-size:11px;margin-right:6px;padding:1px 7px;border:1px solid var(--line);border-radius:4px;background:var(--head);color:var(--muted)}
 .flow-fig.fe-on text.fh{cursor:text}
@@ -274,7 +275,8 @@ const FLOW_CORE = String.raw`
     else tools.appendChild(tone);
     f.tone = tone;
     syncTone(f);
-    // A row of its own for changing the chosen step, under the row that adds steps.
+    // A divider between the buttons that add steps and the ones that change
+    // the chosen step, one row for both (FLOW_PAGE_STYLE draws it).
     if (shape) {
       var sep = document.createElement('span');
       sep.className = 'fe-sep';

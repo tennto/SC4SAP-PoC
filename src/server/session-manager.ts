@@ -1714,7 +1714,8 @@ export class SessionManager {
     // is logged as auto-approved, the same as a policy allow.
     if (allowedByLevel(live.record.approval, toolName, input)) {
       this.toolLog.decide(context.toolUseID, "auto");
-      return Promise.resolve({ behavior: "allow", updatedInput: input });
+      // A row read let through unasked is still held to the row cap.
+      return Promise.resolve({ behavior: "allow", updatedInput: capRows(toolName, input) });
     }
 
     // The switch, applied before a request is ever raised. Nothing reaches the

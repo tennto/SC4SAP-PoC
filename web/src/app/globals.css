@@ -1840,23 +1840,68 @@ body.is-dragging-chat * {
   font-size: 13px;
 }
 
+/* Entering and leaving select mode, on the bar and on every row's tick at
+   once. Between the two shared durations on purpose: `--t-fast` made the
+   tick boxes blink rather than arrive, and `--t-base` held a whole column of
+   them in mid-fade for long enough to read as lag. */
+.browser {
+  --t-select: calc((var(--t-fast) + var(--t-base)) / 2);
+}
+
 /* The line above the list: the count and Select, or — while selecting — the
-   tick-all box and the actions. One fixed height either way. */
+   tick-all box and the actions. One fixed height either way. Both faces sit
+   in the same grid cell, so the panel behind them can ease in while one face
+   fades out and the other in. */
 .browser-bar {
-  display: flex;
+  display: grid;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   min-height: 34px;
   margin: 16px 0 4px;
   padding: 0 2px 0 4px;
   border-radius: 8px;
+  box-shadow: 0 0 0 1px transparent;
+  transition:
+    background-color var(--t-select) var(--ease),
+    box-shadow var(--t-select) var(--ease),
+    padding var(--t-select) var(--ease);
 }
 
 .browser-bar.is-selecting {
   background: var(--panel);
   box-shadow: 0 0 0 1px var(--line-soft);
   padding: 0 6px 0 10px;
+}
+
+.browser-bar-face {
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition:
+    opacity var(--t-select) var(--ease),
+    transform var(--t-select) var(--ease),
+    visibility 0s linear;
+}
+
+/* The face not in use waits a few pixels off the line — the count above it,
+   the actions below — so entering select mode rolls the bar up and leaving
+   rolls it back down: one line turning over rather than two swapping.
+   `visibility` waits for the fade to end, so the hidden face is not read out
+   or found by search once it is gone. */
+.browser-bar.is-selecting > .is-count,
+.browser-bar:not(.is-selecting) > .is-picking {
+  opacity: 0;
+  transform: translateY(4px);
+  visibility: hidden;
+  transition:
+    opacity var(--t-select) var(--ease),
+    transform var(--t-select) var(--ease),
+    visibility 0s linear var(--t-select);
+}
+
+.browser-bar.is-selecting > .is-count {
+  transform: translateY(-4px);
 }
 
 .browser-bar-actions {
@@ -1950,17 +1995,37 @@ body.is-dragging-chat * {
   border-radius: 8px;
 }
 
-.browser-row > .row-kind {
+/* The kind icon and the tick box share one 16px cell, stacked rather than
+   swapped. With `display` flipping between them there was no frame in which
+   both existed, so select mode arrived as a cut down the whole column; here
+   one fades and shrinks out while the other slides and grows in. */
+.browser-slot {
   flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+.browser-slot > * {
+  grid-area: 1 / 1;
+  transition:
+    opacity var(--t-select) var(--ease),
+    transform var(--t-select) var(--ease),
+    background-color var(--t-select) var(--ease),
+    border-color var(--t-select) var(--ease);
+}
+
+.browser-slot > .row-kind {
   font-size: 16px;
   color: var(--ink-38);
 }
 
 /* The tick box shares the kind icon's place: hidden until the row is pointed
-   at, then shown in its stead; always shown while selecting. */
+   at, then shown in its stead; always shown while selecting. Hidden by
+   opacity, so it also takes no clicks until it is there to be seen. */
 .browser-tick {
-  flex: none;
-  display: none;
+  display: grid;
   place-items: center;
   width: 16px;
   height: 16px;
@@ -1970,6 +2035,9 @@ body.is-dragging-chat * {
   color: var(--on-ink);
   font-size: 11px;
   cursor: pointer;
+  opacity: 0;
+  transform: translateX(-4px) scale(0.7);
+  pointer-events: none;
 }
 
 .browser-tick.is-on {
@@ -1983,12 +2051,25 @@ body.is-dragging-chat * {
 
 .browser-row:hover .browser-tick,
 .browser-row.is-selecting .browser-tick {
-  display: grid;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
 }
 
-.browser-row:hover > .row-kind,
-.browser-row.is-selecting > .row-kind {
-  display: none;
+.browser-row:hover .browser-slot > .row-kind,
+.browser-row.is-selecting .browser-slot > .row-kind {
+  opacity: 0;
+  transform: scale(0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .browser-bar,
+  .browser-bar-face,
+  .browser-bar.is-selecting > .is-count,
+  .browser-bar:not(.is-selecting) > .is-picking,
+  .browser-slot > * {
+    transition: none;
+  }
 }
 
 .browser-row.is-picked {
@@ -2701,6 +2782,50 @@ body.is-dragging-chat * {
 
 .markdown > :last-child {
   margin-bottom: 0;
+}
+
+/* A run's document: its emoji as the app's icons (`rehypeDocIcons`), in the
+   tones the HTML page gives them. */
+.markdown .doc-ico {
+  display: inline-block;
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0 0.3em 0 0;
+  vertical-align: -0.16em;
+  color: var(--ink-55);
+}
+
+.markdown .doc-ico > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: currentColor;
+}
+
+.markdown .doc-ico.t-accent {
+  color: var(--ink);
+}
+
+.markdown .doc-ico.t-good {
+  color: var(--ok);
+}
+
+.markdown .doc-ico.t-warn {
+  color: var(--warn);
+}
+
+.markdown .doc-ico.t-bad {
+  color: var(--bad);
+}
+
+/* Compare Programs' verdict colours, as the HTML page has them: a variant
+   blue, an open question purple. */
+.markdown .doc-ico.t-note {
+  color: #0969da;
+}
+
+.markdown .doc-ico.t-ask {
+  color: #8250df;
 }
 
 .markdown p,
@@ -3657,6 +3782,452 @@ body.is-dragging-chat * {
 
 .field-images.is-locked .field-images-foot {
   color: var(--ink-55);
+}
+
+/* A list field (Compare Programs' programs): a row of its own across the
+   form, one input per entry side by side, the add button after the last one;
+   a remove button inside each entry past the minimum. */
+.fields > .field-list-field {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.field-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+
+.field-list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 220px;
+  max-width: 100%;
+}
+
+.field-list-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* An entry added or removed by hand opens and closes in the row, so the add
+   button beside it slides over instead of jumping. */
+.field-list-row.is-added {
+  animation: field-list-in var(--t-base) var(--ease) both;
+}
+
+.field-list-row.is-leaving {
+  overflow: hidden;
+  pointer-events: none;
+  animation: field-list-out var(--t-fast) var(--ease) both;
+}
+
+@keyframes field-list-in {
+  from {
+    width: 0;
+    opacity: 0;
+    margin-right: -8px;
+  }
+}
+
+@keyframes field-list-out {
+  to {
+    width: 0;
+    opacity: 0;
+    margin-right: -8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-list-row.is-added,
+  .field-list-row.is-leaving {
+    animation: none;
+  }
+}
+
+.field-list-row:has(.field-list-remove) input {
+  padding-right: 34px;
+}
+
+.field-list-row .field-list-remove {
+  position: absolute;
+  right: 3px;
+}
+
+.field-list-remove {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-55);
+  cursor: pointer;
+}
+
+.field-list-remove:hover {
+  border-color: var(--line);
+  color: var(--bad);
+}
+
+/* Add: the edit mode's thin plus on its own, no box round it; a soft
+   round wash on hover says it can be pressed. */
+.field-list-add {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-55);
+  cursor: pointer;
+  transition:
+    color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+
+.field-list-add svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.field-list-add:hover {
+  background: var(--line-soft);
+  color: var(--ink);
+}
+
+.field-list-add:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The activity panel's trend button, beside ‹ 26/09 ›, and its dialog. */
+.panel-head-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trend-open {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-top: -4px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 15px;
+  cursor: pointer;
+  transition:
+    color var(--t-fast) var(--ease),
+    border-color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+
+.trend-open:hover {
+  color: var(--ink);
+  border-color: var(--line-strong);
+  background: var(--bg);
+}
+
+.trend-open:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* Wide enough that the chart reads at a glance and a tip at either end
+   stays inside. It rises into place and sinks back out, a little slower
+   than a question dialog: it is something to look at, not to answer. */
+.modal.trend-modal {
+  width: min(860px, 100%);
+  max-height: none;
+  overflow: visible;
+  gap: 18px;
+  padding: 26px 28px;
+  animation: trend-in 320ms var(--ease) both;
+}
+
+.modal-backdrop.leaving .modal.trend-modal {
+  animation: trend-out 200ms var(--ease) both;
+}
+
+@keyframes trend-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+}
+
+@keyframes trend-out {
+  to {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.trend-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.trend-sub {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-55);
+}
+
+.trend-close {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-55);
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.trend-close:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* The headline: three figures in a row, the six months' total first. */
+.trend-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+
+.trend-figures > div {
+  padding: 12px 14px;
+  background: var(--panel);
+}
+
+.trend-figures dt {
+  font-size: 11.5px;
+  color: var(--ink-55);
+}
+
+.trend-figures dd {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* Text keeps the text colours: the arrow says up or down, the colour only
+   repeats it. */
+.trend-figures dd.is-up {
+  color: var(--warn);
+}
+
+.trend-figures dd.is-down {
+  color: var(--ok);
+}
+
+.trend-chart {
+  position: relative;
+  color: var(--ink);
+}
+
+.trend-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.trend-grid line {
+  stroke: var(--line-soft);
+  stroke-width: 1;
+}
+
+.trend-grid text,
+.trend-month {
+  font-size: 11px;
+  fill: var(--ink-55);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Drawn left to right as the dialog opens (`pathLength="1"`, so the dash
+   is the whole line whatever its length); the area fills in behind it and
+   each point lands as the line reaches it. */
+.trend-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-dasharray: 1;
+  animation: trend-draw 1100ms cubic-bezier(0.45, 0, 0.2, 1) 380ms both;
+}
+
+.trend-area {
+  animation: trend-fade 800ms var(--ease) 700ms both;
+}
+
+.trend-dot {
+  fill: var(--panel);
+  stroke: currentColor;
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: r var(--t-fast) var(--ease);
+  animation: trend-dot-in 260ms var(--ease) both;
+}
+
+@keyframes trend-dot-in {
+  from {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+}
+
+.trend-value {
+  animation: trend-fade 300ms var(--ease) 1480ms both;
+}
+
+.trend-dot.is-current,
+.trend-dot.is-active {
+  fill: currentColor;
+}
+
+.trend-cross {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.trend-value {
+  font-size: 12px;
+  font-weight: 650;
+  fill: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-hit {
+  fill: transparent;
+  cursor: crosshair;
+  outline: none;
+}
+
+.trend-tip {
+  position: absolute;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 2px;
+  min-width: 132px;
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--card-shadow);
+  font-size: 12px;
+  color: var(--ink-55);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.trend-tip.is-start {
+  transform: translateX(-14px);
+}
+
+.trend-tip.is-end {
+  transform: translateX(calc(-100% + 14px));
+}
+
+.trend-tip strong {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-55);
+}
+
+.trend-tip-value {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-wait {
+  position: absolute;
+  inset: 18px 20px 34px 56px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, transparent, var(--line-soft), transparent);
+  background-size: 200% 100%;
+  animation: trend-shimmer 1.2s linear infinite;
+}
+
+@keyframes trend-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes trend-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes trend-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trend-line,
+  .trend-area,
+  .trend-dot,
+  .trend-value,
+  .trend-wait,
+  .modal.trend-modal,
+  .modal-backdrop.leaving .modal.trend-modal {
+    animation: none;
+  }
 }
 
 .field-images-add {
@@ -10246,6 +10817,55 @@ button.mon-switch.is-on {
   padding: 20px 26px 40px;
   overflow: auto;
   scrollbar-width: thin;
+}
+
+/* Moving between pages of the pane. A new page rises in over a few pixels and
+   fades up, at a pace between `--t-fast` and `--t-base` (about 200ms): quick
+   enough to keep up with a reader stepping down the tree, slow enough not to
+   read as a cut. The old page is not faded out; while the next activity's
+   screens are being read it stays in place, dimmed a little to say the click
+   was taken, so the pane never empties or changes height in between. */
+.img {
+  /* Long enough to be seen as a change of page: at 200ms with a 6px rise
+     the swap read as a cut. */
+  --img-swap: 320ms;
+}
+
+.img-pane {
+  animation: img-pane-in var(--img-swap) var(--ease) backwards;
+  transition: opacity var(--t-fast) var(--ease);
+}
+
+.img-pane.is-holding {
+  opacity: 0.45;
+}
+
+/* Screens read after the page is already up land in the space the loading
+   row held, so they only fade; a rise there would shift the page under the
+   reader's eye. */
+.img-arrive {
+  animation: img-fade-in var(--img-swap) var(--ease) backwards;
+}
+
+@keyframes img-pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@keyframes img-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Without motion a new page still fades in, which moves nothing; only the
+   rise goes. */
+@media (prefers-reduced-motion: reduce) {
+  .img-pane {
+    animation-name: img-fade-in;
+  }
 }
 
 .img-loading {

@@ -36,6 +36,10 @@ import {
 
 const POLL_MS = 1500;
 const MODULE_KEY = "sc4sap.img.module";
+// How long the reading pane keeps the previous activity while the next one's
+// screens are read. A cached read lands well inside it, so the pane swaps once
+// to the finished page; a slow one shows its loading state after this.
+const HOLD_MS = 250;
 
 type Filter = "all" | "set" | "empty";
 
@@ -472,12 +476,39 @@ export function ImgBrowser() {
   };
 
   /* ---- right pane ---- */
-  const node = selected ? nodeById.get(selected) : undefined;
+  // The node the pane shows trails the tree's selection while the picked
+  // activity's screens are still being read, so the pane does not flash a
+  // half-built page (header, then a loading row, then the screens) between
+  // two finished ones. It catches up during render once the screens are in,
+  // which costs no extra painted frame, and after HOLD_MS at the latest.
+  const [shown, setShown] = useState<string | null>(null);
+  const wanted = selected ? nodeById.get(selected) : undefined;
+  if (shown !== selected && (!wanted?.act || screens[wanted.act] !== undefined)) setShown(selected);
+  useEffect(() => {
+    if (shown === selected) return;
+    const timer = setTimeout(() => setShown(selected), HOLD_MS);
+    return () => clearTimeout(timer);
+  }, [selected, shown]);
+  const holding = shown !== selected;
+
+  const node = shown ? nodeById.get(shown) : undefined;
   const act = node?.act && tree ? tree.acts[node.act] : undefined;
   const trail: ImgNode[] = [];
   for (let p = node ? parents.get(node.id) : undefined; p; p = parents.get(p.id)) trail.unshift(p);
 
   const loadingTree = moduleId !== null && !tree && !error;
+  // Which page the pane is on. The pane is keyed by it, so each new page
+  // mounts fresh and plays its entrance, while updates within one page (a
+  // status check finishing, say) leave it still.
+  const view = !tree
+    ? loadingTree
+      ? "loading"
+      : "start"
+    : rootTally.total === 0
+      ? "none"
+      : node && act
+        ? `act:${node.id}`
+        : "overview";
   // A count not taken yet: a dash, not a 0, which would read as "none
   // configured"; hovering it says why.
   const unchecked = (
@@ -669,268 +700,273 @@ export function ImgBrowser() {
         </aside>
 
         {/* ---------- right: overview or the activity ---------- */}
-        <main className="img-main">
-          {!tree ? (
-            loadingTree && moduleId ? (
-              <div className="img-loading">
-                <span className="img-orb is-large" aria-hidden="true">
-                  <ThinkingOrb state="searching" size={64} />
-                </span>
-                <h2>{t.loadingTree}</h2>
-                <p className="img-muted">{t.loadingTreeNote}</p>
-                {treeProgress && treeProgress.total > 0 ? (
-                  <p className="img-phase">{t.phase(treeProgress.phase, treeProgress.done, treeProgress.total)}</p>
-                ) : null}
-              </div>
-            ) : modules && !moduleId && !error ? (
-              <div className="img-start">
-                <h2>{t.pickTitle}</h2>
-                <p className="img-lead">{t.pickLede}</p>
+        <main className="img-main" aria-busy={holding || undefined}>
+          <div key={view} className={`img-pane${holding ? " is-holding" : ""}`}>
+            {!tree ? (
+              loadingTree && moduleId ? (
+                <div className="img-loading">
+                  <span className="img-orb is-large" aria-hidden="true">
+                    <ThinkingOrb state="searching" size={64} />
+                  </span>
+                  <h2>{t.loadingTree}</h2>
+                  <p className="img-muted">{t.loadingTreeNote}</p>
+                  {treeProgress && treeProgress.total > 0 ? (
+                    <p className="img-phase">{t.phase(treeProgress.phase, treeProgress.done, treeProgress.total)}</p>
+                  ) : null}
+                </div>
+              ) : modules && !moduleId && !error ? (
+                <div className="img-start">
+                  <h2>{t.pickTitle}</h2>
+                  <p className="img-lead">{t.pickLede}</p>
 
-                {suggested.length ? (
-                  <>
-                    <h3>{t.pickActive}</h3>
-                    <div className="img-start-cards">
-                      {suggested.map((m) => (
-                        <button type="button" key={m.id} onClick={() => pickModule(m.id)}>
-                          <span className="img-start-code">{abbreviation(m)}</span>
-                          <span className="img-start-name">{pick(m.text, locale)}</span>
-                          <Icon name="arrow-right" />
+                  {suggested.length ? (
+                    <>
+                      <h3>{t.pickActive}</h3>
+                      <div className="img-start-cards">
+                        {suggested.map((m) => (
+                          <button type="button" key={m.id} onClick={() => pickModule(m.id)}>
+                            <span className="img-start-code">{abbreviation(m)}</span>
+                            <span className="img-start-name">{pick(m.text, locale)}</span>
+                            <Icon name="arrow-right" />
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+
+                  <h3>{t.pickAll(modules.length)}</h3>
+                  <ul className="img-start-all">
+                    {modules.map((m) => (
+                      <li key={m.id}>
+                        <button type="button" onClick={() => pickModule(m.id)}>
+                          {names.get(m.id)}
                         </button>
-                      ))}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="img-foot">
+                    <Icon name="lightning" /> {t.freeNote}
+                  </p>
+                </div>
+              ) : null
+            ) : rootTally.total === 0 ? (
+              <div className="img-start">
+                <h2>{pick(tree.root.text, locale)}</h2>
+                <div className="img-notice">
+                  <Icon name="tray" />
+                  <div>
+                    <b>{t.noActivitiesTitle}</b>
+                    <p>{t.noActivitiesBody}</p>
+                  </div>
+                </div>
+              </div>
+            ) : !node || !act ? (
+              <div className="img-overview">
+                <p className="eyebrow">{t.overview}</p>
+                <h2>{pick(tree.root.text, locale)}</h2>
+                <p className="img-lead">{t.overviewLede}</p>
+
+                {status && rootTally.set === 0 ? (
+                  <div className="img-notice">
+                    <Icon name="tray" />
+                    <div>
+                      <b>{t.noConfigTitle}</b>
+                      <p>{t.noConfigBody(rootTally.total)}</p>
                     </div>
-                  </>
+                  </div>
                 ) : null}
 
-                <h3>{t.pickAll(modules.length)}</h3>
-                <ul className="img-start-all">
-                  {modules.map((m) => (
-                    <li key={m.id}>
-                      <button type="button" onClick={() => pickModule(m.id)}>
-                        {names.get(m.id)}
-                      </button>
-                    </li>
+                <div className="img-stats">
+                  <div>
+                    <b>{rootTally.total}</b>
+                    <span>{t.activityWord}</span>
+                  </div>
+                  <div className="is-set">
+                    <b>{status ? rootTally.set : unchecked}</b>
+                    <span>{t.statusSet}</span>
+                  </div>
+                  <div className="is-unknown">
+                    <b>{rootTally.unknown}</b>
+                    <span>{t.statusUnknown}</span>
+                  </div>
+                  <div className="is-empty">
+                    <b>{status ? rootTally.empty : unchecked}</b>
+                    <span>{t.statusEmpty}</span>
+                  </div>
+                </div>
+                <p className="img-help">
+                  {(
+                    [
+                      [t.statusSet, t.helpSet],
+                      [t.statusUnknown, t.helpUnknown],
+                      [t.statusEmpty, t.helpEmpty],
+                    ] as const
+                  ).map(([label, help]) => (
+                    <span key={label}>
+                      <b>{label}</b> {help}
+                    </span>
                   ))}
+                </p>
+
+                <h3>{t.areas}</h3>
+                <ul className="img-areas">
+                  {tree.root.kids?.map((area) => {
+                    const tally = tallies.get(area.id) ?? emptyTally();
+                    return (
+                      <li key={area.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            reveal(area.id);
+                            // After the unfold has rendered, so the row is where it lands.
+                            requestAnimationFrame(() =>
+                              document
+                                .querySelector(`[data-node="${area.id}"]`)
+                                ?.scrollIntoView({ block: "start", behavior: "smooth" }),
+                            );
+                            clearTimeout(flashTimer.current);
+                            setFlash(null);
+                            requestAnimationFrame(() => setFlash(area.id));
+                            flashTimer.current = setTimeout(() => setFlash(null), 1600);
+                          }}
+                        >
+                          <span className="img-area-name">{pick(area.text, locale)}</span>
+                          <TallyBar tally={tally} />
+                          <span className="img-area-count">
+                            {status ? `${tally.set} / ${tally.total}` : t.activities(tally.total)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <p className="img-foot">
                   <Icon name="lightning" /> {t.freeNote}
                 </p>
               </div>
-            ) : null
-          ) : rootTally.total === 0 ? (
-            <div className="img-start">
-              <h2>{pick(tree.root.text, locale)}</h2>
-              <div className="img-notice">
-                <Icon name="tray" />
-                <div>
-                  <b>{t.noActivitiesTitle}</b>
-                  <p>{t.noActivitiesBody}</p>
+            ) : (
+              <article className="img-detail">
+                <div className="img-detail-bar">
+                  <button type="button" className="img-back" onClick={() => setSelected(null)}>
+                    <Icon name="arrow-left" /> {t.back}
+                  </button>
+                  <nav className="img-crumbs" aria-label={t.imgPath}>
+                    {trail.map((p) => (
+                      <span key={p.id}>{pick(p.text, locale)}</span>
+                    ))}
+                  </nav>
                 </div>
-              </div>
-            </div>
-          ) : !node || !act ? (
-            <div className="img-overview">
-              <p className="eyebrow">{t.overview}</p>
-              <h2>{pick(tree.root.text, locale)}</h2>
-              <p className="img-lead">{t.overviewLede}</p>
-
-              {status && rootTally.set === 0 ? (
-                <div className="img-notice">
-                  <Icon name="tray" />
-                  <div>
-                    <b>{t.noConfigTitle}</b>
-                    <p>{t.noConfigBody(rootTally.total)}</p>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="img-stats">
-                <div>
-                  <b>{rootTally.total}</b>
-                  <span>{t.activityWord}</span>
-                </div>
-                <div className="is-set">
-                  <b>{status ? rootTally.set : unchecked}</b>
-                  <span>{t.statusSet}</span>
-                </div>
-                <div className="is-unknown">
-                  <b>{rootTally.unknown}</b>
-                  <span>{t.statusUnknown}</span>
-                </div>
-                <div className="is-empty">
-                  <b>{status ? rootTally.empty : unchecked}</b>
-                  <span>{t.statusEmpty}</span>
-                </div>
-              </div>
-              <p className="img-help">
-                {(
-                  [
-                    [t.statusSet, t.helpSet],
-                    [t.statusUnknown, t.helpUnknown],
-                    [t.statusEmpty, t.helpEmpty],
-                  ] as const
-                ).map(([label, help]) => (
-                  <span key={label}>
-                    <b>{label}</b> {help}
+                <h2>
+                  {pick(node.text, locale)}
+                  <span className={`img-pill is-${activityStatus(act, status)}`}>
+                    <StatusDot status={activityStatus(act, status)} />
+                    {{
+                      set: t.statusSet,
+                      empty: t.statusEmpty,
+                      unknown: t.statusUnknown,
+                      unchecked: t.statusUnchecked,
+                    }[activityStatus(act, status)]}
                   </span>
-                ))}
-              </p>
+                </h2>
+                {locale !== "en" && pick(node.text, locale) !== node.text.en && node.text.en ? (
+                  <p className="img-sub">{node.text.en}</p>
+                ) : null}
 
-              <h3>{t.areas}</h3>
-              <ul className="img-areas">
-                {tree.root.kids?.map((area) => {
-                  const tally = tallies.get(area.id) ?? emptyTally();
-                  return (
-                    <li key={area.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          reveal(area.id);
-                          // After the unfold has rendered, so the row is where it lands.
-                          requestAnimationFrame(() =>
-                            document
-                              .querySelector(`[data-node="${area.id}"]`)
-                              ?.scrollIntoView({ block: "start", behavior: "smooth" }),
-                          );
-                          clearTimeout(flashTimer.current);
-                          setFlash(null);
-                          requestAnimationFrame(() => setFlash(area.id));
-                          flashTimer.current = setTimeout(() => setFlash(null), 1600);
-                        }}
-                      >
-                        <span className="img-area-name">{pick(area.text, locale)}</span>
-                        <TallyBar tally={tally} />
-                        <span className="img-area-count">
-                          {status ? `${tally.set} / ${tally.total}` : t.activities(tally.total)}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-              <p className="img-foot">
-                <Icon name="lightning" /> {t.freeNote}
-              </p>
-            </div>
-          ) : (
-            <article className="img-detail">
-              <div className="img-detail-bar">
-                <button type="button" className="img-back" onClick={() => setSelected(null)}>
-                  <Icon name="arrow-left" /> {t.back}
-                </button>
-                <nav className="img-crumbs" aria-label={t.imgPath}>
-                  {trail.map((p) => (
-                    <span key={p.id}>{pick(p.text, locale)}</span>
-                  ))}
-                </nav>
-              </div>
-              <h2>
-                {pick(node.text, locale)}
-                <span className={`img-pill is-${activityStatus(act, status)}`}>
-                  <StatusDot status={activityStatus(act, status)} />
-                  {{
-                    set: t.statusSet,
-                    empty: t.statusEmpty,
-                    unknown: t.statusUnknown,
-                    unchecked: t.statusUnchecked,
-                  }[activityStatus(act, status)]}
-                </span>
-              </h2>
-              {locale !== "en" && pick(node.text, locale) !== node.text.en && node.text.en ? (
-                <p className="img-sub">{node.text.en}</p>
-              ) : null}
-
-              <dl className="img-facts">
-                <div>
-                  <dt>{t.activityId}</dt>
-                  <dd className="mono">{node.act}</dd>
-                </div>
-                {act.tcode ? (
+                <dl className="img-facts">
                   <div>
-                    <dt>{t.tcode}</dt>
-                    <dd className="mono">{act.tcode}</dd>
+                    <dt>{t.activityId}</dt>
+                    <dd className="mono">{node.act}</dd>
+                  </div>
+                  {act.tcode ? (
+                    <div>
+                      <dt>{t.tcode}</dt>
+                      <dd className="mono">{act.tcode}</dd>
+                    </div>
+                  ) : null}
+                  <div className="is-wide">
+                    <dt>{t.objects}</dt>
+                    <dd>
+                      {act.objects.length === 0 ? <span className="img-muted">—</span> : null}
+                      {act.objects.map((o, i) => {
+                        const count = o.table && status ? status.counts[o.table] : undefined;
+                        return (
+                          <span className="img-obj" key={`${o.type}:${o.name}:${i}`}>
+                            <span className="img-obj-type">{o.type}</span>
+                            <span className="mono">{o.name}</span>
+                            {o.table && o.table !== o.name ? <span className="mono img-muted">→ {o.table}</span> : null}
+                            {typeof count === "number" ? (
+                              <span className={`img-obj-count${count > 0 ? " is-set" : ""}`}>{t.rows(count)}</span>
+                            ) : !o.table ? (
+                              <span className="img-muted">{t.noTableObject}</span>
+                            ) : null}
+                          </span>
+                        );
+                      })}
+                    </dd>
+                  </div>
+                </dl>
+
+                {activityStatus(act, status) === "empty" ? (
+                  <div className="img-notice is-compact">
+                    <Icon name="tray" />
+                    <div>
+                      <b>{t.activityEmptyTitle}</b>
+                      <p>{t.activityEmptyBody}</p>
+                    </div>
                   </div>
                 ) : null}
-                <div className="is-wide">
-                  <dt>{t.objects}</dt>
-                  <dd>
-                    {act.objects.length === 0 ? <span className="img-muted">—</span> : null}
-                    {act.objects.map((o, i) => {
-                      const count = o.table && status ? status.counts[o.table] : undefined;
+
+                <section className="img-screen">
+                  <h3>
+                    {t.screens} <span className="img-tag">{t.liveValues}</span>
+                  </h3>
+                  {(() => {
+                    const loaded = screens[node.act!];
+                    if (!loaded) {
                       return (
-                        <span className="img-obj" key={`${o.type}:${o.name}:${i}`}>
-                          <span className="img-obj-type">{o.type}</span>
-                          <span className="mono">{o.name}</span>
-                          {o.table && o.table !== o.name ? <span className="mono img-muted">→ {o.table}</span> : null}
-                          {typeof count === "number" ? (
-                            <span className={`img-obj-count${count > 0 ? " is-set" : ""}`}>{t.rows(count)}</span>
-                          ) : !o.table ? (
-                            <span className="img-muted">{t.noTableObject}</span>
-                          ) : null}
-                        </span>
+                        <div key="loading" className="img-screen-loading">
+                          <span className="img-orb" aria-hidden="true">
+                            <ThinkingOrb state="composing" size={20} />
+                          </span>
+                          {t.loadingScreen}
+                        </div>
                       );
-                    })}
-                  </dd>
-                </div>
-              </dl>
-
-              {activityStatus(act, status) === "empty" ? (
-                <div className="img-notice is-compact">
-                  <Icon name="tray" />
-                  <div>
-                    <b>{t.activityEmptyTitle}</b>
-                    <p>{t.activityEmptyBody}</p>
-                  </div>
-                </div>
-              ) : null}
-
-              <section className="img-screen">
-                <h3>
-                  {t.screens} <span className="img-tag">{t.liveValues}</span>
-                </h3>
-                {(() => {
-                  const loaded = screens[node.act!];
-                  if (!loaded) {
+                    }
+                    // Keyed apart from the loading row, so what arrives mounts
+                    // fresh and fades in where the row was rather than cutting in.
                     return (
-                      <div className="img-screen-loading">
-                        <span className="img-orb" aria-hidden="true">
-                          <ThinkingOrb state="composing" size={20} />
-                        </span>
-                        {t.loadingScreen}
+                      <div key="ready" className="img-arrive">
+                        {"error" in loaded ? (
+                          <div className="img-error" role="alert">
+                            <Icon name="warning-circle" />
+                            <span>
+                              <b>{t.failed}</b> {loaded.error}
+                            </span>
+                            <button
+                              type="button"
+                              className="img-btn"
+                              onClick={() => loadScreens(node.act!)}
+                            >
+                              {t.retry}
+                            </button>
+                          </div>
+                        ) : loaded.length ? (
+                          <SapScreens
+                            key={node.act}
+                            screens={loaded}
+                            tcode={act.tcode || "SM30"}
+                            alias={alias}
+                          />
+                        ) : (
+                          <p className="img-empty">{t.noScreen}</p>
+                        )}
                       </div>
                     );
-                  }
-                  if ("error" in loaded) {
-                    return (
-                      <div className="img-error" role="alert">
-                        <Icon name="warning-circle" />
-                        <span>
-                          <b>{t.failed}</b> {loaded.error}
-                        </span>
-                        <button
-                          type="button"
-                          className="img-btn"
-                          onClick={() => loadScreens(node.act!)}
-                        >
-                          {t.retry}
-                        </button>
-                      </div>
-                    );
-                  }
-                  return loaded.length ? (
-                    <SapScreens
-                      key={node.act}
-                      screens={loaded}
-                      tcode={act.tcode || "SM30"}
-                      alias={alias}
-                    />
-                  ) : (
-                    <p className="img-empty">{t.noScreen}</p>
-                  );
-                })()}
-              </section>
-            </article>
-          )}
+                  })()}
+                </section>
+              </article>
+            )}
+          </div>
         </main>
       </div>
     </div>

@@ -63,8 +63,12 @@ document.currentScript && document.currentScript.remove();
  *   cookie, which an opaque origin does not send, so it landed on sign-in.
  *   `#id` links scroll inside the document instead; any other link opens in
  *   a new tab rather than replacing the document.
+ * - Spelling: off, as in the app (`layout.tsx`). The documents are full of
+ *   program, table and field names, which a spell checker underlines in an
+ *   edit mode as it would typos. It inherits, so the root's covers them all.
  */
 const PREVIEW_HEAD = `<script>
+document.documentElement.spellcheck = false;
 addEventListener("message", function (event) {
   if (event.source !== parent || !event.data || event.data.type !== "${ZOOM_MESSAGE}") return;
   document.documentElement.style.zoom = String(event.data.zoom);
@@ -135,8 +139,9 @@ const EDIT_HEAD = `<script>
     var blob = this.hasAttribute("download") ? blobs[this.href] : null;
     if (!blob) return click.call(this);
     blob.text().then(function (html) {
-      // The preview's theme is this frame's, not the file's.
+      // The preview's theme and spelling are this frame's, not the file's.
       html = html.replace(/(<html\\b[^>]*?)\\s+data-theme="[^"]*"/i, "$1");
+      html = html.replace(/(<html\\b[^>]*?)\\s+spellcheck="false"/i, "$1");
       parent.postMessage({ type: "${SAVE_MESSAGE}", html: html }, "*");
     });
   };

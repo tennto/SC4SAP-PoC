@@ -85,6 +85,13 @@ const en = {
     monthAndAllTime: (month: string, all: string, current: boolean) =>
       `${month} ${current ? "this month" : "that month"} · ${all} all time`,
     monthNav: "Month",
+    trendButton: "Monthly trend",
+    trendTitle: "Monthly spend",
+    trendSub: (months: number) => `The last ${months} months, at list price`,
+    trendClose: "Close",
+    trendTotal: (months: number) => `${months} months`,
+    trendAverage: "Monthly average",
+    trendChange: "On the month before",
     previousMonth: "Previous month",
     nextMonth: "Next month",
     noSpend: "No spend recorded for this month.",
@@ -295,7 +302,9 @@ const en = {
     programRequired: "Enter the program to document.",
     programRequiredManual: "Enter the program to write the manual for.",
     packageRequired: "Enter the package to inventory.",
-    programsRequired: "Enter 2 to 5 programs to compare, one per line.",
+    programsRequired: "Enter 2 to 5 programs to compare.",
+    listAdd: "Add",
+    listRemove: "Remove",
     objectRequired: "Enter the object to review.",
     closeBodyReview:
       "The review and its files are deleted. Nothing of this run is kept, so download anything you need first.",
@@ -1110,6 +1119,13 @@ const ko: Messages = {
     spent: "사용",
     monthAndAllTime: (month, all, current) => `${current ? "이번 달" : "해당 월"} ${month} · 전체 ${all}`,
     monthNav: "월",
+    trendButton: "월별 추이",
+    trendTitle: "월별 사용량 추이",
+    trendSub: (months) => `최근 ${months}개월, 공시 가격 기준`,
+    trendClose: "닫기",
+    trendTotal: (months) => `${months}개월 합계`,
+    trendAverage: "월 평균",
+    trendChange: "전월 대비",
     previousMonth: "이전 달",
     nextMonth: "다음 달",
     noSpend: "이 달에는 비용 사용 내역이 없습니다.",
@@ -1311,7 +1327,9 @@ const ko: Messages = {
     programRequired: "명세를 만들 프로그램을 입력하세요.",
     programRequiredManual: "매뉴얼을 만들 프로그램을 입력하세요.",
     packageRequired: "인벤토리를 만들 패키지를 입력하세요.",
-    programsRequired: "비교할 프로그램을 2개에서 5개까지, 한 줄에 하나씩 입력하세요.",
+    programsRequired: "비교할 프로그램을 2개에서 5개까지 입력하세요.",
+    listAdd: "추가",
+    listRemove: "삭제",
     objectRequired: "리뷰할 오브젝트를 입력하세요.",
     closeBodyReview:
       "리뷰 보고서와 파일이 모두 삭제됩니다. 이 실행은 어디에도 보관되지 않으니, 필요한 파일은 먼저 다운로드하세요.",
@@ -1727,7 +1745,7 @@ const ko: Messages = {
     approval: {
       writes: {
         label: "쓰기만 묻기",
-        hint: "SAP 읽기, 에이전트 자체 읽기, 읽기 전용 셸 명령은 통과합니다. 파일을 바꾸거나, 테이블 행을 가져오거나, 머신 밖으로 나가는 것은 묻습니다.",
+        hint: "SAP 읽기(행 상한과 차단 목록 안에서의 테이블 행 조회 포함), 에이전트 자체 읽기, 읽기 전용 셸 명령은 통과합니다. 파일을 바꾸거나 머신 밖으로 나가는 것은 묻습니다.",
       },
       all: {
         label: "모두 묻기",
@@ -2105,6 +2123,13 @@ const ja: Messages = {
     spent: "利用",
     monthAndAllTime: (month, all, current) => `${current ? "今月" : "当月"} ${month} · 累計 ${all}`,
     monthNav: "月",
+    trendButton: "月別推移",
+    trendTitle: "月別利用推移",
+    trendSub: (months) => `直近 ${months} か月、公表価格ベース`,
+    trendClose: "閉じる",
+    trendTotal: (months) => `${months} か月合計`,
+    trendAverage: "月平均",
+    trendChange: "前月比",
     previousMonth: "前の月",
     nextMonth: "次の月",
     noSpend: "この月の利用記録はありません。",
@@ -2306,7 +2331,9 @@ const ja: Messages = {
     programRequired: "仕様書を作るプログラムを入力してください。",
     programRequiredManual: "マニュアルを作るプログラムを入力してください。",
     packageRequired: "棚卸しするパッケージを入力してください。",
-    programsRequired: "比較するプログラムを 2〜5 個、1 行に 1 つずつ入力してください。",
+    programsRequired: "比較するプログラムを 2〜5 個入力してください。",
+    listAdd: "追加",
+    listRemove: "削除",
     objectRequired: "レビューするオブジェクトを入力してください。",
     closeBodyReview:
       "レビューレポートとファイルはすべて削除されます。この実行はどこにも保存されないため、必要なファイルは先にダウンロードしてください。",
@@ -2722,7 +2749,7 @@ const ja: Messages = {
     approval: {
       writes: {
         label: "書き込みのみ確認",
-        hint: "SAP の読み取り、エージェント自身の読み取り、読み取り専用のシェルコマンドは通過します。ファイルを変更する、テーブル行を取得する、マシンの外に出るものは確認します。",
+        hint: "SAP の読み取り(行数上限とブロックリストの範囲内のテーブル行取得を含む)、エージェント自身の読み取り、読み取り専用のシェルコマンドは通過します。ファイルを変更する、マシンの外に出るものは確認します。",
       },
       all: {
         label: "すべて確認",

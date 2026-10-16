@@ -30,7 +30,7 @@ export const APPROVAL_LEVELS: { value: ApprovalLevel; label: string; hint: strin
   {
     value: "writes",
     label: "Ask for writes only",
-    hint: "SAP reads, the agent's own reads and read-only shell commands go through. Anything that changes a file, pulls table rows, or leaves the machine asks.",
+    hint: "SAP reads (table rows included, within the row cap and the blocklist), the agent's own reads and read-only shell commands go through. Anything that changes a file or leaves the machine asks.",
   },
   {
     value: "all",

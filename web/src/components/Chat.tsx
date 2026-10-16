@@ -896,6 +896,32 @@ export function Chat({
     setSendMark(stream.items.length);
     setError(null);
 
+    /**
+     * A selected chat with neither a live session nor a stored row is not a
+     * chat, and sending into it goes the way the empty state does.
+     *
+     * This is the id a reload restores from `localStorage` after a backend
+     * restart took an unasked session with it: the screen shows the greeting,
+     * so the reader takes it for the empty state, but `activeId` is set and the
+     * prompt came here. Attaching a fresh session to that id hid the session
+     * from the rail — an attached session is never a row of its own — and the
+     * id had no stored row to stand in for it, so the conversation was nowhere
+     * in the list. `persist` then held its write for a stored copy that would
+     * never arrive. A fresh session under its own id is a row the moment it
+     * exists, exactly as after pressing +.
+     *
+     * Asked only when neither list can vouch for the id, and a failure other
+     * than "unknown chat" is taken as stored: forking a real conversation into
+     * a new one is worse than the old behaviour.
+     */
+    if (!backendId && !storedChat && history?.chatId !== activeId) {
+      const stored = await api.readChat(activeId).then(
+        () => true,
+        (err: Error) => !/unknown chat/i.test(err.message),
+      );
+      if (!stored) return startAndSend(text, files);
+    }
+
     try {
       let target = backendId;
       let context: string | null = null;

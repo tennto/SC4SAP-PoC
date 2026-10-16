@@ -1,7 +1,8 @@
 /**
  * Compare Programs' prompt, built from its form.
  *
- * The plugin's skill (`compare-programs`, plugin 0.6.35) asks for the 2–5
+ * The plugin's skill (`compare-programs`, written against 0.6.35; Standard
+ * follows 0.6.41's steps — see `precisePrompt`) asks for the 2–5
  * programs, then stops to confirm the comparison dimensions and the output
  * format, and writes `.sc4sap/comparisons/<P1>__vs__<P2>-<date>.md`. On this
  * screen the programs, the dimension set and the formats are form fields,
@@ -34,6 +35,24 @@ export type CompareSurvey = {
 };
 
 const LANG: Record<CompareSurvey["language"], string> = { Korean: "ko", English: "en", Japanese: "ja" };
+
+/**
+ * The template's section titles as a consultant reads them in the report's
+ * language. Left to translate, a writer turned "Executive Summary" into
+ * "경영 요약" (management summary) and "Shared baseline" into "공유되는 기초 현황".
+ */
+const HEADINGS: Partial<Record<CompareSurvey["language"], string>> = {
+  Korean:
+    "1. 요약 · 2. 상황별 프로그램 선택 가이드 · 3. 공통 기반 · 4. 비교 매트릭스 (4.1 선택 필드, 4.2 출력 컬럼) · " +
+    "5. 화면 비교 (5.1 선택 화면, 5.2 출력 리스트) · 6. 프로그램별 상세 (6.x 메시지 비교) · 7. 통합 가능성 · " +
+    "8. 리스크 및 확인 필요 사항 · 9. 부록 (9.1 권한 오브젝트, 9.2 테이블 / CDS); fact-list labels 프로그램 · 시나리오 · " +
+    "모듈 · 비교 차원 · 결과 · 시스템 · 생성일; legend label 범례",
+  Japanese:
+    "1. 概要 · 2. 状況別プログラム選択ガイド · 3. 共通基盤 · 4. 比較マトリクス (4.1 選択項目, 4.2 出力列) · " +
+    "5. 画面比較 (5.1 選択画面, 5.2 出力リスト) · 6. プログラム別詳細 (6.x メッセージ比較) · 7. 統合の可能性 · " +
+    "8. リスクと確認事項 · 9. 付録 (9.1 権限オブジェクト, 9.2 テーブル / CDS); fact-list labels プログラム · シナリオ · " +
+    "モジュール · 比較観点 · 結果 · システム · 作成日; legend label 凡例",
+};
 
 /** The skill's ten dimensions (comparison-scope.md), by number. */
 export const DIMENSIONS: Record<number, string> = {
@@ -71,32 +90,44 @@ const htmlStep = (outDir: string, base: string): string =>
   `\`node <plugin>/scripts/spec/md-to-html.mjs ${outDir}/${base}.md ${outDir}/${base}.html\``;
 
 /**
- * Standard: the plugin's skill as it is, its two stops answered from the form
- * and its files written to the run's folder. The host notes change nothing the
- * skill decides, only how it gets there — the same notes the other document
- * skills' Standard runs were measured with.
+ * Standard: the plugin's skill (0.6.41) for the analysis — Haiku checkers for
+ * the facts, the Opus analyst, the module consultants, the Sonnet writer with
+ * its screens — and this host for the rest. The skill's page is built with
+ * `--editable` and carries the plugin's own editor; this app puts its own
+ * edit mode on every document (`compare-theme.ts` → `styledSpec`), so the
+ * page is built plain, as Economy's is. One language, no English companion,
+ * no Excel copy, no review question, no history or versions: the run's
+ * folder holds one `.md`, its `.html` and the screen pictures.
  */
 function precisePrompt(survey: CompareSurvey, outDir: string): string {
   const base = compareBase(survey);
   const dim8 = survey.dimensions.includes(8);
+  const screens = survey.dimensions.includes(3) || survey.dimensions.includes(6);
   return [
     `/sc4sap:compare-programs ${survey.programs.join(", ")}`,
     "",
     "Every question the skill would ask is answered here: do not ask any, and do not call AskUserQuestion.",
-    "- Step 0: skip the trust-session bootstrap — this host grants the permissions itself.",
-    `- Step 1: the programs are ${survey.programs.join(", ")}. Resolve each with SearchObject in ONE message; if one is not found or is ambiguous, stop and say which — do not ask.`,
+    "- Step 0: skip the trust-session bootstrap (this host grants the permissions itself) and the edited-page import (there is none).",
+    `- Step 1: the programs are ${survey.programs.join(", ")}. Resolve each with SearchObject in ONE message; if one is not found or is ambiguous, stop and say which — do not ask. Skip the Names / version / history step: the files are named below.`,
     `- Step 2: do not show the scope prompt. The dimensions are ${survey.dimensions.join(", ")}:`,
     dimensionList(survey),
-    `  The formats are ${survey.formats.join(" + ")}.`,
-    `- Step 3: dispatch the reviewers as the skill says, one per program in ONE message. Add to each reviewer's prompt: "Call GetProgFullCode with \`output: \\"file\\"\` and Grep the files for SELECT, AUTHORITY-CHECK, PARAMETERS, SELECT-OPTIONS and CALL; read a range only where a fact needs it. Skip GetWhereUsed and the transport history."${dim8 ? "" : " Dimension 8 is off: no enhancement reads."}`,
+    `  lang = ${LANG[survey.language]}, english = false, excel = false.`,
+    `- Step 3: the checkers as the skill says, one per program in ONE message. Add to each checker's prompt: "Skip GetWhereUsed and the transport history."${dim8 ? "" : " and \"Dimension 8 is off: no enhancement reads.\""} Step 3b (T100 texts) as the skill says.`,
     "- Steps 4 and 4b: as the skill says.",
-    `- Step 5: tell the writer to write the report to \`${outDir}/${base}.md\` instead of .sc4sap/comparisons/.${survey.formats.includes("html") ? ` Then make the HTML yourself: ${htmlStep(outDir, base)}.` : ""} Keep the .md either way.`,
-    "- Step 6: skip the follow-up menu; end with the skill's completion block.",
+    `- Step 5: the writer as the skill says, with these paths: screen specs in \`${outDir}/_img/<PROG>.image-spec.json\`${screens ? `, rendered into \`${outDir}/_assets/${base}/<PROG>/\`` : ""}, and the report written to \`${outDir}/${base}.md\`${screens ? ` with the pictures referenced as \`_assets/${base}/<PROG>/selection.png\` / \`alv.png\`` : ""}. Tell the writer three more things:`,
+    `  1. The decision tree in §2 is not Mermaid. Write it to \`${outDir}/_img/decision.image-spec.json\` as \`{"lang": "${LANG[survey.language]}", "processFlow": {"nodes": [...], "edges": [...]}}\` — the same tree the Mermaid block would have held — every question and every answer the decision needs, nothing left out to make it smaller — as nodes \`{"id", "type", "label"}\` with type "decision" for a question and "end" for a program to use, and edges \`{"from", "to", "label"}\` labelled with the answer. An answer that settles the choice goes straight to that program's "end" node; only an answer that leaves it open goes on to the next question — never route a settled answer through a later question. Its layout is the page's to make: no positions or lanes — render it with \`node <plugin>/scripts/spec/render-md-images.mjs ${outDir}/_img/decision.image-spec.json ${outDir}/_assets/${base}/decision/\`, and put \`![<decision tree title>](_assets/${base}/decision/flow.png)\` where the Mermaid block would be.`,
+    `  2. The report is in ${survey.language}, as the template's rule 11 says: every heading, table header, fact-list label, per-program label, the legend's own label and the decision tree's text translated. The one exception is the four verdict words, which stay in English in the legend line, every verdict cell and the Result fact: ✅ Same · 🔷 Variant · ⚠️ Divergent · ❓ Unclear.${HEADINGS[survey.language] ? ` Use these section titles: ${HEADINGS[survey.language]}.` : ""}`,
+    "  3. In the matrix tables a program's column holds ● or ○ and nothing else — no \"● (SEQ_NO)\", no \"● (required)\", no line numbers. Anything worth saying about that cell (a different field name, a condition, where it is set) goes in the row's note column, named by program.",
+    survey.formats.includes("html")
+      ? `- Step 5.1: build the page WITHOUT --editable, --version or --note: ${htmlStep(outDir, base)}. A ⚠ line is a defect: fix the .md and run the same command again.`
+      : "- Step 5.1: no HTML page; the .md is the report.",
+    "- Skip Steps 5.1b (Excel), 5.2 (review question), 5.3 (English companion) and 6 (follow-up menu). End with the skill's completion block, with these file paths.",
     "",
     "Host notes for this run (they change nothing the skill decides, only how it gets there):",
     "- Skip the Response_Prefix and Phase_Banner conventions: do not read model-routing-rule.md or model-dispatch-mode.md for them.",
     "- The SAP context is given: S/4HANA, ABAP release 758; industry and country not set. Do not read config.json or sap.env, and do not search the disk: every file named here is under the plugin root given in your system prompt.",
     "- Make independent SAP reads in the same turn.",
+    "- Run every Agent in the foreground — never `run_in_background` — and wait for its result in this same turn: this host ends the run, and takes its files, when your turn ends.",
     "- Keep every file inside the output folder above — never /tmp or another folder — and run one plain command per Bash call.",
     "",
     `Write the report in ${survey.language}.`,
@@ -116,7 +147,7 @@ const sapReads = (dim8: boolean): string =>
 const outline = (survey: CompareSurvey): string => {
   const has = (n: number): boolean => survey.dimensions.includes(n);
   return [
-    "--- (YAML front-matter: type: program-comparison, programs (list), generated (date), language, dimensions_included (the numbers), sap_version: S/4HANA (ABAP 758)) ---",
+    "--- (YAML front-matter, one line per key, no YAML lists or brackets: type: program-comparison, programs: P1, P2, generated: <date>, language: <code>, dimensions_included: 1, 2, 3, sap_version: S/4HANA (ABAP 758)) ---",
     "# <Program comparison report>: <P1> vs <P2> …",
     "## 1. Executive summary — exactly 3 sentences: the shared scenario, the biggest divergence, the recommendation",
     "## 2. Shared baseline — business scenario, shared selection fields, shared output purpose",

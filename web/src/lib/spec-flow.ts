@@ -170,6 +170,11 @@ function measure(node: FlowNode): Placed {
 
 const GAP_X = 48;
 const GAP_Y = 40;
+/** A skip or loop-back lane beside the main path: the first one's distance, then one per lane. */
+const LANE_GAP = 18;
+const LANE = 16;
+/** How many lanes the right of the main path takes before the rest go left. */
+const RIGHT_LANES = 3;
 const MARGIN = 20;
 /** Steps per row in the linear form: four fit a 760px column at full size. */
 const PER_ROW = 4;
@@ -224,13 +229,20 @@ function layoutGraph(graph: FlowGraph): { nodes: Placed[]; routes: Route[] } {
   const side = nodes.filter((node) => node.lane === "right");
   // Room on the left only for the skip and loop-back lanes there are.
   const order = new Map(spine.map((node, i) => [node.id, i]));
-  const skips = graph.edges.filter((edge) => {
+  const skipEdges = graph.edges.filter((edge) => {
     const a = order.get(edge.from);
     const b = order.get(edge.to);
     return a !== undefined && b !== undefined && b !== a + 1;
-  }).length;
-  const spineX = MARGIN + (skips ? 16 + skips * 10 : 0);
-  const sideX = spineX + BOX_W + GAP_X + 24;
+  });
+  // Skips and loop-backs take turns on the left and the right of the main
+  // path, a lane apart: all on one side, five of them into the same end box
+  // drew as one thick line with their labels on top of each other.
+  const corridor = new Map<FlowEdge, "left" | "right">();
+  skipEdges.forEach((edge, i) => corridor.set(edge, i % 2 === 0 || i >= RIGHT_LANES * 2 ? "left" : "right"));
+  const leftLanes = [...corridor.values()].filter((side) => side === "left").length;
+  const rightLanes = [...corridor.values()].filter((side) => side === "right").length;
+  const spineX = MARGIN + (leftLanes ? LANE_GAP + leftLanes * LANE : 0);
+  const sideX = spineX + BOX_W + Math.max(GAP_X + 24, LANE_GAP + rightLanes * LANE + 24);
 
   let y = MARGIN;
   for (const node of spine) {
@@ -251,7 +263,18 @@ function layoutGraph(graph: FlowGraph): { nodes: Placed[]; routes: Route[] } {
   }
 
   const index = new Map(spine.map((node, i) => [node.id, i]));
-  let lanes = 0;
+  // Several skips into one box enter it a little apart, not at one point; a
+  // decision's diamond only has its tips, so they meet there as before.
+  const into = new Map<string, FlowEdge[]>();
+  for (const edge of skipEdges) into.set(edge.to, [...(into.get(edge.to) ?? []), edge]);
+  const entryY = (edge: FlowEdge, node: Placed): number => {
+    const all = (into.get(node.id) ?? []).filter((e) => corridor.get(e) === corridor.get(edge));
+    if (node.type === "decision" || all.length < 2) return node.y + node.h / 2;
+    const step = Math.min(8, (node.h - 8) / (all.length - 1));
+    return node.y + node.h / 2 + (all.indexOf(edge) - (all.length - 1) / 2) * step;
+  };
+  let left = 0;
+  let right = 0;
   const routes: Route[] = graph.edges.map((edge) => {
     const a = byId.get(edge.from)!;
     const b = byId.get(edge.to)!;
@@ -261,9 +284,14 @@ function layoutGraph(graph: FlowGraph): { nodes: Placed[]; routes: Route[] } {
     const cy = (node: Placed) => node.y + node.h / 2;
     if (ai !== undefined && bi !== undefined) {
       if (bi === ai + 1) return { points: [[cx(a), a.y + a.h], [cx(b), b.y]], label: edge.label };
-      // Skip or loop-back along the left edge, one lane further out each.
-      const x = spineX - 16 - lanes++ * 10;
-      return { points: [[a.x, cy(a)], [x, cy(a)], [x, cy(b)], [b.x, cy(b)]], label: edge.label };
+      // Skip or loop-back in its corridor, one lane further out each.
+      const ty = entryY(edge, b);
+      if (corridor.get(edge) === "right") {
+        const x = spineX + BOX_W + LANE_GAP + right++ * LANE;
+        return { points: [[a.x + a.w, cy(a)], [x, cy(a)], [x, ty], [b.x + b.w, ty]], label: edge.label };
+      }
+      const x = spineX - LANE_GAP - left++ * LANE;
+      return { points: [[a.x, cy(a)], [x, cy(a)], [x, ty], [b.x, ty]], label: edge.label };
     }
     if (bi === undefined && b.lane === "right" && a.lane !== "right") {
       if (Math.abs(cy(a) - cy(b)) < 1) return { points: [[a.x + a.w, cy(a)], [b.x, cy(b)]], label: edge.label };
