@@ -15,6 +15,11 @@
  *   POST   /profiles              add a SAP system and move onto it
  *   POST   /profiles/check        is the live system answering?
  *   POST   /profiles/active       point the workspace at another SAP system
+ *   GET    /img/modules           Display IMG: the SPRO modules of the live system
+ *   GET    /img/tree/:module      one module's IMG tree (202 + progress while it is read)
+ *   GET    /img/status/:module    last configured / empty check, and a running one
+ *   POST   /img/status/:module    recount the module's tables
+ *   GET    /img/screen/:module/:activity  an activity's SM30 screens, read live
  *
  * The caller's account arrives as `x-sc4sap-user`, set by the web app's proxy
  * after it has checked the session cookie. The backend does not verify it —
@@ -53,6 +58,8 @@ import {
   listProfiles,
   switchProfile,
 } from "./profiles.ts";
+import { SapDirect } from "./sap-direct.ts";
+import { ImgService } from "./img.ts";
 
 /** SSE comment heartbeat, so idle proxies do not drop the connection. */
 const HEARTBEAT_MS = 15_000;
@@ -647,6 +654,58 @@ export function buildApp(manager: SessionManager): FastifyInstance {
       };
       request.raw.on("close", stop);
       request.raw.on("error", stop);
+    },
+  );
+
+  /**
+   * Display IMG. No model is involved — see `img.ts` — so these are plain
+   * reads that any signed-in account may make, like the profile list.
+   */
+  const sap = new SapDirect(manager.config.pluginPath, manager.config.workspace);
+  const img = new ImgService(sap, manager.config.workspace);
+  app.addHook("onClose", async () => sap.close());
+  const imgError = (reply: import("fastify").FastifyReply, err: unknown) => {
+    app.log.error({ err }, "img read failed");
+    return reply.code(502).send({ error: (err as Error).message });
+  };
+
+  app.get("/img/modules", async (_request, reply) => {
+    try {
+      return await img.modules();
+    } catch (err) {
+      return imgError(reply, err);
+    }
+  });
+
+  app.get<{ Params: { module: string } }>("/img/tree/:module", async (request, reply) => {
+    try {
+      const result = await img.tree(request.params.module);
+      return "tree" in result ? result.tree : reply.code(202).send(result);
+    } catch (err) {
+      return imgError(reply, err);
+    }
+  });
+
+  app.get<{ Params: { module: string } }>("/img/status/:module", async (request) =>
+    img.status(request.params.module),
+  );
+
+  app.post<{ Params: { module: string } }>("/img/status/:module", async (request, reply) => {
+    try {
+      return reply.code(202).send({ progress: img.refreshStatus(request.params.module) });
+    } catch (err) {
+      return imgError(reply, err);
+    }
+  });
+
+  app.get<{ Params: { module: string; activity: string } }>(
+    "/img/screen/:module/:activity",
+    async (request, reply) => {
+      try {
+        return { screens: await img.screens(request.params.module, request.params.activity) };
+      } catch (err) {
+        return imgError(reply, err);
+      }
     },
   );
 
